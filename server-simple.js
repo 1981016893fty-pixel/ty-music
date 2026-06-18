@@ -130,6 +130,7 @@ function _httpsGetJSONOnce(url, timeout) {
 }
 
 // HTTP/HTTPS GET (支持重定向)
+// timeout 仅用于连接阶段，流式传输不设超时（避免大文件被切断）
 function smartGet(url, headers, timeout = 15000) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -140,7 +141,6 @@ function smartGet(url, headers, timeout = 15000) {
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       headers: headers || {},
-      timeout: timeout,
     };
     const req = client.get(opts, (res) => {
       // 处理重定向
@@ -148,10 +148,21 @@ function smartGet(url, headers, timeout = 15000) {
         smartGet(res.headers.location, headers, timeout).then(resolve).catch(reject);
         return;
       }
+      // 流式响应直接返回，不设整体超时
       resolve(res);
     });
     req.on('error', reject);
-    req.setTimeout(timeout, () => { req.destroy(); reject(new Error('timeout')); });
+    // 只设置连接超时，不设置整体超时
+    req.setTimeout(timeout, function() {
+      req.destroy();
+      reject(new Error('connection timeout'));
+    });
+    // 连接建立后取消超时
+    req.on('socket', function(socket) {
+      socket.on('connect', function() {
+        req.setTimeout(0);
+      });
+    });
   });
 }
 
@@ -403,27 +414,54 @@ async function getArtistSongs(artistName, limit = 100, offset = 0) {
   }
 }
 
-// 获取艺人信息
+// 获取艺人信息（头像 + 背景 + 简介）
 async function getArtistInfo(artistName) {
   try {
-    const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(artistName)}&count=1`;
-    const data = await httpsGetJSON(url, 15000); // 公网访问延长超时
-    if (Array.isArray(data) && data.length > 0) {
-      const firstSong = data[0];
-      let avatar = '';
-      if (firstSong.pic_id) {
-        const coverUrl = await gdGetCoverUrl(firstSong.pic_id);
-        if (coverUrl) avatar = coverUrl;
+    // 从网易云 API 获取艺人详细信息
+    const searchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(artistName)}&type=100&limit=1`;
+    const searchData = await httpsGetJSON(searchUrl, 15000);
+    
+    if (searchData && searchData.result && searchData.result.artists && searchData.result.artists.length > 0) {
+      const artist = searchData.result.artists[0];
+      const avatar = artist.picUrl || artist.img1v1Url || '';
+      const artistId = artist.id;
+      
+      let background = '';
+      let desc = '';
+      
+      // 获取艺人详情（包含背景大图、简介等）
+      if (artistId) {
+        try {
+          const detailUrl = `https://music.163.com/api/artist/${artistId}`;
+          const detailData = await httpsGetJSON(detailUrl, 10000);
+          if (detailData && detailData.code === 200 && detailData.data && detailData.data.artist) {
+            const a = detailData.data.artist;
+            // 网易云艺人背景大图
+            background = a.picUrl || a.cover || a.img1v1Url || '';
+            // 简介
+            desc = a.briefDesc || '';
+          }
+        } catch (e) {
+          console.log('[Artist Detail] Failed to get detail for', artistName, ':', e.message);
+        }
       }
+      
+      // 如果没有背景图，用头像代替
+      if (!background) background = avatar;
+      
       return {
         name: artistName,
         avatar: avatar,
-        songCount: data.length
+        background: background,
+        desc: desc,
+        songCount: artist.musicSize || artist.albumSize || 0
       };
     }
-    return { name: artistName, avatar: '', songCount: 0 };
+    
+    return { name: artistName, avatar: '', background: '', desc: '', songCount: 0 };
   } catch (e) {
-    return { name: artistName, avatar: '', songCount: 0 };
+    console.error('[Artist Info] Error for', artistName, ':', e.message);
+    return { name: artistName, avatar: '', background: '', desc: '', songCount: 0 };
   }
 }
 
@@ -520,13 +558,14 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 7. 音频代理（流式播放）
+  // 7. 音频代理（支持 Range 请求，流式传输）
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      console.log('[Proxy] Streaming audio for id:', id, 'URL:', audioUrl.substring(0, 80));
+      console.log('[Proxy] Streaming audio for id:', id);
 
       // 透传 Range 头以支持流媒体进度条
       const reqHeaders = {
