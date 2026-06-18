@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TY Music - 免费听遍全网音乐</title>
+  <link rel="stylesheet" href="style.css?v=2">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+    .hero { background: linear-gradient(135deg, #b44dff22, #ff2d9522); padding: 40px; border-radius: 20px; margin-bottom: 30px; }
+    .hero h1 { font-size: 48px; margin-bottom: 10px; background: linear-gradient(135deg, #b44dff, #ff2d95); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .search-box { width: 100%; padding: 15px 20px; border-radius: 50px; border: 2px solid #333; background: #16213e; color: #fff; font-size: 16px; margin: 20px 0; }
+    .search-box:focus { outline: none; border-color: #b44dff; }
+    .songs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 20px; }
+    .song-card { background: #16213e; padding: 15px; border-radius: 10px; cursor: pointer; transition: all 0.3s; }
+    .song-card:hover { background: #1a2744; transform: translateY(-5px); }
+    .song-card img { width: 100%; border-radius: 8px; margin-bottom: 10px; }
+    .song-card h3 { font-size: 14px; margin-bottom: 5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .song-card p { font-size: 12px; color: #888; }
+    .player { position: fixed; bottom: 0; left: 0; right: 0; background: #0f0f1e; padding: 15px; display: flex; align-items: center; gap: 15px; border-top: 1px solid #333; }
+    .player img { width: 50px; height: 50px; border-radius: 8px; }
+    .player-info { flex: 1; }
+    .player-info h4 { font-size: 14px; margin-bottom: 5px; }
+    .player-info p { font-size: 12px; color: #888; }
+    .player-controls button { background: #b44dff; border: none; color: #fff; padding: 10px 20px; border-radius: 50px; cursor: pointer; font-size: 14px; }
+    .player-controls button:hover { background: #ff2d95; }
+    .loading { text-align: center; padding: 50px; color: #888; }
+    audio { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="hero">
+      <h1>🎵 TY Music</h1>
+      <p>免费听遍全网音乐</p>
+      <input type="text" class="search-box" id="searchInput" placeholder="搜索歌曲、歌手..." onkeyup="if(event.key==='Enter')searchSongs()">
+      <button onclick="searchSongs()" style="padding: 15px 30px; border-radius: 50px; border: none; background: #b44dff; color: #fff; font-size: 16px; cursor: pointer;">搜索</button>
+    </div>
+
+    <div id="hotSection">
+      <h2 style="margin-bottom: 20px;">🔥 热门推荐</h2>
+      <div class="songs" id="hotSongs"></div>
+    </div>
+
+    <div id="searchSection" style="display: none;">
+      <h2 style="margin-bottom: 20px;">🔍 搜索结果</h2>
+      <div class="songs" id="searchResults"></div>
+    </div>
+  </div>
+
+  <div class="player">
+    <img id="playerCover" src="" alt="">
+    <div class="player-info">
+      <h4 id="playerTitle">未播放</h4>
+      <p id="playerArtist">-</p>
+    </div>
+    <div class="player-controls">
+      <button onclick="playPause()">▶️ 播放/暂停</button>
+    </div>
+  </div>
+
+  <audio id="audioPlayer" controls></audio>
+
+  <script>
+    const audio = document.getElementById('audioPlayer');
+    let currentTrack = null;
+
+    // 加载热门歌曲
+    async function loadHot() {
+      document.getElementById('hotSongs').innerHTML = '<div class="loading">加载中...</div>';
+      try {
+        const res = await fetch('/api/hot?limit=12');
+        const data = await res.json();
+        renderSongs(data.songs, 'hotSongs');
+      } catch (e) {
+        document.getElementById('hotSongs').innerHTML = '<div class="loading">加载失败</div>';
+      }
+    }
+
+    // 搜索歌曲
+    async function searchSongs() {
+      const keywords = document.getElementById('searchInput').value;
+      if (!keywords) return;
+      
+      document.getElementById('hotSection').style.display = 'none';
+      document.getElementById('searchSection').style.display = 'block';
+      document.getElementById('searchResults').innerHTML = '<div class="loading">搜索中...</div>';
+      
+      try {
+        const res = await fetch('/api/search?keywords=' + encodeURIComponent(keywords) + '&limit=20');
+        const data = await res.json();
+        renderSongs(data.songs, 'searchResults');
+      } catch (e) {
+        document.getElementById('searchResults').innerHTML = '<div class="loading">搜索失败</div>';
+      }
+    }
+
+    // 渲染歌曲列表
+    function renderSongs(songs, containerId) {
+      const container = document.getElementById(containerId);
+      if (!songs || !songs.length) {
+        container.innerHTML = '<div class="loading">暂无歌曲</div>';
+        return;
+      }
+      container.innerHTML = songs.map(s => `
+        <div class="song-card" onclick="playSong('${s.id}', '${encodeURIComponent(s.name)}', '${encodeURIComponent(s.artist)}', '${s.coverSmall || ''}')">
+          <img src="${s.coverSmall || ''}" alt="${s.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect fill=%22%23333%22 width=%22100%22 height=%22100%22/><text x=%2250%22 y=%2250%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23888%22>🎵</text></svg>'">
+          <h3>${s.name}</h3>
+          <p>${s.artist}</p>
+        </div>
+      `).join('');
+    }
+
+    // 播放歌曲
+    async function playSong(id, name, artist, cover) {
+      try {
+        const res = await fetch('/api/play?id=' + id);
+        if (!res.ok) {
+          alert('播放失败');
+          return;
+        }
+        const url = (await res.json()).url;
+        if (!url) {
+          alert('无法获取音频 URL');
+          return;
+        }
+        audio.src = url;
+        audio.play();
+        currentTrack = { id, name: decodeURIComponent(name), artist: decodeURIComponent(artist), cover };
+        document.getElementById('playerTitle').textContent = currentTrack.name;
+        document.getElementById('playerArtist').textContent = currentTrack.artist;
+        document.getElementById('playerCover').src = cover || '';
+      } catch (e) {
+        alert('播放失败: ' + e.message);
+      }
+    }
+
+    // 播放/暂停
+    function playPause() {
+      if (!currentTrack) return;
+      if (audio.paused) audio.play();
+      else audio.pause();
+    }
+
+    // 页面加载时加载热门歌曲
+    window.onload = function() {
+      console.log('[TY Music] 页面加载完成');
+      loadHot();
+    };
+  </script>
+</body>
+</html>

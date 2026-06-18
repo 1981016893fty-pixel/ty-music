@@ -1,0 +1,13 @@
+node_modules/
+netease-api/
+server.log
+server-debug.log
+server-fixed.log
+minimal.log
+server.pid
+*.bak
+*.bak3
+*.mess
+*.json.bak
+server.js_clean
+.DS_Store

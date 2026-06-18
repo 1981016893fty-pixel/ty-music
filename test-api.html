@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>API 测试</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #1a1a2e; color: white; }
+    button { padding: 10px 20px; margin: 5px; background: #6366f1; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+    #results { background: #16213e; padding: 15px; border-radius: 5px; margin-top: 20px; white-space: pre-wrap; max-height: 500px; overflow-y: auto; }
+    .success { color: #10b981; }
+    .error { color: #ef4444; }
+  </style>
+</head>
+<body>
+  <h1>🎵 TY Music API 测试</h1>
+  
+  <button onclick="testAll()">测试所有API</button>
+  <button onclick="testHealth()">1. 健康检查</button>
+  <button onclick="testSearch()">2. 搜索</button>
+  <button onclick="testHot()">3. 热门</button>
+  
+  <div id="results"></div>
+  
+  <script>
+    const API = 'http://localhost:8899';
+    const results = document.getElementById('results');
+    
+    function log(msg, type) {
+      const line = document.createElement('div');
+      line.className = type || '';
+      line.textContent = msg;
+      results.appendChild(line);
+    }
+    
+    function clear() { results.innerHTML = ''; }
+    
+    async function testHealth() {
+      clear();
+      log('测试 1: 健康检查...');
+      try {
+        const res = await fetch(API + '/api/health');
+        const data = await res.json();
+        log('✅ 健康检查通过！', 'success');
+        log('   状态: ' + data.status);
+        log('   版本: ' + data.version);
+      } catch (e) {
+        log('❌ 无法连接服务器！', 'error');
+        log('   错误: ' + e.message, 'error');
+        log('');
+        log('请确保服务器已启动：', 'error');
+        log('  cd /Users/futaiyi/WorkBuddy/2026-06-16-13-40-38/music-player', 'error');
+        log('  node server.js', 'error');
+      }
+    }
+    
+    async function testSearch() {
+      log('');
+      log('测试 2: 搜索歌曲...');
+      try {
+        const res = await fetch(API + '/api/music/search?keywords=周杰伦&limit=3');
+        const data = await res.json();
+        if (data.songs && data.songs.length > 0) {
+          log('✅ 搜索功能正常！', 'success');
+          log('   找到 ' + data.songs.length + ' 首歌曲:');
+          data.songs.forEach((s, i) => {
+            log('   ' + (i+1) + '. ' + s.name + ' - ' + s.artist);
+          });
+        } else {
+          log('⚠️ 搜索返回空结果', 'error');
+        }
+      } catch (e) {
+        log('❌ 搜索失败: ' + e.message, 'error');
+      }
+    }
+    
+    async function testHot() {
+      log('');
+      log('测试 3: 热门推荐...');
+      try {
+        const res = await fetch(API + '/api/discover/hot?limit=3');
+        const data = await res.json();
+        if (data.songs && data.songs.length > 0) {
+          log('✅ 热门推荐正常！', 'success');
+          log('   找到 ' + data.songs.length + ' 首歌曲:');
+          data.songs.forEach((s, i) => {
+            log('   ' + (i+1) + '. ' + s.name + ' - ' + s.artist);
+          });
+        } else {
+          log('⚠️ 热门推荐返回空结果', 'error');
+        }
+      } catch (e) {
+        log('❌ 热门推荐失败: ' + e.message, 'error');
+      }
+    }
+    
+    async function testAll() {
+      clear();
+      log('开始测试所有API端点...');
+      log('API地址: <ADDRESS_REMOVED>
+      log('');
+      await testHealth();
+      await testSearch();
+      await testHot();
+      log('');
+      log('测试完成！');
+    }
+    
+    testAll();
+  </script>
+</body>
+</html>

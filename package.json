@@ -1,0 +1,12 @@
+{
+  "name": "ty-music",
+  "version": "1.0.0",
+  "description": "TY Music - 免费在线音乐播放器",
+  "main": "server-simple.js",
+  "scripts": {
+    "start": "node server-simple.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "demo": {
+    "password": "123",
+    "createdAt": 1781694835236,
+    "data": {
+      "favorites": [],
+      "playlists": [],
+      "recentPlays": []
+    }
+  }
+}

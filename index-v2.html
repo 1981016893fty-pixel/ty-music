@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TY Music v2.0 - 全新版本</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: #fff; min-height: 100vh; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+    
+    .header { text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #b44dff22, #ff2d9522); border-radius: 20px; margin-bottom: 40px; }
+    .header h1 { font-size: 64px; font-weight: 800; background: linear-gradient(135deg, #b44dff, #ff2d95, #00e5ff); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 10px; }
+    .header p { font-size: 18px; color: #888; }
+    .version { display: inline-block; background: #b44dff; color: #fff; padding: 5px 15px; border-radius: 20px; font-size: 12px; margin-top: 10px; }
+    
+    .search-section { margin-bottom: 40px; }
+    .search-box { width: 100%; padding: 18px 25px; border-radius: 50px; border: 2px solid #333; background: #16213e; color: #fff; font-size: 16px; transition: all 0.3s; }
+    .search-box:focus { outline: none; border-color: #b44dff; box-shadow: 0 0 20px #b44dff44; }
+    .search-btn { margin-top: 15px; padding: 15px 40px; border-radius: 50px; border: none; background: linear-gradient(135deg, #b44dff, #ff2d95); color: #fff; font-size: 16px; cursor: pointer; transition: all 0.3s; }
+    .search-btn:hover { transform: scale(1.05); box-shadow: 0 5px 20px #b44dff44; }
+    
+    .section-title { font-size: 28px; font-weight: 700; margin-bottom: 25px; display: flex; align-items: center; gap: 10px; }
+    .section-title::before { content: ''; display: block; width: 4px; height: 28px; background: linear-gradient(135deg, #b44dff, #ff2d95); border-radius: 2px; }
+    
+    .songs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 25px; margin-bottom: 50px; }
+    .song-card { background: #16213e; border-radius: 15px; overflow: hidden; cursor: pointer; transition: all 0.3s; position: relative; }
+    .song-card:hover { transform: translateY(-8px); box-shadow: 0 10px 30px #00000044; }
+    .song-card-img { width: 100%; aspect-ratio: 1; object-fit: cover; }
+    .song-card-info { padding: 15px; }
+    .song-card-title { font-size: 15px; font-weight: 600; margin-bottom: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .song-card-artist { font-size: 13px; color: #888; }
+    .song-card-play { position: absolute; bottom: 15px; right: 15px; width: 45px; height: 45px; border-radius: 50%; background: #b44dff; border: none; color: #fff; font-size: 18px; cursor: pointer; opacity: 0; transform: translateY(10px); transition: all 0.3s; }
+    .song-card:hover .song-card-play { opacity: 1; transform: translateY(0); }
+    .song-card-play:hover { background: #ff2d95; }
+    
+    .player-bar { position: fixed; bottom: 0; left: 0; right: 0; background: #0f0f1e; border-top: 1px solid #333; padding: 15px 30px; display: flex; align-items: center; gap: 20px; z-index: 1000; }
+    .player-bar-cover { width: 60px; height: 60px; border-radius: 10px; object-fit: cover; }
+    .player-bar-info { flex: 1; }
+    .player-bar-title { font-size: 15px; font-weight: 600; margin-bottom: 5px; }
+    .player-bar-artist { font-size: 13px; color: #888; }
+    .player-bar-controls { display: flex; align-items: center; gap: 15px; }
+    .player-bar-btn { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 10px; border-radius: 50%; transition: all 0.3s; }
+    .player-bar-btn:hover { background: #ffffff11; }
+    .player-bar-btn.play { background: #b44dff; }
+    .player-bar-btn.play:hover { background: #ff2d95; }
+    
+    .loading { text-align: center; padding: 80px; color: #888; font-size: 18px; }
+    .loading::after { content: '...'; animation: dots 1.5s steps(4, end) infinite; }
+    @keyframes dots { 0%, 20% { content: ''; } 40% { content: '.'; } 60% { content: '..'; } 80%, 100% { content: '...'; } }
+    
+    audio { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🎵 TY Music</h1>
+      <p>免费听遍全网音乐</p>
+      <span class="version">v2.0 全新版本</span>
+    </div>
+
+    <div class="search-section">
+      <input type="text" class="search-box" id="searchInput" placeholder="搜索歌曲、歌手、专辑..." onkeyup="if(event.key==='Enter')searchSongs()">
+      <button class="search-btn" onclick="searchSongs()">🔍 搜索</button>
+    </div>
+
+    <div id="hotSection">
+      <div class="section-title">🔥 热门推荐</div>
+      <div class="songs-grid" id="hotSongs"></div>
+    </div>
+
+    <div id="searchSection" style="display: none;">
+      <div class="section-title">🔍 搜索结果</div>
+      <div class="songs-grid" id="searchResults"></div>
+    </div>
+  </div>
+
+  <div class="player-bar">
+    <img class="player-bar-cover" id="playerCover" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect fill='%23333' width='100' height='100'/%3E%3C/svg%3E" alt="">
+    <div class="player-bar-info">
+      <div class="player-bar-title" id="playerTitle">未播放</div>
+      <div class="player-bar-artist" id="playerArtist">搜索并点击歌曲开始播放</div>
+    </div>
+    <div class="player-bar-controls">
+      <button class="player-bar-btn" onclick="playPrev()">⏮️</button>
+      <button class="player-bar-btn play" id="playBtn" onclick="playPause()">▶️</button>
+      <button class="player-bar-btn" onclick="playNext()">⏭️</button>
+    </div>
+  </div>
+
+  <audio id="audioPlayer"></audio>
+
+  <script>
+    console.log('[TY Music v2.0] 脚本已加载');
+    document.title = 'TY Music v2.0 [加载成功]';
+    
+    const audio = document.getElementById('audioPlayer');
+    let currentTrack = null;
+    let playlist = [];
+    let currentIndex = -1;
+
+    // 音频事件
+    audio.addEventListener('play', () => {
+      document.getElementById('playBtn').textContent = '⏸️';
+    });
+    audio.addEventListener('pause', () => {
+      document.getElementById('playBtn').textContent = '▶️';
+    });
+
+    // 加载热门歌曲
+    async function loadHot() {
+      console.log('[TY Music] 加载热门歌曲...');
+      document.getElementById('hotSongs').innerHTML = '<div class="loading">加载热门歌曲</div>';
+      try {
+        const res = await fetch('/api/hot?limit=12');
+        const data = await res.json();
+        console.log('[TY Music] 热门歌曲加载成功:', data.songs.length, '首');
+        playlist = data.songs;
+        renderSongs(data.songs, 'hotSongs');
+      } catch (e) {
+        console.error('[TY Music] 加载热门歌曲失败:', e);
+        document.getElementById('hotSongs').innerHTML = '<div class="loading">加载失败，请刷新页面</div>';
+      }
+    }
+
+    // 搜索歌曲
+    async function searchSongs() {
+      const keywords = document.getElementById('searchInput').value.trim();
+      if (!keywords) {
+        alert('请输入搜索关键词');
+        return;
+      }
+      
+      console.log('[TY Music] 搜索:', keywords);
+      document.getElementById('hotSection').style.display = 'none';
+      document.getElementById('searchSection').style.display = 'block';
+      document.getElementById('searchResults').innerHTML = '<div class="loading">搜索中</div>';
+      
+      try {
+        const res = await fetch('/api/search?keywords=' + encodeURIComponent(keywords) + '&limit=20');
+        const data = await res.json();
+        console.log('[TY Music] 搜索成功:', data.songs.length, '首');
+        playlist = data.songs;
+        renderSongs(data.songs, 'searchResults');
+      } catch (e) {
+        console.error('[TY Music] 搜索失败:', e);
+        document.getElementById('searchResults').innerHTML = '<div class="loading">搜索失败</div>';
+      }
+    }
+
+    // 渲染歌曲列表
+    function renderSongs(songs, containerId) {
+      const container = document.getElementById(containerId);
+      if (!songs || !songs.length) {
+        container.innerHTML = '<div class="loading">暂无歌曲</div>';
+        return;
+      }
+      container.innerHTML = songs.map((s, i) => `
+        <div class="song-card" onclick="playSong(${i})">
+          <img class="song-card-img" src="${s.coverSmall || ''}" alt="${s.name}" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Crect fill=%22%23333%22 width=%22100%22 height=%22100%22/%3E%3Ctext x=%2250%22 y=%2250%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%23888%22 font-size=%2240%22%3E🎵%3C/text%3E%3C/svg%3E'">
+          <div class="song-card-info">
+            <div class="song-card-title">${s.name}</div>
+            <div class="song-card-artist">${s.artist}</div>
+          </div>
+          <button class="song-card-play" onclick="event.stopPropagation(); playSong(${i})">▶️</button>
+        </div>
+      `).join('');
+    }
+
+    // 播放歌曲
+    async function playSong(index) {
+      if (index < 0 || index >= playlist.length) return;
+      
+      const song = playlist[index];
+      currentIndex = index;
+      console.log('[TY Music] 播放:', song.name);
+      
+      try {
+        // 获取音频 URL
+        const res = await fetch('/api/play?id=' + song.id);
+        const data = await res.json();
+        
+        if (!data.url) {
+          alert('无法获取音频，请尝试其他歌曲');
+          return;
+        }
+        
+        // 播放
+        audio.src = data.url;
+        audio.play();
+        
+        // 更新界面
+        currentTrack = song;
+        document.getElementById('playerTitle').textContent = song.name;
+        document.getElementById('playerArtist').textContent = song.artist;
+        document.getElementById('playerCover').src = song.coverSmall || '';
+        
+        console.log('[TY Music] 正在播放:', song.name);
+      } catch (e) {
+        console.error('[TY Music] 播放失败:', e);
+        alert('播放失败: ' + e.message);
+      }
+    }
+
+    // 播放/暂停
+    function playPause() {
+      if (!currentTrack) return;
+      if (audio.paused) audio.play();
+      else audio.pause();
+    }
+
+    // 上一首
+    function playPrev() {
+      if (currentIndex > 0) playSong(currentIndex - 1);
+    }
+
+    // 下一首
+    function playNext() {
+      if (currentIndex < playlist.length - 1) playSong(currentIndex + 1);
+    }
+
+    // 页面加载完成后执行
+    window.addEventListener('DOMContentLoaded', function() {
+      console.log('[TY Music v2.0] DOM 加载完成');
+      loadHot();
+    });
+  </script>
+</body>
+</html>

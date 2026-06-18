@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>YT Embed Test</title>
+<style>body{font-family:sans-serif;padding:20px;background:#222;color:#fff}
+.result{margin:10px 0;padding:10px;border-radius:6px;background:#333}
+.ok{background:#163;color:#0f0}.fail{background:#611;color:#f00}.loading{color:#ff0}
+.test-btn{padding:10px 20px;margin:5px;cursor:pointer;border:none;border-radius:6px;background:#4488cc;color:#fff;font-size:14px}
+.hidden-iframe{position:absolute;width:200px;height:113px;left:-9999px;opacity:0.01}
+.visible-iframe{width:640px;height:360px;margin:10px 0}
+</style></head><body>
+<h2>🎵 YouTube Embed Test</h2>
+<div id="status"></div>
+<button class="test-btn" onclick="testHiddenSmall()">Test 1: Hidden 200x113 (opacity 0.01)</button>
+<button class="test-btn" onclick="testVisible()">Test 2: Visible 640x360</button>
+<button class="test-btn" onclick="testDirectFetch()">Test 3: Direct Fetch youtube.com</button>
+<div id="results"></div>
+<script>
+const VID = 'ic8j13piAhQ'; // Cruel Summer - Taylor Swift
+
+function log(msg, cls) {
+  const d = document.getElementById('results');
+  d.innerHTML += `<div class="result ${cls||''}">${msg}</div>`;
+}
+
+async function testDirectFetch() {
+  log('⏳ Testing direct fetch to youtube.com...', 'loading');
+  try {
+    const r = await fetch('https://www.youtube.com', { mode: 'no-cors' });
+    log('✅ Direct fetch to youtube.com succeeded (no-cors)', 'ok');
+  } catch(e) {
+    log(`❌ Direct fetch FAILED: ${e.message} - YouTube is BLOCKED`, 'fail');
+  }
+}
+
+function testVisible() {
+  log('⏳ Creating visible 640x360 iframe...', 'loading');
+  const old = document.querySelector('.visible-iframe');
+  if (old) old.remove();
+  const iframe = document.createElement('iframe');
+  iframe.className = 'visible-iframe';
+  iframe.allow = 'autoplay; encrypted-media; accelerometer; gyroscope; picture-in-picture';
+  iframe.src = `https://www.youtube.com/embed/${VID}?autoplay=1&controls=1&origin=${encodeURIComponent(location.origin)}`;
+  iframe.onload = () => log('✅ Visible iframe LOADED (check if playing)', 'ok');
+  iframe.onerror = () => log('❌ Visible iframe FAILED to load', 'fail');
+  document.body.appendChild(iframe);
+  setTimeout(() => {
+    try {
+      iframe.contentWindow.postMessage('{"event":"command","func":"getPlayerState","args":[]}', '*');
+    } catch(e) { log('⚠️ postMessage error: ' + e.message, 'loading'); }
+  }, 3000);
+}
+
+function testHiddenSmall() {
+  log('⏳ Creating hidden (opacity:0.01) 200x113 iframe...', 'loading');
+  const old = document.querySelector('.hidden-iframe');
+  if (old) old.remove();
+  const iframe = document.createElement('iframe');
+  iframe.className = 'hidden-iframe';
+  iframe.allow = 'autoplay; encrypted-media';
+  iframe.src = `https://www.youtube.com/embed/${VID}?autoplay=1&controls=0&origin=${encodeURIComponent(location.origin)}`;
+  iframe.onload = () => {
+    log('✅ Hidden iframe LOADED', 'ok');
+    log('⚠️ Check if audio plays — autoplay may be blocked for hidden iframes', 'loading');
+  };
+  iframe.onerror = () => log('❌ Hidden iframe FAILED to load', 'fail');
+  document.body.appendChild(iframe);
+}
+
+log('Ready. Video: Cruel Summer (ic8j13piAhQ)', 'loading');
+testDirectFetch();
+</script>
+</body></html>

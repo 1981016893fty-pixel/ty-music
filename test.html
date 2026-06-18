@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TY Music - 服务器测试</title>
+  <style>
+    body { font-family: Arial; max-width: 800px; margin: 50px auto; padding: 20px; background: #1a1a2e; color: white; }
+    .status { padding: 20px; margin: 20px 0; border-radius: 10px; }
+    .ok { background: #10b981; }
+    .error { background: #ef4444; }
+    button { padding: 10px 20px; margin: 5px; background: #6366f1; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    button:hover { background: #4f46e5; }
+    #result { background: #16213e; padding: 15px; border-radius: 5px; margin-top: 20px; white-space: pre-wrap; max-height: 400px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+  <h1>🎵 TY Music - 服务器连接测试</h1>
+  
+  <div class="status" id="status">检测中...</div>
+  
+  <button onclick="testHealth()">1. 测试服务器连接</button>
+  <button onclick="testSearch()">2. 测试搜索功能</button>
+  <button onclick="startServer()">3. 启动服务器</button>
+  
+  <div id="result"></div>
+  
+  <script>
+    const API = 'http://localhost:8899';
+    
+    function log(msg) {
+      document.getElementById('result').textContent += msg + '\n';
+    }
+    
+    async function testHealth() {
+      document.getElementById('result').textContent = '';
+      log('正在测试服务器连接...');
+      
+      try {
+        const res = await fetch(API + '/api/health');
+        const data = await res.json();
+        log('✓ 服务器连接成功！');
+        log('  状态: ' + data.status);
+        log('  版本: ' + (data.version || '未知'));
+        
+        document.getElementById('status').className = 'status ok';
+        document.getElementById('status').textContent = '✓ 服务器正常运行';
+      } catch (e) {
+        log('✗ 无法连接服务器！');
+        log('  错误: ' + e.message);
+        log('');
+        log('解决方案:');
+        log('1. 打开终端');
+        log('2. cd ' + window.location.pathname.replace('/test.html', ''));
+        log('3. node server.js');
+        log('4. 刷新此页面');
+        
+        document.getElementById('status').className = 'status error';
+        document.getElementById('status').textContent = '✗ 无法连接服务器';
+      }
+    }
+    
+    async function testSearch() {
+      document.getElementById('result').textContent = '';
+      log('正在测试搜索功能...');
+      
+      try {
+        const res = await fetch(API + '/api/music/search?keywords=周杰伦&limit=3');
+        const data = await res.json();
+        
+        if (data.songs && data.songs.length > 0) {
+          log('✓ 搜索功能正常！');
+          log('  找到 ' + data.songs.length + ' 首歌曲:');
+          data.songs.forEach((s, i) => {
+            log('  ' + (i+1) + '. ' + s.name + ' - ' + s.artist);
+          });
+        } else {
+          log('⚠️ 搜索返回空结果');
+        }
+      } catch (e) {
+        log('✗ 搜索功能失败: ' + e.message);
+      }
+    }
+    
+    function startServer() {
+      alert('请在终端执行以下命令启动服务器:\n\ncd ' + window.location.pathname.replace('/test.html', '') + '\nnode server.js');
+    }
+    
+    // 自动测试
+    testHealth();
+  </script>
+</body>
+</html>
