@@ -3197,12 +3197,22 @@ async function openAlbumDetail(albumId) {
   document.getElementById('albumDetailArtist').textContent = artist || '未知歌手';
 
   if (tracks.length) {
+    // 去重：按歌曲 id 去重，保留第一次出现的
+    const seenIds = new Set();
+    const uniqueTracks = [];
+    for (const t of tracks) {
+      const tid = String(t.id || '');
+      if (!tid || seenIds.has(tid)) continue;
+      seenIds.add(tid);
+      uniqueTracks.push(t);
+    }
+
     // 使用保存的曲目数据
-    document.getElementById('albumDetailMeta').textContent = (source || 'netease') + ' · ' + tracks.length + ' 首';
+    document.getElementById('albumDetailMeta').textContent = (source || 'netease') + ' · ' + uniqueTracks.length + ' 首';
     window.currentAlbumData = album;
 
     // 渲染曲目
-    const fullTracks = tracks.map(function(t, i) {
+    const fullTracks = uniqueTracks.map(function(t, i) {
       return {
         id: t.id || '',
         title: t.title || '未知',
@@ -3324,12 +3334,17 @@ async function openAlbumByName(albumName, artistName, source) {
       return;
     }
 
-    // 标准化为 track 对象
-    const tracks = songs.map(function(s) {
+    // 标准化为 track 对象，并去重
+    const seenIds = new Set();
+    const tracks = [];
+    for (const s of songs) {
+      const tid = String(s.id || '');
+      if (!tid || seenIds.has(tid)) continue;
+      seenIds.add(tid);
       s.source = source || 'netease';
       s.picId = s.picId || '';
-      return normalizeTrack(s);
-    });
+      tracks.push(normalizeTrack(s));
+    }
 
     currentAlbumTracks = tracks;
 
@@ -3818,13 +3833,18 @@ function cfBuildStage() {
   }
   
   cfAlbums.forEach((album, i) => {
-    // 封面 URL：大图500px用于清晰度
+    // 封面 URL：先用小图快速加载，居中后再换大图
     var cover = (album.picUrl || album.cover || '');
+    // 小图用于初始加载（200px）
+    var coverSmall = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      cover += '?param=500y500';
+      coverSmall = cover + '?param=200y200';
     }
-    // 确保大图
-    var coverLarge = cover.replace(/size=\d+/, 'size=800');
+    // 大图用于居中后替换（500px）
+    var coverLarge = cover;
+    if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
+      coverLarge = cover + '?param=500y500';
+    }
     var albumId = album.id || album.albumId;
     var albumName = album.name || '';
 
@@ -3833,11 +3853,12 @@ function cfBuildStage() {
     item.className = 'cf-item';
     item.dataset.index = i;
     item.dataset.albumId = albumId;
+    item.dataset.coverLarge = coverLarge; // 保存大图 URL
 
-    // 正面封面（用大图）
+    // 正面封面（先用小图快速显示）
     const front = document.createElement('div');
     front.className = 'cf-front';
-    front.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
+    front.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
     item.appendChild(front);
     
     // 右侧脊 (可见于左旋)
@@ -3883,10 +3904,10 @@ function cfBuildStage() {
     stage.appendChild(item);
     cfItems[i] = item;
     
-    // 倒影（用大图）
+    // 倒影（用小图）
     const ref = document.createElement('div');
     ref.className = 'cf-reflection-item';
-    ref.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
+    ref.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
     reflection.appendChild(ref);
     cfReflections[i] = ref;
   });
@@ -3917,6 +3938,18 @@ function cfUpdateInfo() {
   const idx = Math.round(cfOffset);
   if (idx === cfActiveIndex && info.innerHTML) return;
   cfActiveIndex = idx;
+  
+  // 居中专辑自动换大图
+  if (cfItems[idx]) {
+    const item = cfItems[idx];
+    const coverLarge = item.dataset.coverLarge;
+    if (coverLarge) {
+      const frontImg = item.querySelector('.cf-front img');
+      if (frontImg && frontImg.src !== coverLarge) {
+        frontImg.src = coverLarge;
+      }
+    }
+  }
   
   if (idx >= 0 && idx < cfAlbums.length) {
     const album = cfAlbums[idx];
