@@ -246,7 +246,7 @@ function normalizeTrack(song) {
 async function searchLocal(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var url = '/api/search?keywords=' + encodeURIComponent(keywords) + '&limit=' + limit;
     var res = await fetch(url, { signal: ctrl.signal });
@@ -265,7 +265,7 @@ async function searchLocal(keywords, limit) {
 async function fetchHotSongs(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/discover/hot?limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -298,7 +298,7 @@ async function fetchPlaylistSongs(limit) {
 async function searchNetease(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 10000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -316,7 +316,7 @@ async function searchNetease(keywords, limit) {
 async function fetchNeteaseHot(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 10000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/music/hot?source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -898,7 +898,7 @@ audio.addEventListener('error', () => {
   }
 });
 
-// Timeout: if song doesn't start playing within 15s, skip
+// Timeout: if song doesn't start playing within 30s, skip (Render 免费版首次加载慢)
 audio.addEventListener('waiting', () => {
   if (playTimeout) clearTimeout(playTimeout);
   playTimeout = setTimeout(() => {
@@ -909,7 +909,7 @@ audio.addEventListener('waiting', () => {
         playNext();
       }
     }
-  }, 15000);
+  }, 30000);
 });
 
 audio.addEventListener('playing', () => {
@@ -1362,41 +1362,52 @@ async function loadDiscover() {
 }
 
 async function loadDiscoverData() {
-  // 先渲染 Hero 占位（不等待 API）
+  // 渲染骨架屏占位
   $('#heroTitle').textContent = '加载中...';
   $('#heroArtist').textContent = '';
   $('#heroAlbum').textContent = '';
+  // 热门骨架屏
+  var skeletonHTML = '';
+  for (var i = 0; i < 6; i++) {
+    skeletonHTML += '<div class="am-card"><div class="am-artwork" style="background:var(--bg-tertiary);animation:pulse 1.5s ease-in-out infinite"></div><div class="am-card-title" style="background:var(--bg-tertiary);height:14px;width:70%;margin:8px 12px 4px;border-radius:4px;animation:pulse 1.5s ease-in-out infinite"></div><div class="am-card-subtitle" style="background:var(--bg-tertiary);height:12px;width:50%;margin:0 12px;border-radius:4px;animation:pulse 1.5s ease-in-out infinite"></div></div>';
+  }
+  $('#hotTracks').innerHTML = skeletonHTML;
 
-  // 并行加载 Hero + Hot，减少串行等待时间
-  const [heroTracks, hotTracks] = await Promise.allSettled([
-    universalSearch('热门歌曲', 5, 'netease'),
-    fetchNeteaseHot(12)  // 从 20 减到 12，减少公网传输量
-  ]);
+  // 只拉 6 首热门（减少网络传输量），hero 独立拉 1 首
+  try {
+    var hotTracks = await fetchNeteaseHot(6);
+    if (!hotCache) {
+      hotCache = (hotTracks && hotTracks.length) ? hotTracks : [];
+      if (hotCache.length) addToQueue(hotCache);
+    }
+    renderScrollRow('#hotTracks', hotCache);
+  } catch (e) {
+    console.warn('[Discover] Hot failed:', e);
+    $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">热门加载失败</div>';
+  }
 
-  // Hero
-  if (heroTracks.status === 'fulfilled' && heroTracks.value.length) {
-    const h = heroTracks.value[0];
-    state.heroTrack = h;
-    $('#heroTitle').textContent = h.title;
-    $('#heroArtist').innerHTML = formatArtists(h.artist);
-    $('#heroAlbum').textContent = h.album || '';
-    var heroCoverUrl = h.coverSmall || h.cover || '';
-    if (heroCoverUrl) $('#heroCover').src = heroCoverUrl;
-    updateDynamicGradient(h);
-    addToQueue(heroTracks.value);
-  } else {
+  // Hero：只拉 1 首
+  try {
+    var heroRes = await universalSearch('热门歌曲', 1, 'netease');
+    if (heroRes && heroRes.length) {
+      var h = heroRes[0];
+      state.heroTrack = h;
+      $('#heroTitle').textContent = h.title;
+      $('#heroArtist').innerHTML = formatArtists(h.artist);
+      $('#heroAlbum').textContent = h.album || '';
+      var heroCoverUrl = h.coverSmall || h.cover || '';
+      if (heroCoverUrl) $('#heroCover').src = heroCoverUrl;
+      updateDynamicGradient(h);
+      addToQueue(heroRes);
+    } else {
+      $('#heroTitle').textContent = '暂无推荐';
+      $('#heroArtist').textContent = '试试搜索你想听的歌曲';
+    }
+  } catch (e) {
+    console.warn('[Discover] Hero failed:', e);
     $('#heroTitle').textContent = '暂无推荐';
     $('#heroArtist').textContent = '试试搜索你想听的歌曲';
   }
-
-  // Hot tracks
-  if (!hotCache) {
-    hotCache = (hotTracks.status === 'fulfilled' && hotTracks.value.length) ? hotTracks.value : [];
-    if (hotCache.length) addToQueue(hotCache);
-  }
-  renderScrollRow('#hotTracks', hotCache);
-
-
 }
 
 // Genre detail
