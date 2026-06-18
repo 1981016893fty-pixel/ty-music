@@ -619,66 +619,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 7. 音频代理（支持 Range 请求，流式传输）
+  // 7. 音频直链重定向（302 redirect，让浏览器直连网易云 CDN，无需 Render 中转）
+  // 这是解决播放卡顿的根本方案：Render 服务器在美国，中转音频会引入 1-2 跳国际延迟
+  // 直接 302 → CDN，中国用户直连网易云国内 CDN 节点，速度最快
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      console.log('[Proxy] Streaming audio for id:', id);
-
-      // 透传 Range 头以支持流媒体进度条
-      const reqHeaders = {
-        'User-Agent': UA,
-        'Referer': 'https://music.163.com/',
-        'Accept': '*/*',
-        'Connection': 'keep-alive'
-      };
-      if (req.headers['range']) reqHeaders['Range'] = req.headers['range'];
-      if (req.headers['if-range']) reqHeaders['If-Range'] = req.headers['if-range'];
-
-      const audioRes = await smartGet(audioUrl, reqHeaders);
-
-      res.setHeader('Content-Type', audioRes.headers['content-type'] || 'audio/mpeg');
-      if (audioRes.headers['content-length']) {
-        res.setHeader('Content-Length', audioRes.headers['content-length']);
-      }
-      // 透传 Accept-Ranges / Content-Range（让浏览器正确识别流媒体）
-      if (audioRes.headers['accept-ranges']) {
-        res.setHeader('Accept-Ranges', audioRes.headers['accept-ranges']);
-      } else {
-        res.setHeader('Accept-Ranges', 'bytes');
-      }
-      if (audioRes.headers['content-range']) {
-        res.setHeader('Content-Range', audioRes.headers['content-range']);
-      }
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      console.log('[Redirect] Direct CDN for id:', id, '->', audioUrl.substring(0, 80));
+      // 302 重定向到音频直链，浏览器直接连接 CDN，完全绕过 Render 中转
+      res.statusCode = 302;
+      res.setHeader('Location', audioUrl);
+      res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.statusCode = audioRes.statusCode || 200;
-
-      // pipe with error handling
-      audioRes.pipe(res);
-
-      audioRes.on('error', (e) => {
-        console.error('[Proxy] Stream error:', e.message);
-        if (!res.headersSent) {
-          res.statusCode = 502;
-          res.end(JSON.stringify({ error: e.message }));
-        } else {
-          try { res.destroy(); } catch(_) {}
-        }
-      });
-
-      req.on('close', () => {
-        if (audioRes.destroy) audioRes.destroy();
-      });
+      res.end();
     } catch (e) {
-      console.error('[Proxy] Exception:', e.message);
+      console.error('[Redirect] Exception:', e.message);
       if (!res.headersSent) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: e.message }));
       }
+    }
+    return;
+  }
+
+  // 7.5 音频直链 JSON（前端可直接用于 audio.src）
+  if (pathname === '/api/music/url') {
+    const id = params.get('id');
+    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
+    try {
+      const audioUrl = await gdGetSongUrl(id);
+      if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ url: audioUrl }));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }
