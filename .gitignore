@@ -11,3 +11,6 @@ server.pid
 *.json.bak
 server.js_clean
 .DS_Store
+push-to-github.sh
+upload_update.py
+test_github.py
