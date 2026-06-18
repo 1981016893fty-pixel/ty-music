@@ -757,28 +757,50 @@ function playTrack(track, index) {
     return;
   }
 
-  // 通过代理 API 播放（支持 Range 请求，流式传输）
+  // 通过直链播放（先获取 CDN URL，再赋值给 audio.src，无需 Render 中转）
   if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
     showToast('正在加载音频...');
 
-    var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id) + '&source=netease';
-    audio.src = proxyUrl;
-    audio.load();
-    audio.play().then(function() {
-      state.isPlaying = true;
-      updatePlayBtn();
-      var toast = document.querySelector('.toast');
-      if (toast) toast.classList.remove('show');
-    }).catch(function(e) {
-      console.warn('Play failed:', e.message);
-      showToast('播放失败，请换一首试试');
-    }).finally(function() {
-      updateLikeUI();
-      updatePlayBtn();
-      updateQueueHighlight();
-      if (ampIsShowing) updateAmpFullscreenPlayer();
-      state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-    });
+    // 先获取音频直链（302 redirect 或 JSON url）
+    fetch('/api/music/url?id=' + encodeURIComponent(track.id))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.url) {
+          showToast('暂无可用音源，请换一首');
+          return;
+        }
+        console.log('[Play] Using direct CDN URL for', track.title);
+        audio.src = data.url;
+        audio.load();
+        return audio.play();
+      })
+      .then(function() {
+        if (!arguments[0] && arguments.length > 0) return; // play() 返回 undefined 不处理
+        state.isPlaying = true;
+        updatePlayBtn();
+        var toast = document.querySelector('.toast');
+        if (toast) toast.classList.remove('show');
+      })
+      .catch(function(e) {
+        console.warn('[Play] Direct URL failed, falling back to proxy:', e.message);
+        // 回退：用 /api/music/proxy（302 → CDN）
+        audio.src = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+        audio.load();
+        audio.play().then(function() {
+          state.isPlaying = true;
+          updatePlayBtn();
+        }).catch(function(e2) {
+          console.warn('Play failed:', e2.message);
+          showToast('播放失败，请换一首试试');
+        });
+      })
+      .finally(function() {
+        updateLikeUI();
+        updatePlayBtn();
+        updateQueueHighlight();
+        if (ampIsShowing) updateAmpFullscreenPlayer();
+        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+      });
     return;
   }
 
