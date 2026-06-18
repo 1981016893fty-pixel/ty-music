@@ -544,6 +544,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // 8.5 下载歌曲（返回直链，前端触发下载）
+  if (pathname === '/api/music/download') {
+    const id = params.get('id');
+    const title = params.get('title') || 'song';
+    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
+    const audioUrl = await gdGetSongUrl(id);
+    if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
+    // 返回直链，前端用 a.download 触发下载
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ url: audioUrl, filename: title + '.mp3' }));
+    return;
+  }
+
   // 9. 歌词（通过 id）
   if (pathname === '/api/lyric' || pathname === '/api/music/lyric') {
     const id = params.get('id');
