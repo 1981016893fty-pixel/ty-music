@@ -757,28 +757,47 @@ function playTrack(track, index) {
     return;
   }
 
-  // 通过代理 API 播放（新音源）
+  // 通过 API 获取直链播放（不走代理流式中转，减少延迟）
   if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
     showToast('正在加载音频...');
 
-    var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id) + '&source=netease';
-    audio.src = proxyUrl;
-    audio.load();
-    audio.play().then(function() {
-      state.isPlaying = true;
-      updatePlayBtn();
-      var toast = document.querySelector('.toast');
-      if (toast) toast.classList.remove('show');
-    }).catch(function(e) {
-      console.warn('Play failed:', e.message);
-      showToast('播放失败，请换一首试试');
-    }).finally(function() {
-      updateLikeUI();
-      updatePlayBtn();
-      updateQueueHighlight();
-      if (ampIsShowing) updateAmpFullscreenPlayer();
-      state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-    });
+    // 优先用 /api/play 获取直链，直接播放（绕过服务器流式中转）
+    fetch('/api/play?id=' + encodeURIComponent(track.id))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (data.url) {
+          audio.src = data.url;
+          audio.load();
+          return audio.play();
+        } else {
+          throw new Error('No audio URL');
+        }
+      })
+      .catch(function(e) {
+        // 回退到代理模式
+        console.warn('Direct URL failed, fallback to proxy:', e.message);
+        var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id) + '&source=netease';
+        audio.src = proxyUrl;
+        audio.load();
+        return audio.play();
+      })
+      .then(function() {
+        state.isPlaying = true;
+        updatePlayBtn();
+        var toast = document.querySelector('.toast');
+        if (toast) toast.classList.remove('show');
+      })
+      .catch(function(e) {
+        console.warn('Play failed:', e.message);
+        showToast('播放失败，请换一首试试');
+      })
+      .finally(function() {
+        updateLikeUI();
+        updatePlayBtn();
+        updateQueueHighlight();
+        if (ampIsShowing) updateAmpFullscreenPlayer();
+        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+      });
     return;
   }
 
