@@ -598,6 +598,35 @@ $('#playerLike').addEventListener('click', () => {
   if (state.currentTrack) toggleFavorite(state.currentTrack);
 });
 
+// ========== 下载歌曲 ==========
+$('#playerDownload').addEventListener('click', async () => {
+  if (!state.currentTrack || !state.currentTrack.id) {
+    showToast('没有可下载的歌曲');
+    return;
+  }
+  const track = state.currentTrack;
+  showToast('正在获取下载链接...');
+  try {
+    const res = await fetch('/api/music/download?id=' + encodeURIComponent(track.id) + '&title=' + encodeURIComponent(track.title + ' - ' + track.artist));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.url) throw new Error('未获取到下载链接');
+
+    // 创建隐藏的 a 标签触发下载
+    const a = document.createElement('a');
+    a.href = data.url;
+    a.download = data.filename || (track.title + '.mp3');
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('开始下载: ' + track.title);
+  } catch (e) {
+    console.error('[Download] Error:', e);
+    showToast('下载失败，请稍后重试');
+  }
+});
+
 // ========== Playback ==========
 
 // 获取歌曲的专辑信息并更新UI
