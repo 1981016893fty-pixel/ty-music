@@ -113,11 +113,14 @@ async function httpsGetJSON(url, timeout = 10000, retries = 2) {
 function _httpsGetJSONOnce(url, timeout) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { 'User-Agent': UA } }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0, 100))); }
+        try {
+          const data = Buffer.concat(chunks).toString('utf8');
+          resolve(JSON.parse(data));
+        }
+        catch (e) { reject(new Error('JSON parse error: ' + (Buffer.concat(chunks).toString('utf8')).slice(0, 100))); }
       });
     });
     req.on('error', reject);
