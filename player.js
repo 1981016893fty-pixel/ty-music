@@ -246,7 +246,7 @@ function normalizeTrack(song) {
 async function searchLocal(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var url = '/api/search?keywords=' + encodeURIComponent(keywords) + '&limit=' + limit;
     var res = await fetch(url, { signal: ctrl.signal });
@@ -265,7 +265,7 @@ async function searchLocal(keywords, limit) {
 async function fetchHotSongs(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/discover/hot?limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -298,7 +298,7 @@ async function fetchPlaylistSongs(limit) {
 async function searchNetease(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 10000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -316,7 +316,7 @@ async function searchNetease(keywords, limit) {
 async function fetchNeteaseHot(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 10000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
   try {
     var res = await fetch('/api/music/hot?source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -598,6 +598,35 @@ $('#playerLike').addEventListener('click', () => {
   if (state.currentTrack) toggleFavorite(state.currentTrack);
 });
 
+// ========== 下载歌曲 ==========
+$('#playerDownload').addEventListener('click', async () => {
+  if (!state.currentTrack || !state.currentTrack.id) {
+    showToast('没有可下载的歌曲');
+    return;
+  }
+  const track = state.currentTrack;
+  showToast('正在获取下载链接...');
+  try {
+    const res = await fetch('/api/music/download?id=' + encodeURIComponent(track.id) + '&title=' + encodeURIComponent(track.title + ' - ' + track.artist));
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    if (!data.url) throw new Error('未获取到下载链接');
+
+    // 创建隐藏的 a 标签触发下载
+    const a = document.createElement('a');
+    a.href = data.url;
+    a.download = data.filename || (track.title + '.mp3');
+    a.target = '_blank';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast('开始下载: ' + track.title);
+  } catch (e) {
+    console.error('[Download] Error:', e);
+    showToast('下载失败，请稍后重试');
+  }
+});
+
 // ========== Playback ==========
 
 // 获取歌曲的专辑信息并更新UI
@@ -728,28 +757,50 @@ function playTrack(track, index) {
     return;
   }
 
-  // 通过代理 API 播放（新音源）
+  // 通过直链播放（先获取 CDN URL，再赋值给 audio.src，无需 Render 中转）
   if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
     showToast('正在加载音频...');
 
-    var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id) + '&source=netease';
-    audio.src = proxyUrl;
-    audio.load();
-    audio.play().then(function() {
-      state.isPlaying = true;
-      updatePlayBtn();
-      var toast = document.querySelector('.toast');
-      if (toast) toast.classList.remove('show');
-    }).catch(function(e) {
-      console.warn('Play failed:', e.message);
-      showToast('播放失败，请换一首试试');
-    }).finally(function() {
-      updateLikeUI();
-      updatePlayBtn();
-      updateQueueHighlight();
-      if (ampIsShowing) updateAmpFullscreenPlayer();
-      state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-    });
+    // 先获取音频直链（302 redirect 或 JSON url）
+    fetch('/api/music/url?id=' + encodeURIComponent(track.id))
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.url) {
+          showToast('暂无可用音源，请换一首');
+          return;
+        }
+        console.log('[Play] Using direct CDN URL for', track.title);
+        audio.src = data.url;
+        audio.load();
+        return audio.play();
+      })
+      .then(function() {
+        if (!arguments[0] && arguments.length > 0) return; // play() 返回 undefined 不处理
+        state.isPlaying = true;
+        updatePlayBtn();
+        var toast = document.querySelector('.toast');
+        if (toast) toast.classList.remove('show');
+      })
+      .catch(function(e) {
+        console.warn('[Play] Direct URL failed, falling back to proxy:', e.message);
+        // 回退：用 /api/music/proxy（302 → CDN）
+        audio.src = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+        audio.load();
+        audio.play().then(function() {
+          state.isPlaying = true;
+          updatePlayBtn();
+        }).catch(function(e2) {
+          console.warn('Play failed:', e2.message);
+          showToast('播放失败，请换一首试试');
+        });
+      })
+      .finally(function() {
+        updateLikeUI();
+        updatePlayBtn();
+        updateQueueHighlight();
+        if (ampIsShowing) updateAmpFullscreenPlayer();
+        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+      });
     return;
   }
 
@@ -869,7 +920,7 @@ audio.addEventListener('error', () => {
   }
 });
 
-// Timeout: if song doesn't start playing within 15s, skip
+// Timeout: if song doesn't start playing within 30s, skip (Render 免费版首次加载慢)
 audio.addEventListener('waiting', () => {
   if (playTimeout) clearTimeout(playTimeout);
   playTimeout = setTimeout(() => {
@@ -880,7 +931,7 @@ audio.addEventListener('waiting', () => {
         playNext();
       }
     }
-  }, 15000);
+  }, 30000);
 });
 
 audio.addEventListener('playing', () => {
@@ -1333,41 +1384,52 @@ async function loadDiscover() {
 }
 
 async function loadDiscoverData() {
-  // 先渲染 Hero 占位（不等待 API）
+  // 渲染骨架屏占位
   $('#heroTitle').textContent = '加载中...';
   $('#heroArtist').textContent = '';
   $('#heroAlbum').textContent = '';
+  // 热门骨架屏
+  var skeletonHTML = '';
+  for (var i = 0; i < 6; i++) {
+    skeletonHTML += '<div class="am-card"><div class="am-artwork" style="background:var(--bg-tertiary);animation:pulse 1.5s ease-in-out infinite"></div><div class="am-card-title" style="background:var(--bg-tertiary);height:14px;width:70%;margin:8px 12px 4px;border-radius:4px;animation:pulse 1.5s ease-in-out infinite"></div><div class="am-card-subtitle" style="background:var(--bg-tertiary);height:12px;width:50%;margin:0 12px;border-radius:4px;animation:pulse 1.5s ease-in-out infinite"></div></div>';
+  }
+  $('#hotTracks').innerHTML = skeletonHTML;
 
-  // 并行加载 Hero + Hot，减少串行等待时间
-  const [heroTracks, hotTracks] = await Promise.allSettled([
-    universalSearch('热门歌曲', 5, 'netease'),
-    fetchNeteaseHot(12)  // 从 20 减到 12，减少公网传输量
-  ]);
+  // 只拉 6 首热门（减少网络传输量），hero 独立拉 1 首
+  try {
+    var hotTracks = await fetchNeteaseHot(6);
+    if (!hotCache) {
+      hotCache = (hotTracks && hotTracks.length) ? hotTracks : [];
+      if (hotCache.length) addToQueue(hotCache);
+    }
+    renderScrollRow('#hotTracks', hotCache);
+  } catch (e) {
+    console.warn('[Discover] Hot failed:', e);
+    $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">热门加载失败</div>';
+  }
 
-  // Hero
-  if (heroTracks.status === 'fulfilled' && heroTracks.value.length) {
-    const h = heroTracks.value[0];
-    state.heroTrack = h;
-    $('#heroTitle').textContent = h.title;
-    $('#heroArtist').innerHTML = formatArtists(h.artist);
-    $('#heroAlbum').textContent = h.album || '';
-    var heroCoverUrl = h.coverSmall || h.cover || '';
-    if (heroCoverUrl) $('#heroCover').src = heroCoverUrl;
-    updateDynamicGradient(h);
-    addToQueue(heroTracks.value);
-  } else {
+  // Hero：只拉 1 首
+  try {
+    var heroRes = await universalSearch('热门歌曲', 1, 'netease');
+    if (heroRes && heroRes.length) {
+      var h = heroRes[0];
+      state.heroTrack = h;
+      $('#heroTitle').textContent = h.title;
+      $('#heroArtist').innerHTML = formatArtists(h.artist);
+      $('#heroAlbum').textContent = h.album || '';
+      var heroCoverUrl = h.coverSmall || h.cover || '';
+      if (heroCoverUrl) $('#heroCover').src = heroCoverUrl;
+      updateDynamicGradient(h);
+      addToQueue(heroRes);
+    } else {
+      $('#heroTitle').textContent = '暂无推荐';
+      $('#heroArtist').textContent = '试试搜索你想听的歌曲';
+    }
+  } catch (e) {
+    console.warn('[Discover] Hero failed:', e);
     $('#heroTitle').textContent = '暂无推荐';
     $('#heroArtist').textContent = '试试搜索你想听的歌曲';
   }
-
-  // Hot tracks
-  if (!hotCache) {
-    hotCache = (hotTracks.status === 'fulfilled' && hotTracks.value.length) ? hotTracks.value : [];
-    if (hotCache.length) addToQueue(hotCache);
-  }
-  renderScrollRow('#hotTracks', hotCache);
-
-
 }
 
 // Genre detail
@@ -3186,47 +3248,16 @@ async function openAlbumDetail(albumId) {
   const artist = typeof album.artist === 'object' ? (album.artist.name || '') : (album.artist || '');
   const cover = album.cover || album.picUrl || '';
   const source = album.source || 'netease';
-  const tracks = album.tracks || [];
-
-  // 设置头部信息
-  const detailCover = document.getElementById('albumDetailCover');
-  detailCover.src = cover;
-  detailCover.dataset.artist = artist || '';
-  detailCover.onerror = function() { fallbackCover(this); };
-  document.getElementById('albumDetailTitle').textContent = name;
-  document.getElementById('albumDetailArtist').textContent = artist || '未知歌手';
-
-  if (tracks.length) {
-    // 使用保存的曲目数据
-    document.getElementById('albumDetailMeta').textContent = (source || 'netease') + ' · ' + tracks.length + ' 首';
-    window.currentAlbumData = album;
-
-    // 渲染曲目
-    const fullTracks = tracks.map(function(t, i) {
-      return {
-        id: t.id || '',
-        title: t.title || '未知',
-        artist: t.artist || artist || '',
-        album: name,
-        cover: cover,
-        duration: t.duration || 0,
-        source: source || 'netease',
-        _gdSource: true,
-      };
-    });
-    currentAlbumTracks = fullTracks;
-    renderAlbumTracks(fullTracks);
-    updateAlbumFavButton(albumId);
-  } else {
-    // 没有保存曲目，显示基本信息
-    document.getElementById('albumDetailMeta').textContent = (source || 'netease');
-    document.getElementById('albumTrackList').innerHTML = 
-      '<div style="padding: 40px; text-align: center; color: var(--text-tertiary);">' +
-      '<p style="margin-bottom: 16px; font-size: 18px;">📀 ' + esc(name) + '</p>' +
-      '<p style="font-size: 14px;">' + esc(artist) + '</p>' +
-      '</div>';
-    updateAlbumFavButton(albumId);
-  }
+  // 不再使用保存的 tracks（可能不准确），改为从 API 重新拉取
+  // 始终从 API 重新拉取曲目（保存的 tracks 可能包含同名歌曲，不准确）
+  // 先显示加载中
+  document.getElementById('albumDetailMeta').textContent = '加载中...';
+  updateAlbumFavButton(albumId);
+  
+  // 调用 openAlbumByName 重新从 API 获取并按专辑名精确过滤
+  await openAlbumByName(name, artist, source);
+  // openAlbumByName 会自己渲染曲目列表和设置封面，直接返回
+  return;
 }
 function renderAlbumTracks(tracks) {
   var container = document.getElementById('albumTrackList');
@@ -3324,12 +3355,17 @@ async function openAlbumByName(albumName, artistName, source) {
       return;
     }
 
-    // 标准化为 track 对象
-    const tracks = songs.map(function(s) {
+    // 标准化为 track 对象，并去重
+    const seenIds = new Set();
+    const tracks = [];
+    for (const s of songs) {
+      const tid = String(s.id || '');
+      if (!tid || seenIds.has(tid)) continue;
+      seenIds.add(tid);
       s.source = source || 'netease';
       s.picId = s.picId || '';
-      return normalizeTrack(s);
-    });
+      tracks.push(normalizeTrack(s));
+    }
 
     currentAlbumTracks = tracks;
 
@@ -3818,13 +3854,18 @@ function cfBuildStage() {
   }
   
   cfAlbums.forEach((album, i) => {
-    // 封面 URL：大图500px用于清晰度
+    // 封面 URL：先用小图快速加载，居中后再换大图
     var cover = (album.picUrl || album.cover || '');
+    // 小图用于初始加载（200px）
+    var coverSmall = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      cover += '?param=500y500';
+      coverSmall = cover + '?param=200y200';
     }
-    // 确保大图
-    var coverLarge = cover.replace(/size=\d+/, 'size=800');
+    // 大图用于居中后替换（500px）
+    var coverLarge = cover;
+    if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
+      coverLarge = cover + '?param=500y500';
+    }
     var albumId = album.id || album.albumId;
     var albumName = album.name || '';
 
@@ -3833,11 +3874,12 @@ function cfBuildStage() {
     item.className = 'cf-item';
     item.dataset.index = i;
     item.dataset.albumId = albumId;
+    item.dataset.coverLarge = coverLarge; // 保存大图 URL
 
-    // 正面封面（用大图）
+    // 正面封面（先用小图快速显示）
     const front = document.createElement('div');
     front.className = 'cf-front';
-    front.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
+    front.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
     item.appendChild(front);
     
     // 右侧脊 (可见于左旋)
@@ -3873,21 +3915,20 @@ function cfBuildStage() {
     item.appendChild(paperEdge);
     
     item.addEventListener('click', (e) => {
-      if (cfDragging) return;
+      // 只处理非拖动情况：点击居中的专辑
+      if (cfDragging || cfDragMoved) return;
       const dist = Math.abs(i - cfOffset);
       if (dist < 0.7) {
-        cfOpenAlbum(albumId);
-      } else {
         cfSnapTo(i);
       }
     });
     stage.appendChild(item);
     cfItems[i] = item;
     
-    // 倒影（用大图）
+    // 倒影（用小图）
     const ref = document.createElement('div');
     ref.className = 'cf-reflection-item';
-    ref.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
+    ref.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
     reflection.appendChild(ref);
     cfReflections[i] = ref;
   });
@@ -3918,6 +3959,18 @@ function cfUpdateInfo() {
   const idx = Math.round(cfOffset);
   if (idx === cfActiveIndex && info.innerHTML) return;
   cfActiveIndex = idx;
+  
+  // 居中专辑自动换大图
+  if (cfItems[idx]) {
+    const item = cfItems[idx];
+    const coverLarge = item.dataset.coverLarge;
+    if (coverLarge) {
+      const frontImg = item.querySelector('.cf-front img');
+      if (frontImg && frontImg.src !== coverLarge) {
+        frontImg.src = coverLarge;
+      }
+    }
+  }
   
   if (idx >= 0 && idx < cfAlbums.length) {
     const album = cfAlbums[idx];
@@ -4058,22 +4111,26 @@ function cfBindMouse() {
   const container = document.getElementById('coverFlowContainer');
   if (!container) return;
   
+  let cfDragMoved = false;
   const onDown = (e) => {
     if (e.target.closest('.cf-nav-btn')) return;
     cfDragging = true;
+    cfDragMoved = false;
     cfDragStartX = e.touches ? e.touches[0].clientX : e.clientX;
     cfDragStartOffset = cfOffset;
     cfLastX = cfDragStartX;
     cfLastTime = performance.now();
     cfVelocity = 0;
     container.style.cursor = 'grabbing';
-    e.preventDefault();
+    // 只有 touch 事件需要 preventDefault，mouse 事件不需要
+    if (e.touches) e.preventDefault();
   };
   
   const onMove = (e) => {
     if (!cfDragging) return;
     const x = e.touches ? e.touches[0].clientX : e.clientX;
     const dx = x - cfDragStartX;
+    if (Math.abs(dx) > 5) cfDragMoved = true;
     cfOffset = cfDragStartOffset - dx / 65;
     
     const now = performance.now();
@@ -4086,11 +4143,19 @@ function cfBindMouse() {
     cfOffset = Math.max(-0.3, Math.min(cfAlbums.length - 0.7, cfOffset));
   };
   
-  const onUp = () => {
+  const onUp = (e) => {
     if (!cfDragging) return;
     cfDragging = false;
     container.style.cursor = '';
-    // 给一点时间计算速度
+    // 如果几乎没有拖动，触发点击当前居中专辑
+    if (!cfDragMoved) {
+      const idx = Math.round(cfOffset);
+      if (idx >= 0 && idx < cfAlbums.length) {
+        const album = cfAlbums[idx];
+        const albumId = album.id || album.albumId;
+        if (albumId) cfOpenAlbum(albumId);
+      }
+    }
   };
   
   const onHover = (e) => {

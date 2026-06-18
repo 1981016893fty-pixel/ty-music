@@ -10,35 +10,53 @@ const path = require('path');
 const zlib = require('zlib');
 const { URL } = require('url');
 
+// =========================== HTTP Keep-Alive Agent ===========================
+// 复用 TCP 连接，避免每次请求都重新握手（对 GD API 延迟高的情况尤其重要）
+const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50, timeout: 30000 });
+const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50, timeout: 30000 });
+
+// =========================== 请求去重 ===========================
+// 同一 URL 同时只请求一次，避免并发时重复调用 GD API
+const pendingRequests = new Map(); // url → Promise
+
 // =========================== 静态文件内存缓存 ===========================
 
-// 静态文件配置：[路径名, 文件名, Content-Type, Cache-Control]
+// 静态文件配置：[路径名, 文件名, Content-Type]
 const STATIC_FILES = [
-  ['/', 'index.html', 'text/html; charset=utf-8', 'no-cache'],
-  ['/index.html', 'index.html', 'text/html; charset=utf-8', 'no-cache'],
-  ['/player.js', 'player.js', 'application/javascript; charset=utf-8', 'public, max-age=604800'],
-  ['/style.css', 'style.css', 'text/css; charset=utf-8', 'public, max-age=604800'],
-  ['/liquid-glass.js', 'liquid-glass.js', 'application/javascript; charset=utf-8', 'public, max-age=604800'],
+  ['/', 'index.html'],
+  ['/index.html', 'index.html'],
+  ['/player.js', 'player.js'],
+  ['/style.css', 'style.css'],
+  ['/liquid-glass.js', 'liquid-glass.js'],
 ];
 
-// 内存缓存：{ raw: Buffer, gzip: Buffer, contentType: string, cacheControl: string }
+// 内存缓存：{ raw: Buffer, gzip: Buffer, etag: string, contentType: string }
 const staticCache = new Map();
 
+function calcEtag(buf) {
+  // 简单取前 8 字节的 hash 作为 ETag（无需 crypto，够用）
+  const h = require('crypto').createHash('md5').update(buf).digest('hex');
+  return '"' + h + '"';
+}
+
 function preloadStaticFiles() {
-  for (const [urlPath, fileName, contentType, cacheControl] of STATIC_FILES) {
+  for (const [urlPath, fileName] of STATIC_FILES) {
     const filePath = path.join(__dirname, fileName);
     if (!fs.existsSync(filePath)) continue;
     const raw = fs.readFileSync(filePath);
     const gzip = zlib.gzipSync(raw, { level: 6 });
-    staticCache.set(urlPath, { raw, gzip, contentType, cacheControl });
-    console.log(`[Cache] Preloaded ${fileName}: ${raw.length}B → gzip ${gzip.length}B (-${Math.round((1-gzip.length/raw.length)*100)}%)`);
+    const etag = calcEtag(raw);
+    const ext = fileName.split('.').pop();
+    const contentType = { 'html': 'text/html; charset=utf-8', 'js': 'application/javascript; charset=utf-8', 'css': 'text/css; charset=utf-8' }[ext] || 'application/octet-stream';
+    staticCache.set(urlPath, { raw, gzip, etag, contentType });
+    console.log(`[Cache] Preloaded ${fileName}: ${raw.length}B → gzip ${gzip.length}B (etag: ${etag})`);
   }
 }
 
 // 启动时预加载
 preloadStaticFiles();
 
-// 提供静态文件（支持 gzip）
+// 提供静态文件（支持 gzip + ETag 协商缓存）
 function serveStatic(req, res, urlPath) {
   const cached = staticCache.get(urlPath);
   if (!cached) {
@@ -47,9 +65,20 @@ function serveStatic(req, res, urlPath) {
     return true;
   }
   const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
+  const etag = cached.etag;
+  const clientEtag = req.headers['if-none-match'];
+
   res.setHeader('Content-Type', cached.contentType);
-  res.setHeader('Cache-Control', cached.cacheControl);
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('ETag', etag);
+
+  // 协商缓存：如果客户端已有最新版本，返回 304
+  if (clientEtag === etag) {
+    res.statusCode = 304;
+    res.end();
+    return true;
+  }
+
   if (acceptGzip) {
     res.setHeader('Content-Encoding', 'gzip');
     res.setHeader('Content-Length', cached.gzip.length);
@@ -71,6 +100,7 @@ const apiCache = new Map(); // key → { data, expiry }
 const CACHE_TTL = {
   search: 5 * 60 * 1000,   // 搜索结果缓存 5 分钟
   hot: 10 * 60 * 1000,     // 热门缓存 10 分钟
+  album: 30 * 60 * 1000,    // 专辑曲目缓存 30 分钟
   cover: 30 * 60 * 1000,   // 封面 URL 缓存 30 分钟
   lyric: 60 * 60 * 1000,   // 歌词缓存 1 小时
   audio: 60 * 60 * 1000,   // 音频 URL 缓存 1 小时
@@ -93,7 +123,7 @@ function cacheSet(key, data, ttl) {
 
 // =========================== 工具函数 ===========================
 
-// HTTPS GET JSON（带自动重试）
+// HTTPS GET JSON（带自动重试，使用 keep-alive）
 async function httpsGetJSON(url, timeout = 10000, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
@@ -102,7 +132,7 @@ async function httpsGetJSON(url, timeout = 10000, retries = 2) {
     } catch (e) {
       if (i < retries) {
         console.log(`[HTTPS] Retry ${i+1}/${retries} for ${url.substring(0, 60)}... (${e.message})`);
-        await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 递增延迟
+        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
       } else {
         throw e;
       }
@@ -112,12 +142,30 @@ async function httpsGetJSON(url, timeout = 10000, retries = 2) {
 
 function _httpsGetJSONOnce(url, timeout) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': UA } }, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const client = isHttps ? https : http;
+    const opts = {
+      hostname: parsed.hostname,
+      port: parsed.port || (isHttps ? 443 : 80),
+      path: parsed.pathname + parsed.search,
+      headers: { 'User-Agent': UA, 'Connection': 'keep-alive' },
+      agent: isHttps ? httpsAgent : httpAgent,
+    };
+    const req = client.get(opts, (res) => {
+      // 处理重定向
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        resolve(_httpsGetJSONOnce(res.headers.location, timeout));
+        return;
+      }
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
       res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch (e) { reject(new Error('JSON parse error: ' + data.slice(0, 100))); }
+        try {
+          const data = Buffer.concat(chunks).toString('utf8');
+          resolve(JSON.parse(data));
+        }
+        catch (e) { reject(new Error('JSON parse error: ' + (Buffer.concat(chunks).toString('utf8')).slice(0, 100))); }
       });
     });
     req.on('error', reject);
@@ -125,7 +173,8 @@ function _httpsGetJSONOnce(url, timeout) {
   });
 }
 
-// HTTP/HTTPS GET (支持重定向)
+// HTTP/HTTPS GET (支持重定向，使用 keep-alive 连接复用)
+// timeout 仅用于连接阶段，流式传输不设超时
 function smartGet(url, headers, timeout = 15000) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -136,19 +185,48 @@ function smartGet(url, headers, timeout = 15000) {
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
       headers: headers || {},
-      timeout: timeout,
+      agent: isHttps ? httpsAgent : httpAgent,
     };
+    let resolved = false;
     const req = client.get(opts, (res) => {
       // 处理重定向
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        resolved = true;
         smartGet(res.headers.location, headers, timeout).then(resolve).catch(reject);
         return;
       }
+      // 流式响应直接返回
+      resolved = true;
       resolve(res);
     });
-    req.on('error', reject);
-    req.setTimeout(timeout, () => { req.destroy(); reject(new Error('timeout')); });
+    req.on('error', (err) => {
+      if (!resolved) { resolved = true; reject(err); }
+    });
+    // 只设置连接超时
+    req.setTimeout(timeout, function() {
+      if (!resolved) { resolved = true; req.destroy(); reject(new Error('connection timeout')); }
+    });
+    // 连接建立后取消超时，后续由流自行管理
+    req.once('socket', function(socket) {
+      socket.once('connect', function() {
+        if (!resolved) req.setTimeout(0);
+      });
+    });
   });
+}
+
+// 请求去重包装：同一 URL 同时只请求一次
+function dedupedGetJSON(url, timeout, retries) {
+  const key = url;
+  const pending = pendingRequests.get(key);
+  if (pending) {
+    return pending;
+  }
+  const promise = httpsGetJSON(url, timeout, retries).finally(() => {
+    pendingRequests.delete(key);
+  });
+  pendingRequests.set(key, promise);
+  return promise;
 }
 
 // 默认封面 (base64 编码的简单的音乐图标)
@@ -197,14 +275,14 @@ async function getArtistPhotoUrl(artistName) {
 function formatGDSong(s) {
   const artistStr = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '未知歌手');
   const picId = s.pic_id || '';
-  
+
   return {
     id: String(s.id || ''),
     name: s.name || '未知歌曲',
     artist: artistStr,
     album: s.album || '',
     albumId: picId,
-    cover: picId ? `/api/cover?albumId=${picId}&size=500` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
+    cover: picId ? `/api/cover?albumId=${picId}&size=300` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
     coverSmall: picId ? `/api/cover?albumId=${picId}&size=200` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
     picId: picId,
     duration: 0,
@@ -214,25 +292,47 @@ function formatGDSong(s) {
 
 // =========================== API 逻辑 ===========================
 
-// GD Studio API 搜索
+// GD Studio API 搜索（按歌名搜索）
 async function gdSearch(keywords, limit = 30) {
   const cacheKey = `search:${keywords}:${limit}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  
+
   try {
     const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(keywords)}&count=${limit}`;
-    const data = await httpsGetJSON(url, 15000);
+    const data = await dedupedGetJSON(url, 15000);
     if (Array.isArray(data) && data.length > 0) {
       const result = data.map(formatGDSong);
       cacheSet(cacheKey, result, CACHE_TTL.search);
       return result;
     }
-    // 空结果不缓存，让下次重试
     console.log(`[GD Search] Empty result for "${keywords}"`);
     return [];
   } catch (e) {
     console.error('[GD Search] Error:', e.message);
+    return [];
+  }
+}
+
+// GD Studio API 搜索专辑曲目（使用 netease_album，返回专辑内所有歌曲）
+async function gdSearchAlbum(albumName, limit = 50) {
+  const cacheKey = `album_search:${albumName}:${limit}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const url = `${GD_API}?types=search&source=netease_album&name=${encodeURIComponent(albumName)}&count=${limit}`;
+    const data = await dedupedGetJSON(url, 15000);
+    if (Array.isArray(data) && data.length > 0) {
+      const result = data.map(formatGDSong);
+      cacheSet(cacheKey, result, CACHE_TTL.album);
+      console.log(`[GD AlbumSearch] "${albumName}" returned ${result.length} tracks`);
+      return result;
+    }
+    console.log(`[GD AlbumSearch] Empty result for album "${albumName}"`);
+    return [];
+  } catch (e) {
+    console.error('[GD AlbumSearch] Error:', e.message);
     return [];
   }
 }
@@ -269,10 +369,10 @@ async function gdGetSongUrl(id) {
   const cacheKey = `audio:${id}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  
+
   try {
     const url = `${GD_API}?types=url&id=${id}&source=netease&br=320`;
-    const data = await httpsGetJSON(url, 15000); // 公网访问延长超时
+    const data = await dedupedGetJSON(url, 15000);
     if (data && data.url) {
       cacheSet(cacheKey, data.url, CACHE_TTL.audio);
       return data.url;
@@ -286,10 +386,10 @@ async function gdGetLyric(id) {
   const cacheKey = `lyric:${id}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  
+
   try {
     const url = `${GD_API}?types=lyric&id=${id}&source=netease`;
-    const data = await httpsGetJSON(url, 15000); // 公网访问延长超时
+    const data = await dedupedGetJSON(url, 15000);
     const result = {
       lrc: (data && data.lyric) || '',
       tlyric: (data && data.tlyric) || ''
@@ -306,10 +406,10 @@ async function gdGetCoverUrl(picId) {
   const cacheKey = `cover:${picId}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  
+
   try {
     const url = `${GD_API}?types=pic&id=${picId}&source=netease`;
-    const data = await httpsGetJSON(url, 15000); // 公网访问延长超时
+    const data = await dedupedGetJSON(url, 15000);
     if (data && data.url) {
       cacheSet(cacheKey, data.url, CACHE_TTL.cover);
       return data.url;
@@ -331,11 +431,32 @@ async function searchLyric(artist, title) {
   return { lrc: '', tlyric: '' };
 }
 
-// 获取专辑歌曲（通过专辑名搜索）
+// 获取专辑歌曲（使用 netease_album 搜索，返回专辑内所有歌曲）
 async function getAlbumSongs(albumName, artistName, limit = 30) {
   try {
-    const query = artistName ? `${albumName} ${artistName}` : albumName;
-    return await gdSearch(query, limit);
+    // 使用 netease_album 搜索，直接返回专辑内的所有歌曲
+    const results = await gdSearchAlbum(albumName, Math.max(limit, 50));
+    
+    if (results.length === 0) {
+      // 回退：用普通搜索（兼容性）
+      console.log(`[Album] "${albumName}" album search empty, fallback to regular search`);
+      return await gdSearch(albumName, limit);
+    }
+    
+    // 如果有歌手名，过滤出该歌手的歌（同一专辑可能有不同歌手的版本）
+    if (artistName) {
+      const artistFiltered = results.filter(function(s) {
+        const songArtist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '');
+        return songArtist.indexOf(artistName) !== -1 || artistName.indexOf(songArtist) !== -1;
+      });
+      if (artistFiltered.length > 0) {
+        console.log(`[Album] "${albumName}" by "${artistName}": ${artistFiltered.length} tracks`);
+        return artistFiltered.slice(0, limit);
+      }
+    }
+    
+    console.log(`[Album] "${albumName}": ${results.length} tracks`);
+    return results.slice(0, limit);
   } catch (e) {
     console.error('[Album] Error:', e.message);
     return [];
@@ -355,27 +476,54 @@ async function getArtistSongs(artistName, limit = 100, offset = 0) {
   }
 }
 
-// 获取艺人信息
+// 获取艺人信息（头像 + 背景 + 简介）
 async function getArtistInfo(artistName) {
   try {
-    const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(artistName)}&count=1`;
-    const data = await httpsGetJSON(url, 15000); // 公网访问延长超时
-    if (Array.isArray(data) && data.length > 0) {
-      const firstSong = data[0];
-      let avatar = '';
-      if (firstSong.pic_id) {
-        const coverUrl = await gdGetCoverUrl(firstSong.pic_id);
-        if (coverUrl) avatar = coverUrl;
+    // 从网易云 API 获取艺人详细信息
+    const searchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(artistName)}&type=100&limit=1`;
+    const searchData = await httpsGetJSON(searchUrl, 15000);
+    
+    if (searchData && searchData.result && searchData.result.artists && searchData.result.artists.length > 0) {
+      const artist = searchData.result.artists[0];
+      const avatar = artist.picUrl || artist.img1v1Url || '';
+      const artistId = artist.id;
+      
+      let background = '';
+      let desc = '';
+      
+      // 获取艺人详情（包含背景大图、简介等）
+      if (artistId) {
+        try {
+          const detailUrl = `https://music.163.com/api/artist/${artistId}`;
+          const detailData = await httpsGetJSON(detailUrl, 10000);
+          if (detailData && detailData.code === 200 && detailData.data && detailData.data.artist) {
+            const a = detailData.data.artist;
+            // 网易云艺人背景大图
+            background = a.picUrl || a.cover || a.img1v1Url || '';
+            // 简介
+            desc = a.briefDesc || '';
+          }
+        } catch (e) {
+          console.log('[Artist Detail] Failed to get detail for', artistName, ':', e.message);
+        }
       }
+      
+      // 如果没有背景图，用头像代替
+      if (!background) background = avatar;
+      
       return {
         name: artistName,
         avatar: avatar,
-        songCount: data.length
+        background: background,
+        desc: desc,
+        songCount: artist.musicSize || artist.albumSize || 0
       };
     }
-    return { name: artistName, avatar: '', songCount: 0 };
+    
+    return { name: artistName, avatar: '', background: '', desc: '', songCount: 0 };
   } catch (e) {
-    return { name: artistName, avatar: '', songCount: 0 };
+    console.error('[Artist Info] Error for', artistName, ':', e.message);
+    return { name: artistName, avatar: '', background: '', desc: '', songCount: 0 };
   }
 }
 
@@ -471,61 +619,44 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 7. 音频代理（流式播放）
+  // 7. 音频直链重定向（302 redirect，让浏览器直连网易云 CDN，无需 Render 中转）
+  // 这是解决播放卡顿的根本方案：Render 服务器在美国，中转音频会引入 1-2 跳国际延迟
+  // 直接 302 → CDN，中国用户直连网易云国内 CDN 节点，速度最快
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      console.log('[Proxy] Streaming audio for id:', id, 'URL:', audioUrl.substring(0, 80));
-
-      // 透传 Range 头以支持流媒体进度条
-      const reqHeaders = {
-        'User-Agent': UA,
-        'Referer': 'https://music.163.com/',
-        'Accept': '*/*'
-      };
-      if (req.headers['range']) reqHeaders['Range'] = req.headers['range'];
-      if (req.headers['if-range']) reqHeaders['If-Range'] = req.headers['if-range'];
-
-      const audioRes = await smartGet(audioUrl, reqHeaders);
-
-      res.setHeader('Content-Type', audioRes.headers['content-type'] || 'audio/mpeg');
-      if (audioRes.headers['content-length']) {
-        res.setHeader('Content-Length', audioRes.headers['content-length']);
-      }
-      // 透传 Accept-Ranges / Content-Range（让浏览器正确识别流媒体）
-      if (audioRes.headers['accept-ranges']) {
-        res.setHeader('Accept-Ranges', audioRes.headers['accept-ranges']);
-      } else {
-        res.setHeader('Accept-Ranges', 'bytes');
-      }
-      if (audioRes.headers['content-range']) {
-        res.setHeader('Content-Range', audioRes.headers['content-range']);
-      }
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      console.log('[Redirect] Direct CDN for id:', id, '->', audioUrl.substring(0, 80));
+      // 302 重定向到音频直链，浏览器直接连接 CDN，完全绕过 Render 中转
+      res.statusCode = 302;
+      res.setHeader('Location', audioUrl);
+      res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.statusCode = audioRes.statusCode || 200;
-      audioRes.pipe(res);
-
-      audioRes.on('error', (e) => {
-        console.error('[Proxy] Stream error:', e.message);
-        if (!res.headersSent) {
-          res.statusCode = 502;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-
-      req.on('close', () => {
-        if (audioRes.destroy) audioRes.destroy();
-      });
+      res.end();
     } catch (e) {
-      console.error('[Proxy] Exception:', e.message);
+      console.error('[Redirect] Exception:', e.message);
       if (!res.headersSent) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: e.message }));
       }
+    }
+    return;
+  }
+
+  // 7.5 音频直链 JSON（前端可直接用于 audio.src）
+  if (pathname === '/api/music/url') {
+    const id = params.get('id');
+    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
+    try {
+      const audioUrl = await gdGetSongUrl(id);
+      if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ url: audioUrl }));
+    } catch (e) {
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: e.message }));
     }
     return;
   }
@@ -538,6 +669,19 @@ const server = http.createServer(async (req, res) => {
     if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ url: audioUrl }));
+    return;
+  }
+
+  // 8.5 下载歌曲（返回直链，前端触发下载）
+  if (pathname === '/api/music/download') {
+    const id = params.get('id');
+    const title = params.get('title') || 'song';
+    if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
+    const audioUrl = await gdGetSongUrl(id);
+    if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
+    // 返回直链，前端用 a.download 触发下载
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ url: audioUrl, filename: title + '.mp3' }));
     return;
   }
 
