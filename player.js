@@ -3854,17 +3854,17 @@ function cfBuildStage() {
   }
   
   cfAlbums.forEach((album, i) => {
-    // 封面 URL：先用小图快速加载，居中后再换大图
+    // 封面 URL：先用中等图快速加载，居中后再换高清大图
     var cover = (album.picUrl || album.cover || '');
-    // 小图用于初始加载（200px）
+    // 初始加载用 480px（2x Retina 屏幕下 240px 容器需要 480px，兼顾加载速度）
     var coverSmall = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverSmall = cover + '?param=200y200';
+      coverSmall = cover + '?param=480y480';
     }
-    // 大图用于居中后替换（500px）
+    // 大图用于居中后替换（960px，高清屏完全够用，支持 3x/4x Retina）
     var coverLarge = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverLarge = cover + '?param=500y500';
+      coverLarge = cover + '?param=960y960';
     }
     var albumId = album.id || album.albumId;
     var albumName = album.name || '';
@@ -3925,10 +3925,11 @@ function cfBuildStage() {
     stage.appendChild(item);
     cfItems[i] = item;
     
-    // 倒影（用小图）
+    // 倒影（用高清大图，和正面保持同步）
     const ref = document.createElement('div');
     ref.className = 'cf-reflection-item';
-    ref.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
+    ref.dataset.coverLarge = coverLarge;
+    ref.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
     reflection.appendChild(ref);
     cfReflections[i] = ref;
   });
@@ -3966,8 +3967,12 @@ function cfUpdateInfo() {
     const coverLarge = item.dataset.coverLarge;
     if (coverLarge) {
       const frontImg = item.querySelector('.cf-front img');
-      if (frontImg && frontImg.src !== coverLarge) {
-        frontImg.src = coverLarge;
+      if (frontImg) frontImg.src = coverLarge;
+      // 同步更新倒影大图
+      const refItem = cfReflections[idx];
+      if (refItem) {
+        const refImg = refItem.querySelector('img');
+        if (refImg) refImg.src = coverLarge;
       }
     }
   }

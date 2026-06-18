@@ -2595,6 +2595,8 @@ body {
   overflow: hidden;
   transform: translateZ(8px);
   border: none;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .cf-front img {
@@ -2603,6 +2605,8 @@ body {
   object-fit: cover;
   pointer-events: none;
   display: block;
+  image-rendering: -webkit-optimize-contrast;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ---- 外封塑料高光 ---- */
