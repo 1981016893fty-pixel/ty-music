@@ -3215,57 +3215,16 @@ async function openAlbumDetail(albumId) {
   const artist = typeof album.artist === 'object' ? (album.artist.name || '') : (album.artist || '');
   const cover = album.cover || album.picUrl || '';
   const source = album.source || 'netease';
-  const tracks = album.tracks || [];
-
-  // 设置头部信息
-  const detailCover = document.getElementById('albumDetailCover');
-  detailCover.src = cover;
-  detailCover.dataset.artist = artist || '';
-  detailCover.onerror = function() { fallbackCover(this); };
-  document.getElementById('albumDetailTitle').textContent = name;
-  document.getElementById('albumDetailArtist').textContent = artist || '未知歌手';
-
-  if (tracks.length) {
-    // 去重：按歌曲 id 去重，保留第一次出现的
-    const seenIds = new Set();
-    const uniqueTracks = [];
-    for (const t of tracks) {
-      const tid = String(t.id || '');
-      if (!tid || seenIds.has(tid)) continue;
-      seenIds.add(tid);
-      uniqueTracks.push(t);
-    }
-
-    // 使用保存的曲目数据
-    document.getElementById('albumDetailMeta').textContent = (source || 'netease') + ' · ' + uniqueTracks.length + ' 首';
-    window.currentAlbumData = album;
-
-    // 渲染曲目
-    const fullTracks = uniqueTracks.map(function(t, i) {
-      return {
-        id: t.id || '',
-        title: t.title || '未知',
-        artist: t.artist || artist || '',
-        album: name,
-        cover: cover,
-        duration: t.duration || 0,
-        source: source || 'netease',
-        _gdSource: true,
-      };
-    });
-    currentAlbumTracks = fullTracks;
-    renderAlbumTracks(fullTracks);
-    updateAlbumFavButton(albumId);
-  } else {
-    // 没有保存曲目，显示基本信息
-    document.getElementById('albumDetailMeta').textContent = (source || 'netease');
-    document.getElementById('albumTrackList').innerHTML = 
-      '<div style="padding: 40px; text-align: center; color: var(--text-tertiary);">' +
-      '<p style="margin-bottom: 16px; font-size: 18px;">📀 ' + esc(name) + '</p>' +
-      '<p style="font-size: 14px;">' + esc(artist) + '</p>' +
-      '</div>';
-    updateAlbumFavButton(albumId);
-  }
+  // 不再使用保存的 tracks（可能不准确），改为从 API 重新拉取
+  // 始终从 API 重新拉取曲目（保存的 tracks 可能包含同名歌曲，不准确）
+  // 先显示加载中
+  document.getElementById('albumDetailMeta').textContent = '加载中...';
+  updateAlbumFavButton(albumId);
+  
+  // 调用 openAlbumByName 重新从 API 获取并按专辑名精确过滤
+  await openAlbumByName(name, artist, source);
+  // openAlbumByName 会自己渲染曲目列表和设置封面，直接返回
+  return;
 }
 function renderAlbumTracks(tracks) {
   var container = document.getElementById('albumTrackList');
