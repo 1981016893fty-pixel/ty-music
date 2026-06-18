@@ -334,11 +334,47 @@ async function searchLyric(artist, title) {
   return { lrc: '', tlyric: '' };
 }
 
-// 获取专辑歌曲（通过专辑名搜索）
+// 获取专辑歌曲（通过专辑名搜索，然后按 pic_id 或专辑名精确过滤）
 async function getAlbumSongs(albumName, artistName, limit = 30) {
   try {
     const query = artistName ? `${albumName} ${artistName}` : albumName;
-    return await gdSearch(query, limit);
+    const results = await gdSearch(query, Math.max(limit * 3, 100));
+    
+    if (results.length === 0) return [];
+    
+    // 策略1：找到第一个有 picId 的歌曲，用其 picId 过滤同一专辑
+    // 同一专辑的所有歌曲 picId 相同
+    const firstPicId = results[0].picId || '';
+    
+    if (firstPicId) {
+      // 用 picId 精确过滤（同一专辑 picId 相同）
+      let filtered = results.filter(function(s) { return s.picId === firstPicId; });
+      
+      // 如果过滤后太少，可能是搜索结果覆盖了多张专辑，用专辑名再过滤一次
+      if (filtered.length < 2 || filtered.length > 50) {
+        filtered = results.filter(function(s) {
+          const songAlbum = (s.album || '').trim();
+          return songAlbum === albumName || 
+                 (songAlbum && songAlbum.indexOf(albumName) !== -1) ||
+                 (albumName && albumName.indexOf(songAlbum) !== -1);
+        });
+      }
+      
+      // 如果过滤后还是太少，就返回前 N 首（至少给用户一些歌）
+      if (filtered.length >= 2) {
+        console.log(`[Album] "${albumName}" filtered by picId/albumName: ${filtered.length} tracks`);
+        return filtered.slice(0, limit);
+      }
+    }
+    
+    // 回退：直接用专辑名过滤
+    const filtered = results.filter(function(s) {
+      const songAlbum = (s.album || '').trim();
+      return songAlbum === albumName;
+    });
+    
+    console.log(`[Album] "${albumName}" search returned ${results.length}, filtered to ${filtered.length}`);
+    return filtered.length > 0 ? filtered.slice(0, limit) : results.slice(0, limit);
   } catch (e) {
     console.error('[Album] Error:', e.message);
     return [];
