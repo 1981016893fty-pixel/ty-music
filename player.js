@@ -3873,11 +3873,10 @@ function cfBuildStage() {
     item.appendChild(paperEdge);
     
     item.addEventListener('click', (e) => {
-      if (cfDragging) return;
+      // 只处理非拖动情况：点击居中的专辑
+      if (cfDragging || cfDragMoved) return;
       const dist = Math.abs(i - cfOffset);
       if (dist < 0.7) {
-        cfOpenAlbum(albumId);
-      } else {
         cfSnapTo(i);
       }
     });
@@ -4058,22 +4057,26 @@ function cfBindMouse() {
   const container = document.getElementById('coverFlowContainer');
   if (!container) return;
   
+  let cfDragMoved = false;
   const onDown = (e) => {
     if (e.target.closest('.cf-nav-btn')) return;
     cfDragging = true;
+    cfDragMoved = false;
     cfDragStartX = e.touches ? e.touches[0].clientX : e.clientX;
     cfDragStartOffset = cfOffset;
     cfLastX = cfDragStartX;
     cfLastTime = performance.now();
     cfVelocity = 0;
     container.style.cursor = 'grabbing';
-    e.preventDefault();
+    // 只有 touch 事件需要 preventDefault，mouse 事件不需要
+    if (e.touches) e.preventDefault();
   };
   
   const onMove = (e) => {
     if (!cfDragging) return;
     const x = e.touches ? e.touches[0].clientX : e.clientX;
     const dx = x - cfDragStartX;
+    if (Math.abs(dx) > 5) cfDragMoved = true;
     cfOffset = cfDragStartOffset - dx / 65;
     
     const now = performance.now();
@@ -4086,11 +4089,19 @@ function cfBindMouse() {
     cfOffset = Math.max(-0.3, Math.min(cfAlbums.length - 0.7, cfOffset));
   };
   
-  const onUp = () => {
+  const onUp = (e) => {
     if (!cfDragging) return;
     cfDragging = false;
     container.style.cursor = '';
-    // 给一点时间计算速度
+    // 如果几乎没有拖动，触发点击当前居中专辑
+    if (!cfDragMoved) {
+      const idx = Math.round(cfOffset);
+      if (idx >= 0 && idx < cfAlbums.length) {
+        const album = cfAlbums[idx];
+        const albumId = album.id || album.albumId;
+        if (albumId) cfOpenAlbum(albumId);
+      }
+    }
   };
   
   const onHover = (e) => {
