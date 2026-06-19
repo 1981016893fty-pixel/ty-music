@@ -864,8 +864,8 @@ $('#playBtn').addEventListener('click', togglePlay);
 $('#miniPlayBtn').addEventListener('click', togglePlay);
 
 // HTML5 audio events
-audio.addEventListener('play', () => { state.isPlaying = true; updatePlayBtn(); if (ampIsShowing) updateAmpPlayBtn(); });
-audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) updateAmpPlayBtn(); });
+audio.addEventListener('play', () => { state.isPlaying = true; updatePlayBtn(); if (ampIsShowing) { updateAmpPlayBtn(); startVisualizer(state.currentTrack); } });
+audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) { updateAmpPlayBtn(); stopVisualizer(); } });
 audio.addEventListener('ended', () => {
   if (state.repeatMode === 2) { audio.currentTime = 0; audio.play(); }
   else playNext();
@@ -2117,6 +2117,219 @@ function applyAmpArtwork(artwork, urls, idx) {
   img.src = urls[idx];
 }
 
+// ========== 🎵 音波频谱动效（仅流行/电子乐） ==========
+
+// Web Audio API 单例
+let _audioCtx = null;
+let _analyser = null;
+let _sourceNode = null;
+let _vizAnimId = null;
+let _vizActive = false;
+let _vizAccentColor = '180, 94, 255'; // 默认紫色，会被专辑色覆盖
+
+// 判断是否是流行/电子乐（基于关键词 + 已知艺人）
+const ELECTRONIC_ARTISTS = new Set([
+  'the weeknd', 'daft punk', 'deadmau5', 'avicii', 'calvin harris',
+  'martin garrix', 'tiesto', 'skrillex', 'diplo', 'zedd',
+  'marshmello', 'chainsmokers', 'alan walker', 'kygo', 'flume',
+  'disclosure', 'aphex twin', 'boards of canada', 'porter robinson',
+  'odesza', 'madeon', 'a-trak', 'afrojack', 'hardwell', 'armin van buuren',
+  'david guetta', 'steve aoki', 'marshmello', 'illenium', 'kasbo',
+  'san holo', 'chet faker', 'kaytranada', 'solomun', 'jamie xx',
+  'james blake', 'four tet', 'caribou', '邓紫棋', 'jvke', 'rema',
+  'bad bunny', 'j. cole', 'travis scott', 'tyler the creator',
+  'pharrell williams', 'kanye west', 'frank ocean',
+]);
+const ELECTRONIC_TITLE_KEYWORDS = [
+  'remix', 'edit', 'bootleg', 'flip', 'vip', 'mix', 'dj',
+  'electronic', 'edm', 'house', 'techno', 'trance', 'rave',
+  'bass', 'drop', 'synth', 'club', 'dance', 'electric', 'cyber',
+  'neon', 'digital', 'ft.', 'feat', 'prod.', 'wave', 'trap',
+  'starboy', 'blinding lights', 'save your tears', 'gasoline',
+  'strobe', 'around the world', 'one more time', 'get lucky',
+];
+const NON_ELECTRONIC_GENRES = [
+  '古典', '爵士', 'classical', 'jazz', 'folk', '民谣',
+  '轻音乐', '国风', '戏曲', '粤语', '佛教', '冥想', 'meditate',
+];
+
+function isElectronicTrack(track) {
+  if (!track) return false;
+  const title = (track.title || track.name || '').toLowerCase();
+  const artist = (track.artist || '').toLowerCase();
+
+  // 排除非电子风格
+  for (const kw of NON_ELECTRONIC_GENRES) {
+    if (title.includes(kw.toLowerCase()) || artist.includes(kw.toLowerCase())) return false;
+  }
+  // 已知艺人
+  const artistParts = artist.split(/[,\/&\s]+/);
+  for (const part of artistParts) {
+    if (ELECTRONIC_ARTISTS.has(part.trim())) return true;
+  }
+  if (ELECTRONIC_ARTISTS.has(artist.trim())) return true;
+  // 标题关键词
+  for (const kw of ELECTRONIC_TITLE_KEYWORDS) {
+    if (title.includes(kw)) return true;
+  }
+  return false;
+}
+
+// 初始化 Web Audio API（懒加载，首次播放时创建）
+function initAudioContext() {
+  if (_audioCtx) return true;
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return false;
+    _audioCtx = new AudioCtx();
+    _analyser = _audioCtx.createAnalyser();
+    _analyser.fftSize = 256;          // 128 个频率仓，够用且性能好
+    _analyser.smoothingTimeConstant = 0.82; // 平滑系数，让波动不那么跳
+    _sourceNode = _audioCtx.createMediaElementSource(audio);
+    _sourceNode.connect(_analyser);
+    _analyser.connect(_audioCtx.destination);
+    console.log('[Visualizer] AudioContext initialized');
+    return true;
+  } catch (e) {
+    console.warn('[Visualizer] AudioContext init failed:', e.message);
+    return false;
+  }
+}
+
+// 恢复 AudioContext（浏览器自动挂起时）
+function resumeAudioContext() {
+  if (_audioCtx && _audioCtx.state === 'suspended') {
+    _audioCtx.resume().catch(() => {});
+  }
+}
+
+// 绘制圆形频谱音波
+function drawVisualizer() {
+  const canvas = $('#ampVisualizerCanvas');
+  const wrapper = $('#ampArtworkWrapper');
+  if (!canvas || !wrapper || !_analyser) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const rect = wrapper.getBoundingClientRect();
+  const artW = rect.width;
+  const artH = rect.height;
+  const totalW = artW + 80;   // canvas 实际宽度（含四周 40px 扩展）
+  const totalH = artH + 80;
+
+  // 设置 canvas 物理像素
+  if (canvas.width !== Math.round(totalW * dpr) || canvas.height !== Math.round(totalH * dpr)) {
+    canvas.width = Math.round(totalW * dpr);
+    canvas.height = Math.round(totalH * dpr);
+  }
+
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, totalW, totalH);
+
+  // 频谱数据
+  const bufLen = _analyser.frequencyBinCount; // 128
+  const dataArray = new Uint8Array(bufLen);
+  _analyser.getByteFrequencyData(dataArray);
+
+  // 中心点（canvas 坐标系内）
+  const cx = totalW / 2;
+  const cy = totalH / 2;
+  const innerR = Math.min(artW, artH) / 2 + 4; // 紧贴封面边缘
+  const outerRMax = innerR + 36;                // 最大延伸 36px
+
+  // 取 60 个频率仓（低频到高频，截掉过高频噪声）
+  const barCount = 60;
+  const startBin = 1;  // 跳过直流分量
+  const endBin = Math.min(startBin + barCount, bufLen - 1);
+  const usedBins = endBin - startBin;
+
+  const [rStr, gStr, bStr] = _vizAccentColor.split(',').map(s => s.trim());
+  const r = parseInt(rStr), g = parseInt(gStr), b = parseInt(bStr);
+
+  // 画封面外圈音波（环形条形图）
+  for (let i = 0; i < barCount; i++) {
+    const binIdx = startBin + Math.round((i / barCount) * usedBins);
+    const value = dataArray[binIdx] / 255; // 0~1
+
+    const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2; // 从顶部开始
+    const barH = 4 + value * (outerRMax - innerR - 4);
+    const alpha = 0.3 + value * 0.7;
+
+    const x1 = cx + Math.cos(angle) * innerR;
+    const y1 = cy + Math.sin(angle) * innerR;
+    const x2 = cx + Math.cos(angle) * (innerR + barH);
+    const y2 = cy + Math.sin(angle) * (innerR + barH);
+
+    // 渐变：内→外，从主色到透明
+    const grad = ctx.createLinearGradient(x1, y1, x2, y2);
+    grad.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.9})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = Math.max(2, (2 * Math.PI * innerR / barCount) * 0.65);
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  // 外圈柔光晕（叠加低频能量的整体光晕）
+  const avgLow = dataArray.slice(0, 8).reduce((a, b) => a + b, 0) / 8 / 255;
+  if (avgLow > 0.05) {
+    const glowR = innerR + avgLow * 20;
+    const glow = ctx.createRadialGradient(cx, cy, innerR - 2, cx, cy, glowR + 16);
+    glow.addColorStop(0, `rgba(${r},${g},${b},${avgLow * 0.25})`);
+    glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.beginPath();
+    ctx.arc(cx, cy, glowR + 16, 0, Math.PI * 2);
+    ctx.fillStyle = glow;
+    ctx.fill();
+  }
+
+  if (_vizActive) {
+    _vizAnimId = requestAnimationFrame(drawVisualizer);
+  }
+}
+
+// 启动音波动效
+function startVisualizer(track) {
+  stopVisualizer();
+  if (!isElectronicTrack(track)) {
+    $('#ampArtworkWrapper').classList.remove('visualizer-active');
+    return;
+  }
+  if (!initAudioContext()) return;
+  resumeAudioContext();
+
+  // 更新音波颜色（从已提取的 CSS 变量读）
+  const player = $('#ampFullscreenPlayer');
+  if (player) {
+    const accentRgb = player.style.getPropertyValue('--amp-accent-rgb').trim();
+    if (accentRgb) _vizAccentColor = accentRgb;
+  }
+
+  _vizActive = true;
+  $('#ampArtworkWrapper').classList.add('visualizer-active');
+
+  // 等一帧让 canvas 可见后再开始绘制
+  requestAnimationFrame(drawVisualizer);
+  console.log('[Visualizer] Started for track:', track.title || track.name);
+}
+
+// 停止音波动效
+function stopVisualizer() {
+  _vizActive = false;
+  if (_vizAnimId) { cancelAnimationFrame(_vizAnimId); _vizAnimId = null; }
+  const wrapper = $('#ampArtworkWrapper');
+  if (wrapper) wrapper.classList.remove('visualizer-active');
+  const canvas = $('#ampVisualizerCanvas');
+  if (canvas) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+}
+
 // ========== 专辑取色引擎 ==========
 let ampColorExtractCache = {};
 
@@ -2268,6 +2481,11 @@ function applyAlbumColors(colors) {
       btn.style.color = `rgba(${pRgb}, 0.7)`;
     }
   });
+
+  // 同步更新音波动效颜色
+  if (typeof _vizAccentColor !== 'undefined') {
+    _vizAccentColor = pRgb;
+  }
 }
 
 function openAmpFullscreenPlayer() {
@@ -2295,6 +2513,11 @@ function openAmpFullscreenPlayer() {
   
   ampIsShowing = true;
   document.body.style.overflow = 'hidden';
+
+  // 启动音波动效（如果是电子乐且正在播放）
+  if (state.isPlaying && state.currentTrack) {
+    startVisualizer(state.currentTrack);
+  }
 }
 
 function closeAmpFullscreenPlayer() {
@@ -2306,6 +2529,7 @@ function closeAmpFullscreenPlayer() {
     player.style.display = 'none';
     ampIsShowing = false;
     document.body.style.overflow = '';
+    stopVisualizer();   // 关闭全屏时停止音波
   }, 400);
 }
 
@@ -2397,6 +2621,13 @@ function updateAmpFullscreenPlayer() {
   // 注意：不再每次切歌强制重置歌词视图 — 保留用户当前选择
   if (ampLyricsShowing) {
     loadAmpLyrics();
+  }
+
+  // 切歌时重新判断音波动效
+  if (state.isPlaying && ampIsShowing) {
+    startVisualizer(track);
+  } else {
+    stopVisualizer();
   }
 }
 

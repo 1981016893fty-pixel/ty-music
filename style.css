@@ -2980,6 +2980,26 @@ body {
   aspect-ratio: 1;
   margin-bottom: 6px;
   perspective: 800px;
+  position: relative;
+}
+
+/* 音波频谱 Canvas — 绝对定位覆盖在封面周围（扩大区域） */
+.amp-visualizer-canvas {
+  position: absolute;
+  /* 向四周扩展 40px，形成封面外光晕音波 */
+  top: -40px;
+  left: -40px;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.6s ease;
+}
+
+/* 电子乐播放时显示音波 */
+.amp-artwork-wrapper.visualizer-active .amp-visualizer-canvas {
+  opacity: 1;
 }
 
 .amp-artwork {
