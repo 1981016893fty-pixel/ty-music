@@ -4447,21 +4447,6 @@ async function fetchNewAlbums() {
 }
 
 /* ============================================
-   侧边栏收起/展开（桌面端）
-   ============================================ */
-function toggleSidebar() {
-  var sidebar = document.getElementById('sidebar');
-  var isCollapsed = sidebar.classList.contains('collapsed');
-  if (isCollapsed) {
-    sidebar.classList.remove('collapsed');
-    document.body.classList.remove('sidebar-hidden');
-  } else {
-    sidebar.classList.add('collapsed');
-    document.body.classList.add('sidebar-hidden');
-  }
-}
-
-/* ============================================
    移动端侧边栏切换
    ============================================ */
 function toggleMobileSidebar() {
