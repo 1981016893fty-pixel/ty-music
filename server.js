@@ -258,7 +258,6 @@ function formatSong(s) {
   if (!s) return null;
   const artist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || 'Unknown');
   const picId = s.pic_id || '';
-  const album = s.album || '';
   
   // 智能判断 album 是否可信
   function isAlbumReliable(album, songName) {
@@ -272,16 +271,20 @@ function formatSong(s) {
     return true;
   }
   
-  const albumReliable = isAlbumReliable(album, s.name);
+  const albumRaw = s.album || '';
+  const albumReliable = isAlbumReliable(albumRaw, s.name);
+  
+  // 不可信时，album 设为空（避免显示错误专辑名）
+  const album = albumReliable ? albumRaw : '';
   
   // pic_id 有值 → 直接用封面代理
   let coverUrl;
   if (picId) {
     coverUrl = '/api/music/cover?picId=' + picId;
-  } else if (s.name || albumReliable) {
-    // 有歌曲名或可信的专辑名，尝试获取专辑封面
+  } else {
+    // 使用可信的 album（如果不可信则传空，让 findAlbumCoverPicId 只用 artist + songName）
     const primaryArtist = artist.split(',')[0].trim();
-    const searchAlbum = albumReliable ? album : '';
+    const searchAlbum = albumReliable ? albumRaw : '';
     
     // 检查是否已在 album-cover 缓存中预解析
     const cacheKey = primaryArtist + '|' + searchAlbum + '|' + (s.name || '');
@@ -293,16 +296,13 @@ function formatSong(s) {
                  '&album=' + encodeURIComponent(searchAlbum) + 
                  '&name=' + encodeURIComponent(s.name || '');
     }
-  } else {
-    // 兜底：使用艺人头像
-    coverUrl = '/api/artist-photo?name=' + encodeURIComponent(artist.split(',')[0].trim());
   }
   
   return {
     id: String(s.id || ''),
     name: s.name || 'Unknown',
     artist: artist,
-    album: album,
+    album: album,  // 不可信时返回空，不返回错误专辑名
     albumId: picId,
     cover: coverUrl,
     coverSmall: coverUrl,
