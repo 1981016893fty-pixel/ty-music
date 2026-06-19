@@ -3,7 +3,7 @@ services:
     name: ty-music
     runtime: node
     plan: free
-    buildCommand: "echo 'No build step needed'"
+    buildCommand: npm install
     startCommand: node server-simple.js
     healthCheckPath: /api/health
     autoDeploy: true
