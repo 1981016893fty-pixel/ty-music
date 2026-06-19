@@ -144,7 +144,28 @@ body {
   transition: background-color 0.2s ease;
 }
 
-/* 侧边栏玻璃边缘高光 — 空间折射 */
+/* 侧边栏收起按钮 — 桌面端显示 */
+@media (min-width: 769px) {
+  .sidebar-toggle-btn { display: flex; }
+}
+
+/* 侧边栏收起状态 */
+.sidebar.collapsed {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  overflow: hidden;
+  border-right: none;
+}
+.sidebar.collapsed .logo,
+.sidebar.collapsed .search-mini,
+.sidebar.collapsed .nav-menu,
+.sidebar.collapsed .sidebar-divider,
+.sidebar.collapsed .sidebar-footer { display: none; }
+
+/* 收起后主内容区扩展 */
+body.sidebar-hidden .main-content { flex: 1; }
+body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
 .sidebar::after {
   content: '';
   position: absolute;
@@ -197,6 +218,30 @@ body {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* 侧边栏收起/展开按钮 */
+.sidebar-toggle-btn {
+  display: none;
+  width: 24px; height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--glass-layer-3);
+  color: var(--text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+  transition: all 0.15s ease;
+}
+.sidebar-toggle-btn:hover {
+  background: var(--glass-layer-4);
+  color: var(--text);
+  border-color: var(--border-highlight);
+}
+.sidebar-toggle-btn .fa-chevron-left { transition: transform 0.3s ease; }
+.sidebar.collapsed .sidebar-toggle-btn .fa-chevron-left { transform: rotate(180deg); }
 
 /* 侧边栏搜索框 — 轻玻璃卡片 */
 .search-mini {
