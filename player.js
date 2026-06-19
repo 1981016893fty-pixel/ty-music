@@ -815,6 +815,13 @@ function playTrack(track, index) {
 
   // Auto-load lyrics if panel is open
   state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+  
+  // 如果正在显示专辑详情页，更新专辑列表的"正在播放"指示器
+  const albumPanel = document.getElementById('albumDetailPanel');
+  if (albumPanel && albumPanel.classList.contains('show') && currentAlbumTracks.length > 0) {
+    console.log('[PlayTrack] Updating album tracks playing indicator');
+    renderAlbumTracks(currentAlbumTracks);
+  }
 }
 
 // ========== Play/Pause ==========
