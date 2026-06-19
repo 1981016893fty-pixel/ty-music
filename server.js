@@ -1010,6 +1010,8 @@ const server = http.createServer(async (req, res) => {
           console.log(`[Album] Detail URL: ${detailUrl}`);
           const detailData = await requestNetease(detailUrl);
           
+          console.log(`[Album] Detail data:`, JSON.stringify(detailData).substring(0, 200));
+          
           if (detailData && detailData.songs && detailData.songs.length > 0) {
             targetAlbumId = String(detailData.songs[0].album.id);
             console.log(`[Album] Got albumId=${targetAlbumId} from songId=${songId}`);
@@ -1022,7 +1024,10 @@ const server = http.createServer(async (req, res) => {
         if (targetAlbumId) {
           console.log(`[Album] Fetching album from Netease API: albumId=${targetAlbumId}`);
           const albumUrl = `${NETEASE_API}/album?id=${targetAlbumId}`;
+          console.log(`[Album] Album URL: ${albumUrl}`);
           const albumData = await requestNetease(albumUrl);
+          
+          console.log(`[Album] Album data received, has album: ${!!albumData?.album}, has songs: ${!!albumData?.songs}`);
           
           if (albumData && albumData.album && albumData.songs) {
             const albumInfo = albumData.album;
@@ -1047,11 +1052,14 @@ const server = http.createServer(async (req, res) => {
             res.end(JSON.stringify({ songs: formattedSongs }));
             return;
           } else {
-            console.log(`[Album] Netease API failed, falling back to search`);
+            console.log(`[Album] Netease API failed, response:`, JSON.stringify(albumData).substring(0, 200));
+            console.log(`[Album] Falling back to search`);
           }
         }
         
         // 向后兼容：没有 songId 或 albumId 时，用专辑名搜索
+        console.log(`[Album] Fallback: using album name search`);
+        
         if (!album) {
           res.statusCode = 400;
           res.end(JSON.stringify({ error: 'Missing songId, albumId, or album parameter' }));
@@ -1133,9 +1141,14 @@ const server = http.createServer(async (req, res) => {
         return;
         
       } catch (e) {
-        console.error('[Album] Error:', e.message);
+        console.error('[Album] Error:', e.message, e.stack);
+        // 返回详细错误信息，方便调试
         res.statusCode = 500;
-        res.end(JSON.stringify({ error: 'Failed to fetch album info' }));
+        res.end(JSON.stringify({ 
+          error: 'Failed to fetch album info', 
+          message: e.message,
+          stack: e.stack?.substring(0, 500)
+        }));
         return;
       }
     }
