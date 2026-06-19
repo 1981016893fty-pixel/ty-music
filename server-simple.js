@@ -513,10 +513,35 @@ async function getAlbumSongs(albumName, artistName, limit = 30) {
 // 获取艺人歌曲
 async function getArtistSongs(artistName, limit = 100, offset = 0) {
   try {
-    // 搜索该艺人的歌曲，增加数量
-    const results = await gdSearch(artistName, limit + offset);
-    // 返回从 offset 开始的 limit 首歌曲
-    return results.slice(offset, offset + limit);
+    // GD API 单次最多 99 条，用 pages 参数翻页
+    // 计算需要几页才能满足 limit + offset
+    const PAGE_SIZE = 99;
+    const totalNeeded = offset + limit;
+    const pagesNeeded = Math.ceil(totalNeeded / PAGE_SIZE);
+    
+    let allResults = [];
+    const pagePromises = [];
+    for (let p = 1; p <= pagesNeeded; p++) {
+      const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(artistName)}&count=${PAGE_SIZE}&pages=${p}`;
+      pagePromises.push(dedupedGetJSON(url, 15000).catch(() => []));
+    }
+    const pagesResults = await Promise.all(pagePromises);
+    pagesResults.forEach(page => {
+      if (Array.isArray(page)) allResults = allResults.concat(page);
+    });
+    
+    // 去重（按 id）
+    const seen = new Set();
+    const unique = [];
+    allResults.forEach(s => {
+      const id = String(s.id || '');
+      if (id && !seen.has(id)) { seen.add(id); unique.push(s); }
+    });
+    
+    // 按 offset 切片
+    const sliced = unique.slice(offset, offset + limit);
+    console.log(`[Artist] Fetched ${unique.length} total, returning ${sliced.length} (offset=${offset}, limit=${limit})`);
+    return sliced;
   } catch (e) {
     console.error('[Artist] Error:', e.message);
     return [];
