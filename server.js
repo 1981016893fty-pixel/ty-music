@@ -327,7 +327,23 @@ async function searchSongs(keywords, limit, source) {
         Promise.all(missingCovers.map(s => {
           const artist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || 'Unknown');
           const primaryArtist = artist.split(',')[0].trim();
-          return findAlbumCoverPicId(primaryArtist, s.album || '', s.name || '');
+          
+          // 智能判断 album 是否可信
+          const album = s.album || '';
+          const songName = s.name || '';
+          let reliableAlbum = album;
+          
+          // 判断逻辑（与 formatSong 一致）
+          const albumLower = album.toLowerCase().trim();
+          const songLower = songName.toLowerCase().trim();
+          const isReliable = album && 
+                           album.trim().length >= 2 &&
+                           albumLower !== songLower &&
+                           !(songLower && albumLower && songLower.includes(albumLower) && Math.abs(album.length - songName.length) < 5);
+          
+          if (!isReliable) reliableAlbum = ''; // 不可信时传空
+          
+          return findAlbumCoverPicId(primaryArtist, reliableAlbum, songName);
         })).then(() => console.log('[Search] Album cover pre-warm complete'));
       }
       const seen = new Set();
