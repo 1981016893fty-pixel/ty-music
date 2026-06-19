@@ -2154,24 +2154,41 @@ const NON_ELECTRONIC_GENRES = [
 ];
 
 function isElectronicTrack(track) {
-  if (!track) return false;
+  if (!track) { console.log('[Visualizer] isElectronic: no track'); return false; }
   const title = (track.title || track.name || '').toLowerCase();
   const artist = (track.artist || '').toLowerCase();
+  console.log('[Visualizer] isElectronic check:', { title, artist });
 
   // 排除非电子风格
   for (const kw of NON_ELECTRONIC_GENRES) {
-    if (title.includes(kw.toLowerCase()) || artist.includes(kw.toLowerCase())) return false;
+    if (title.includes(kw.toLowerCase()) || artist.includes(kw.toLowerCase())) {
+      console.log('[Visualizer] Excluded by genre:', kw);
+      return false;
+    }
   }
-  // 已知艺人
-  const artistParts = artist.split(/[,\/&\s]+/);
-  for (const part of artistParts) {
-    if (ELECTRONIC_ARTISTS.has(part.trim())) return true;
+  // 已知艺人 — 用 includes 模糊匹配
+  for (const art of ELECTRONIC_ARTISTS) {
+    if (artist.includes(art)) {
+      console.log('[Visualizer] Matched artist:', art);
+      return true;
+    }
   }
-  if (ELECTRONIC_ARTISTS.has(artist.trim())) return true;
+
   // 标题关键词
   for (const kw of ELECTRONIC_TITLE_KEYWORDS) {
-    if (title.includes(kw)) return true;
+    if (title.includes(kw)) {
+      console.log('[Visualizer] Matched title keyword:', kw);
+      return true;
+    }
   }
+
+  // 歌名含 "remix" 等变体
+  if (/\(?\s*remix/i.test(title)) {
+    console.log('[Visualizer] Matched remix in title');
+    return true;
+  }
+
+  console.log('[Visualizer] Not electronic, no match');
   return false;
 }
 
@@ -2303,14 +2320,21 @@ function drawVisualizer() {
 
 // 启动音波动效
 function startVisualizer(track) {
+  console.log('[Visualizer] startVisualizer called, track:', track ? (track.title || track.name) : null);
   stopVisualizer();
   if (!isElectronicTrack(track)) {
+    console.log('[Visualizer] Not electronic track, skip');
     const c = $('#ampVisualizerCanvas');
     if (c) c.classList.remove('visualizer-active');
     return;
   }
-  if (!initAudioContext()) return;
+  console.log('[Visualizer] Electronic track detected! Initializing AudioContext...');
+  if (!initAudioContext()) {
+    console.warn('[Visualizer] AudioContext init failed');
+    return;
+  }
   resumeAudioContext();
+  console.log('[Visualizer] AudioContext ready, state:', _audioCtx.state);
 
   // 更新音波颜色（从已提取的 CSS 变量读）
   const player = $('#ampFullscreenPlayer');
@@ -2321,11 +2345,16 @@ function startVisualizer(track) {
 
   _vizActive = true;
   const c = $('#ampVisualizerCanvas');
-  if (c) c.classList.add('visualizer-active');
+  if (c) {
+    c.classList.add('visualizer-active');
+    console.log('[Visualizer] Canvas activated, classList:', c.className);
+  }
 
   // 等一帧让 canvas 可见后再开始绘制
-  requestAnimationFrame(drawVisualizer);
-  console.log('[Visualizer] Started for track:', track.title || track.name);
+  requestAnimationFrame(() => {
+    console.log('[Visualizer] Starting draw loop');
+    drawVisualizer();
+  });
 }
 
 // 停止音波动效

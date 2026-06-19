@@ -420,8 +420,6 @@
       <div class="amp-artwork-wrapper" id="ampArtworkWrapper">
         <div class="amp-artwork" id="ampArtwork"></div>
       </div>
-      <!-- 音波动效 Canvas — 独立于封面容器，避免影响布局 -->
-      <canvas class="amp-visualizer-canvas" id="ampVisualizerCanvas"></canvas>
 
       <!-- 歌词视图 (默认隐藏) -->
       <div class="amp-lyrics-view hidden" id="ampLyricsView">
@@ -502,6 +500,8 @@
       <p class="empty-state">播放列表为空</p>
     </div>
   </div>
+  <!-- 音波动效 Canvas — 放在播放器内，fixed 定位不影响 flex 布局 -->
+  <canvas class="amp-visualizer-canvas" id="ampVisualizerCanvas"></canvas>
 
   <!-- Toast -->
   <div class="toast" id="toast"></div>
