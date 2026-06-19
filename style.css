@@ -15,9 +15,9 @@
   --glass-layer-1: rgba(18, 18, 34, 0.68);
   --glass-blur-1: 52px;
 
-  /* 层级 2: 播放器栏 / 面板级 — 中等厚度 */
-  --glass-layer-2: rgba(16, 16, 30, 0.72);
-  --glass-blur-2: 44px;
+  /* 层级 2: 播放器栏 / 面板级 — 更轻薄玻璃 */
+  --glass-layer-2: rgba(16, 16, 30, 0.48);
+  --glass-blur-2: 60px;
 
   /* 层级 3: 卡片 / 可交互元素 — 轻薄玻璃 */
   --glass-layer-3: rgba(22, 22, 40, 0.48);
@@ -1586,17 +1586,46 @@ body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
   bottom: 0; left: 0; right: 0;
   height: var(--player-height);
   background: var(--glass-layer-2);
-  backdrop-filter: blur(var(--glass-blur-2)) saturate(1.7);
-  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.7);
+  backdrop-filter: blur(var(--glass-blur-2)) saturate(1.8);
+  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.8);
   border-top: 1px solid var(--border-highlight);
   display: flex; align-items: center;
   padding: 0 20px;
   gap: 20px;
   z-index: 100;
   box-shadow:
-    0 -2px 20px rgba(0, 0, 0, 0.25),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 -4px 32px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
   transition: background-color 0.2s ease;
+}
+
+/* 播放器栏顶部液态玻璃折射高光 */
+.player-bar::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 5%; right: 5%;
+  height: 1px;
+  background: linear-gradient(90deg, 
+    transparent 0%, 
+    rgba(255, 255, 255, 0.1) 20%, 
+    rgba(255, 255, 255, 0.15) 50%, 
+    rgba(255, 255, 255, 0.1) 80%, 
+    transparent 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 播放器栏底部环境光 */
+.player-bar::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 100%;
+  background: linear-gradient(to top, 
+    rgba(180, 94, 255, 0.03) 0%, 
+    transparent 40%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 /* 播放器栏顶部折射高光线 */
