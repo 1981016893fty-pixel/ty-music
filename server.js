@@ -25,6 +25,8 @@ const PORT = 8899;
 const ALBUM_CORRECTIONS = {
   "Michael Jackson|Heartbreaker": { album: "Invincible", picId: "109951165992940172" },
   "Michael Jackson|Heartbreaker (Funtastik's Digitized Mix)": { album: "700 songs Remixes", picId: "" },
+  // 添加更多纠正规则...
+  "罗生门|罗生门": { album: "罗生门（Follow）", picId: "109951173132787928" },
 };
 
 // 同步获取纠正后的专辑信息（从映射表）
