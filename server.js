@@ -187,17 +187,17 @@ function requestNetease(url) {
       }
     };
     
-    options.agent = getAgentForUrl(url);
-    
+    // 不使用自定义 agent，让 Node.js 自动处理
     const req = https.request(options, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
+        console.log(`[Netease] Response: status=${res.statusCode}, data_length=${data.length}`);
         try {
           resolve(JSON.parse(data));
         } catch (e) {
-          console.error('[Netease] Parse error:', data.substring(0, 100));
-          reject(new Error('Parse error'));
+          console.error('[Netease] Parse error:', data.substring(0, 200));
+          reject(new Error('Parse error: ' + data.substring(0, 100)));
         }
       });
     });
@@ -205,6 +205,11 @@ function requestNetease(url) {
     req.on('error', (e) => {
       console.error('[Netease] Request error:', e.message);
       reject(e);
+    });
+    
+    req.setTimeout(10000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
     });
     
     req.end();
