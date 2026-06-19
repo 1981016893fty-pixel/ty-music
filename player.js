@@ -2210,16 +2210,25 @@ function drawVisualizer() {
   if (!canvas || !wrapper || !_analyser) return;
 
   const dpr = window.devicePixelRatio || 1;
+  const pad = 44; // 向四周扩展 px，形成封面外光晕
   const rect = wrapper.getBoundingClientRect();
   const artW = rect.width;
   const artH = rect.height;
-  const totalW = artW + 80;   // canvas 实际宽度（含四周 40px 扩展）
-  const totalH = artH + 80;
+  const totalW = artW + pad * 2;
+  const totalH = artH + pad * 2;
+
+  // 定位 canvas 与封面对齐（fixed 定位，相对视口）
+  canvas.style.left = (rect.left - pad) + 'px';
+  canvas.style.top  = (rect.top  - pad) + 'px';
+  canvas.style.width  = totalW + 'px';
+  canvas.style.height = totalH + 'px';
 
   // 设置 canvas 物理像素
-  if (canvas.width !== Math.round(totalW * dpr) || canvas.height !== Math.round(totalH * dpr)) {
-    canvas.width = Math.round(totalW * dpr);
-    canvas.height = Math.round(totalH * dpr);
+  const pw = Math.round(totalW * dpr);
+  const ph = Math.round(totalH * dpr);
+  if (canvas.width !== pw || canvas.height !== ph) {
+    canvas.width  = pw;
+    canvas.height = ph;
   }
 
   const ctx = canvas.getContext('2d');
@@ -2296,7 +2305,8 @@ function drawVisualizer() {
 function startVisualizer(track) {
   stopVisualizer();
   if (!isElectronicTrack(track)) {
-    $('#ampArtworkWrapper').classList.remove('visualizer-active');
+    const c = $('#ampVisualizerCanvas');
+    if (c) c.classList.remove('visualizer-active');
     return;
   }
   if (!initAudioContext()) return;
@@ -2310,7 +2320,8 @@ function startVisualizer(track) {
   }
 
   _vizActive = true;
-  $('#ampArtworkWrapper').classList.add('visualizer-active');
+  const c = $('#ampVisualizerCanvas');
+  if (c) c.classList.add('visualizer-active');
 
   // 等一帧让 canvas 可见后再开始绘制
   requestAnimationFrame(drawVisualizer);
@@ -2321,10 +2332,9 @@ function startVisualizer(track) {
 function stopVisualizer() {
   _vizActive = false;
   if (_vizAnimId) { cancelAnimationFrame(_vizAnimId); _vizAnimId = null; }
-  const wrapper = $('#ampArtworkWrapper');
-  if (wrapper) wrapper.classList.remove('visualizer-active');
   const canvas = $('#ampVisualizerCanvas');
   if (canvas) {
+    canvas.classList.remove('visualizer-active');
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
