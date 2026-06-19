@@ -292,6 +292,36 @@ function formatGDSong(s) {
 
 // =========================== API 逻辑 ===========================
 
+// 批量补全 GD API 原始数据中 pic_id 为空的歌曲封面
+// 必须在 formatGDSong 之前调用（直接修改原始数据的 pic_id 字段）
+async function fillMissingPicIdsRaw(songsRaw) {
+  const missing = songsRaw.filter(s => !s.pic_id);
+  if (missing.length === 0) return songsRaw;
+
+  try {
+    const ids = missing.map(s => s.id).join(',');
+    const url = `https://music.163.com/api/song/detail?ids=[${ids}]`;
+    const data = await httpsGetJSON(url, 8000);
+    if (data && Array.isArray(data.songs)) {
+      const picMap = {};
+      data.songs.forEach(s => {
+        const picId = s.album && s.album.picId ? String(s.album.picId) : '';
+        if (picId) picMap[String(s.id)] = picId;
+      });
+      // 直接修改原始 GD 数据的 pic_id 字段
+      songsRaw.forEach(s => {
+        if (!s.pic_id && picMap[s.id]) {
+          s.pic_id = picMap[s.id];
+        }
+      });
+      console.log(`[PicFill] Filled ${Object.keys(picMap).length}/${missing.length} missing pic_ids`);
+    }
+  } catch (e) {
+    console.warn('[PicFill] Failed to fill pic_ids:', e.message);
+  }
+  return songsRaw;
+}
+
 // GD Studio API 搜索（按歌名搜索）
 async function gdSearch(keywords, limit = 30) {
   const cacheKey = `search:${keywords}:${limit}`;
@@ -302,6 +332,8 @@ async function gdSearch(keywords, limit = 30) {
     const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(keywords)}&count=${limit}`;
     const data = await dedupedGetJSON(url, 15000);
     if (Array.isArray(data) && data.length > 0) {
+      // 先批量补全 pic_id，再格式化
+      await fillMissingPicIdsRaw(data);
       const result = data.map(formatGDSong);
       cacheSet(cacheKey, result, CACHE_TTL.search);
       return result;
@@ -324,6 +356,8 @@ async function gdSearchAlbum(albumName, limit = 50) {
     const url = `${GD_API}?types=search&source=netease_album&name=${encodeURIComponent(albumName)}&count=${limit}`;
     const data = await dedupedGetJSON(url, 15000);
     if (Array.isArray(data) && data.length > 0) {
+      // 先批量补全 pic_id，再格式化
+      await fillMissingPicIdsRaw(data);
       const result = data.map(formatGDSong);
       cacheSet(cacheKey, result, CACHE_TTL.album);
       console.log(`[GD AlbumSearch] "${albumName}" returned ${result.length} tracks`);
@@ -350,6 +384,8 @@ async function getHotSongs(limit = 20) {
       const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(kw)}&count=${limit}`;
       const data = await httpsGetJSON(url, 15000);
       if (Array.isArray(data) && data.length > 0) {
+        // 先批量补全 pic_id，再格式化
+        await fillMissingPicIdsRaw(data);
         const result = data.map(formatGDSong);
         cacheSet(cacheKey, result, CACHE_TTL.hot);
         console.log(`[Hot] Got ${result.length} songs from keyword "${kw}"`);
@@ -530,7 +566,7 @@ async function getArtistSongs(artistName, limit = 100, offset = 0) {
       if (Array.isArray(page)) allResults = allResults.concat(page);
     });
     
-    // 去重（按 id）
+    // 去重（按 id），然后批量补全 pic_id
     const seen = new Set();
     const unique = [];
     allResults.forEach(s => {
@@ -538,9 +574,16 @@ async function getArtistSongs(artistName, limit = 100, offset = 0) {
       if (id && !seen.has(id)) { seen.add(id); unique.push(s); }
     });
     
+    // 先批量补全 pic_id（在 formatGDSong 之前）
+    await fillMissingPicIdsRaw(unique);
+    
+    // 格式化为标准格式（包含 cover/coverSmall/picId 等字段）
+    const formatted = unique.map(formatGDSong);
+    
     // 按 offset 切片
-    const sliced = unique.slice(offset, offset + limit);
-    console.log(`[Artist] Fetched ${unique.length} total, returning ${sliced.length} (offset=${offset}, limit=${limit})`);
+    const sliced = formatted.slice(offset, offset + limit);
+    console.log(`[Artist] Fetched ${formatted.length} total, returning ${sliced.length} (offset=${offset}, limit=${limit})`);
+    
     return sliced;
   } catch (e) {
     console.error('[Artist] Error:', e.message);
