@@ -725,7 +725,7 @@ function playTrack(track, index) {
       miniAlbumEl.style.cursor = 'pointer';
       miniAlbumEl.title = '点击打开专辑';
       miniAlbumEl.onclick = function() {
-        // 优先使用 picId（100% 准确），没有 picId 才用专辑名
+        // 优先使用 picId（100% 准确），同时传 album 名称作为后备
         openAlbumByName(albumText, track.artist, 'netease', picId);
       };
     }
@@ -739,7 +739,7 @@ function playTrack(track, index) {
       ampAlbumEl.onclick = function() {
         closeAmpFullscreenPlayer();
         setTimeout(function() {
-          // 优先使用 picId（100% 准确），没有 picId 才用专辑名
+          // 优先使用 picId（100% 准确），同时传 album 名称作为后备
           openAlbumByName(albumText, track.artist, 'netease', picId);
         }, 400);
       };
