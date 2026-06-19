@@ -741,21 +741,55 @@ const server = http.createServer(async (req, res) => {
   // 7. 音频直链重定向（302 redirect，让浏览器直连网易云 CDN，无需 Render 中转）
   // 这是解决播放卡顿的根本方案：Render 服务器在美国，中转音频会引入 1-2 跳国际延迟
   // 直接 302 → CDN，中国用户直连网易云国内 CDN 节点，速度最快
+  // 7. 音频代理播放（服务器中转，绕过 CDN 防盗链）
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      console.log('[Redirect] Direct CDN for id:', id, '->', audioUrl.substring(0, 80));
-      // 302 重定向到音频直链，浏览器直接连接 CDN，完全绕过 Render 中转
-      res.statusCode = 302;
-      res.setHeader('Location', audioUrl);
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.end();
+      console.log('[Proxy] Streaming audio for id:', id);
+
+      // 服务器作为代理去请求 CDN（带正确 Referer），然后 pipe 给前端
+      const proxyReq = https.get(audioUrl, {
+        headers: {
+          'Referer': 'https://music.163.com/',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+        },
+        timeout: 30000
+      }, (proxyRes) => {
+        // 如果 CDN 返回 403/40x，返回错误
+        if (proxyRes.statusCode !== 200) {
+          console.error('[Proxy] CDN returned', proxyRes.statusCode, 'for id:', id);
+          if (!res.headersSent) {
+            res.statusCode = 502;
+            res.end(JSON.stringify({ error: `CDN returned ${proxyRes.statusCode}` }));
+          }
+          return;
+        }
+        // 转发 Content-Type、Content-Length 等 header
+        res.setHeader('Content-Type', proxyRes.headers['content-type'] || 'audio/mpeg');
+        res.setHeader('Accept-Ranges', 'bytes');
+        if (proxyRes.headers['content-length']) {
+          res.setHeader('Content-Length', proxyRes.headers['content-length']);
+        }
+        res.setHeader('Cache-Control', 'public, max-age=600');
+        proxyRes.pipe(res);
+      });
+
+      proxyReq.on('error', (e) => {
+        console.error('[Proxy] Request error:', e.message);
+        if (!res.headersSent) {
+          res.statusCode = 502;
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      });
+
+      // 前端断开时，也断开到 CDN 的连接
+      res.on('close', () => proxyReq.destroy());
+
     } catch (e) {
-      console.error('[Redirect] Exception:', e.message);
+      console.error('[Proxy] Exception:', e.message);
       if (!res.headersSent) {
         res.statusCode = 500;
         res.end(JSON.stringify({ error: e.message }));
@@ -764,43 +798,35 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 7.5 音频直链 JSON（前端可直接用于 audio.src）
+  // 7.5 音频直链 JSON（返回代理 URL，前端直接用于 audio.src）
   if (pathname === '/api/music/url') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
-    try {
-      const audioUrl = await gdGetSongUrl(id);
-      if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ url: audioUrl }));
-    } catch (e) {
-      res.statusCode = 500;
-      res.end(JSON.stringify({ error: e.message }));
-    }
+    // 返回代理 URL（由服务器中转，绕过 CDN 防盗链）
+    const proxyUrl = `/api/music/proxy?id=${encodeURIComponent(id)}`;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ url: proxyUrl }));
     return;
   }
 
-  // 8. 播放（返回 JSON URL）
+  // 8. 播放（返回代理 URL，服务器中转绕过防盗链）
   if (pathname === '/api/play') {
     const id = params.get('id');
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
-    const audioUrl = await gdGetSongUrl(id);
-    if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
+    const proxyUrl = `/api/music/proxy?id=${encodeURIComponent(id)}`;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ url: audioUrl }));
+    res.end(JSON.stringify({ url: proxyUrl }));
     return;
   }
 
-  // 8.5 下载歌曲（返回直链，前端触发下载）
+  // 8.5 下载歌曲（返回代理 URL，前端触发下载）
   if (pathname === '/api/music/download') {
     const id = params.get('id');
     const title = params.get('title') || 'song';
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
-    const audioUrl = await gdGetSongUrl(id);
-    if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-    // 返回直链，前端用 a.download 触发下载
+    const proxyUrl = `/api/music/proxy?id=${encodeURIComponent(id)}`;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ url: audioUrl, filename: title + '.mp3' }));
+    res.end(JSON.stringify({ url: proxyUrl, filename: title + '.mp3' }));
     return;
   }
 

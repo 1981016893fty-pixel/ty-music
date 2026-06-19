@@ -2984,19 +2984,6 @@ body {
 }
 
 /* 音波频谱 Canvas — 固定定位，JS 动态对齐封面，不影响布局 */
-.amp-visualizer-canvas {
-  position: fixed;
-  pointer-events: none;
-  z-index: 201;   /* 在全屏播放器上层 */
-  opacity: 0;
-  transition: opacity 0.6s ease;
-  /* 不使用全局 blur，由 JS 在绘制时控制清晰度 */
-}
-
-/* 电子乐播放时显示音波（canvas 自身 class 控制） */
-.amp-visualizer-canvas.visualizer-active {
-  opacity: 1;
-}
 
 .amp-artwork {
   width: 100%;

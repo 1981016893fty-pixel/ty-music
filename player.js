@@ -660,9 +660,6 @@ function playTrack(track, index) {
 
   state.currentTrack = track;
   // 关键：在用户手势最前端初始化 AudioContext，确保 resume() 在手势中生效
-  if (typeof initAudioContext === 'function') initAudioContext();
-  if (typeof resumeAudioContext === 'function') resumeAudioContext();
-  
   // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
   cacheTrack(track);
 
@@ -760,50 +757,28 @@ function playTrack(track, index) {
     return;
   }
 
-  // 通过直链播放（先获取 CDN URL，再赋值给 audio.src，无需 Render 中转）
+  // 通过代理播放（服务器中转，绕过 CDN 防盗链）
   if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
+    var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+    console.log('[Play] Using proxy URL for', track.title);
+    audio.src = proxyUrl;
+    audio.load();
     showToast('正在加载音频...');
-
-    // 先获取音频直链（302 redirect 或 JSON url）
-    fetch('/api/music/url?id=' + encodeURIComponent(track.id))
-      .then(function(r) { return r.json(); })
-      .then(function(data) {
-        if (!data.url) {
-          showToast('暂无可用音源，请换一首');
-          return;
-        }
-        console.log('[Play] Using direct CDN URL for', track.title);
-        audio.src = data.url;
-        audio.load();
-        return audio.play();
-      })
-      .then(function() {
-        if (!arguments[0] && arguments.length > 0) return; // play() 返回 undefined 不处理
-        state.isPlaying = true;
-        updatePlayBtn();
-        var toast = document.querySelector('.toast');
-        if (toast) toast.classList.remove('show');
-      })
-      .catch(function(e) {
-        console.warn('[Play] Direct URL failed, falling back to proxy:', e.message);
-        // 回退：用 /api/music/proxy（302 → CDN）
-        audio.src = '/api/music/proxy?id=' + encodeURIComponent(track.id);
-        audio.load();
-        audio.play().then(function() {
-          state.isPlaying = true;
-          updatePlayBtn();
-        }).catch(function(e2) {
-          console.warn('Play failed:', e2.message);
-          showToast('播放失败，请换一首试试');
-        });
-      })
-      .finally(function() {
-        updateLikeUI();
-        updatePlayBtn();
-        updateQueueHighlight();
-        if (ampIsShowing) updateAmpFullscreenPlayer();
-        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-      });
+    audio.play().then(function() {
+      state.isPlaying = true;
+      updatePlayBtn();
+      var toast = document.querySelector('.toast');
+      if (toast) toast.classList.remove('show');
+    }).catch(function(e) {
+      console.warn('[Play] Proxy play failed:', e.message);
+      showToast('播放失败，请换一首试试');
+    }).finally(function() {
+      updateLikeUI();
+      updatePlayBtn();
+      updateQueueHighlight();
+      if (ampIsShowing) updateAmpFullscreenPlayer();
+      state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+    });
     return;
   }
 
@@ -856,9 +831,6 @@ function togglePlay() {
     state.isPlaying = false;
     updatePlayBtn();
   } else {
-    // 关键：在用户手势中初始化/恢复 AudioContext，否则浏览器会 blocked
-    if (typeof initAudioContext === 'function') initAudioContext();
-    if (typeof resumeAudioContext === 'function') resumeAudioContext();
     audio.play().then(() => {
       state.isPlaying = true;
       updatePlayBtn();
@@ -874,10 +846,10 @@ audio.addEventListener('play', () => {
   state.isPlaying = true;
   updatePlayBtn();
   // AudioContext 已在 togglePlay 用户手势中初始化，这里只管全屏可视化
-  if (ampIsShowing) { updateAmpPlayBtn(); startVisualizer(state.currentTrack); }
+  if (ampIsShowing) updateAmpPlayBtn();
 });
 
-audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) { updateAmpPlayBtn(); stopVisualizer(); } });
+audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) updateAmpPlayBtn(); });
 audio.addEventListener('ended', () => {
   if (state.repeatMode === 2) { audio.currentTime = 0; audio.play(); }
   else playNext();
@@ -2129,319 +2101,6 @@ function applyAmpArtwork(artwork, urls, idx) {
   img.src = urls[idx];
 }
 
-// ========== 🎵 音波频谱动效（仅流行/电子乐） ==========
-
-// Web Audio API 单例
-let _audioCtx = null;
-let _analyser = null;
-let _sourceNode = null;
-let _vizAnimId = null;
-let _vizActive = false;
-let _vizAccentColor = '180, 94, 255'; // 默认紫色，会被专辑色覆盖
-
-// 判断是否是流行/电子乐（基于关键词 + 已知艺人）
-const ELECTRONIC_ARTISTS = new Set([
-  'the weeknd', 'daft punk', 'deadmau5', 'avicii', 'calvin harris',
-  'martin garrix', 'tiesto', 'skrillex', 'diplo', 'zedd',
-  'marshmello', 'chainsmokers', 'alan walker', 'kygo', 'flume',
-  'disclosure', 'aphex twin', 'boards of canada', 'porter robinson',
-  'odesza', 'madeon', 'a-trak', 'afrojack', 'hardwell', 'armin van buuren',
-  'david guetta', 'steve aoki', 'marshmello', 'illenium', 'kasbo',
-  'san holo', 'chet faker', 'kaytranada', 'solomun', 'jamie xx',
-  'james blake', 'four tet', 'caribou', '邓紫棋', 'jvke', 'rema',
-  'bad bunny', 'j. cole', 'travis scott', 'tyler the creator',
-  'pharrell williams', 'kanye west', 'frank ocean',
-]);
-const ELECTRONIC_TITLE_KEYWORDS = [
-  'remix', 'edit', 'bootleg', 'flip', 'vip', 'mix', 'dj',
-  'electronic', 'edm', 'house', 'techno', 'trance', 'rave',
-  'bass', 'drop', 'synth', 'club', 'dance', 'electric', 'cyber',
-  'neon', 'digital', 'ft.', 'feat', 'prod.', 'wave', 'trap',
-  'starboy', 'blinding lights', 'save your tears', 'gasoline',
-  'strobe', 'around the world', 'one more time', 'get lucky',
-];
-const NON_ELECTRONIC_GENRES = [
-  '古典', '爵士', 'classical', 'jazz', 'folk', '民谣',
-  '轻音乐', '国风', '戏曲', '粤语', '佛教', '冥想', 'meditate',
-];
-
-function isElectronicTrack(track) {
-  if (!track) { console.log('[Visualizer] isElectronic: no track'); return false; }
-  const title = (track.title || track.name || '').toLowerCase();
-  const artist = (track.artist || '').toLowerCase();
-  console.log('[Visualizer] isElectronic check:', { title, artist });
-
-  // 排除非电子风格
-  for (const kw of NON_ELECTRONIC_GENRES) {
-    if (title.includes(kw.toLowerCase()) || artist.includes(kw.toLowerCase())) {
-      console.log('[Visualizer] Excluded by genre:', kw);
-      return false;
-    }
-  }
-  // 已知艺人 — 用 includes 模糊匹配
-  for (const art of ELECTRONIC_ARTISTS) {
-    if (artist.includes(art)) {
-      console.log('[Visualizer] Matched artist:', art);
-      return true;
-    }
-  }
-
-  // 标题关键词
-  for (const kw of ELECTRONIC_TITLE_KEYWORDS) {
-    if (title.includes(kw)) {
-      console.log('[Visualizer] Matched title keyword:', kw);
-      return true;
-    }
-  }
-
-  // 歌名含 "remix" 等变体
-  if (/\(?\s*remix/i.test(title)) {
-    console.log('[Visualizer] Matched remix in title');
-    return true;
-  }
-
-  console.log('[Visualizer] Not electronic, no match');
-  return false;
-}
-
-// 初始化 Web Audio API（懒加载，首次播放时创建）
-// 关键：createMediaElementSource(audio) 只能调用一次，
-// 第二次调用会抛 DOMException，且会断开音频输出导致无声。
-// 解决：用 _sourceNode 标记是否已创建，避免重复调用。
-function initAudioContext() {
-  if (_audioCtx && _audioCtx.state !== 'closed') {
-    if (_audioCtx.state === 'suspended') {
-      _audioCtx.resume().catch(() => {});
-    }
-    return true;
-  }
-  try {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return false;
-    _audioCtx = new AudioCtx();
-    // 新创建的 AudioContext 初始状态是 suspended，必须在用户手势中 resume
-    _audioCtx.resume().catch(() => {});
-    _analyser = _audioCtx.createAnalyser();
-    _analyser.fftSize = 256;
-    _analyser.smoothingTimeConstant = 0.80;
-
-    // 关键：只有第一次才调用 createMediaElementSource
-    // 如果音频已经被其他节点接管，这里会抛异常，需要静默处理
-    if (!_sourceNode) {
-      try {
-        _sourceNode = _audioCtx.createMediaElementSource(audio);
-        _sourceNode.connect(_analyser);
-        _analyser.connect(_audioCtx.destination);
-        console.log('[Visualizer] AudioContext: sourceNode created and connected');
-      } catch (e2) {
-        // createMediaElementSource 只能调用一次，重复调用会到这里
-        // 此时音频输出已被断开，需要重新让 audio 输出到扬声器
-        console.warn('[Visualizer] createMediaElementSource failed:', e2.message);
-        // 如果已有 _analyser，至少把 analyser 连到输出（无频谱数据）
-        if (_analyser) {
-          _analyser.connect(_audioCtx.destination);
-        }
-        // 标记：无法获取频谱，但音频不会断
-        _sourceNode = null;
-      }
-    } else {
-      // _sourceNode 已存在，重新连接（防止被断开）
-      try {
-        _sourceNode.disconnect();
-        _sourceNode.connect(_analyser);
-        _analyser.connect(_audioCtx.destination);
-      } catch (e3) {
-        // 节点已连接，忽略
-      }
-    }
-
-    console.log('[Visualizer] AudioContext initialized, state:', _audioCtx.state);
-    return true;
-  } catch (e) {
-    console.warn('[Visualizer] AudioContext init failed:', e.message);
-    return false;
-  }
-}
-
-// 恢复 AudioContext（浏览器自动挂起时）
-function resumeAudioContext() {
-  if (_audioCtx && _audioCtx.state === 'suspended') {
-    _audioCtx.resume().catch(() => {});
-  }
-}
-
-// 绘制音波 — 紧贴封面圆角矩形边缘，节拍强弱分明
-// 封面 CSS border-radius: 16px，音波条形沿圆角矩形周长分布
-function drawVisualizer() {
-  var canvas = document.getElementById('ampVisualizerCanvas');
-  var wrapper = document.getElementById('ampArtworkWrapper');
-  if (!canvas || !wrapper || !_analyser || !_vizActive) return;
-
-  var dpr = window.devicePixelRatio || 1;
-  var rect = wrapper.getBoundingClientRect();
-  var artSize = Math.round(Math.min(rect.width, rect.height));
-  var cxPage = Math.round(rect.left + rect.width / 2);
-  var cyPage = Math.round(rect.top  + rect.height / 2);
-
-  // Canvas 尺寸：封面 + 音波空间
-  var MAX_BAR = 48;
-  var totalSize = artSize + MAX_BAR * 2 + 16;
-  var half = totalSize / 2;
-
-  canvas.style.left = (cxPage - half) + 'px';
-  canvas.style.top  = (cyPage - half) + 'px';
-  canvas.style.width  = totalSize + 'px';
-  canvas.style.height = totalSize + 'px';
-
-  var pw = Math.round(totalSize * dpr);
-  var ph = Math.round(totalSize * dpr);
-  if (canvas.width !== pw || canvas.height !== ph) {
-    canvas.width  = pw;
-    canvas.height = ph;
-  }
-
-  var ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, totalSize, totalSize);
-
-  // 频谱数据
-  var bufLen = _analyser.frequencyBinCount;
-  var data = new Uint8Array(bufLen);
-  _analyser.getByteFrequencyData(data);
-
-  // 节拍能量：低频（0~15 仓）→ 三次方映射拉大强弱差
-  var beatRaw = 0;
-  for (var i = 0; i < 16; i++) beatRaw += data[i];
-  beatRaw = beatRaw / (16 * 255);
-  var beatScale = beatRaw * beatRaw * beatRaw;
-
-  // 专辑主题色（0~1 范围）
-  var cols = _vizAccentColor.split(',').map(function(s) { return parseInt(s.trim()) || 0; });
-  var R = (cols[0] || 180) / 255;
-  var G = (cols[1] || 94)  / 255;
-  var B = (cols[2] || 255) / 255;
-
-  // ========== 圆角矩形参数 ==========
-  var ox = half, oy = half;            // canvas 中心
-  var box = artSize / 2 + 4;          // 封面半宽 + 4px 间隙
-  var cornerR = 16;                    // CSS border-radius
-  var side = artSize - cornerR * 2;    // 直边长度
-  var arcLen = Math.PI * cornerR / 2;  // 每个角的 90° 弧长
-  var peri = side * 4 + arcLen * 4;    // 总周长
-
-  // 在圆角矩形上按周长比例 t∈[0,1) 取点
-  // 返回 {x, y, nx, ny}：canvas 坐标 + 外法线单位向量
-  function getEdgePoint(t) {
-    var d = t * peri;
-    var l = half - box;    // 封面左边缘（canvas 坐标）
-    var r = half + box;    // 封面右边缘
-    var t2 = half - box;  // 封面上边缘
-    var b  = half + box;   // 封面下边缘
-
-    // 分段（逆时针）：上直边 → 右上角 → 右直边 → 右下角 → 下直边 → 左下角 → 左直边 → 左上角
-    var segs = [
-      { len: side, type: 'h',   x0: l + cornerR, y0: t2,                   nx: 0,  ny: -1, dir:  1 },
-      { len: arcLen, type: 'arc', cx: r - cornerR, cy: t2 + cornerR,       a0: -Math.PI/2, a1: 0 },
-      { len: side, type: 'v',   x0: r,         y0: t2 + cornerR,           nx: 1,  ny:  0, dir:  1 },
-      { len: arcLen, type: 'arc', cx: r - cornerR, cy: b - cornerR,        a0: 0,         a1: Math.PI/2 },
-      { len: side, type: 'h',   x0: r - cornerR, y0: b,                   nx: 0,  ny:  1, dir: -1 },
-      { len: arcLen, type: 'arc', cx: l + cornerR, cy: b - cornerR,        a0: Math.PI/2, a1: Math.PI },
-      { len: side, type: 'v',   x0: l,         y0: b - cornerR,           nx: -1, ny:  0, dir: -1 },
-      { len: arcLen, type: 'arc', cx: l + cornerR, cy: t2 + cornerR,       a0: Math.PI,   a1: Math.PI*3/2 },
-    ];
-
-    for (var j = 0; j < segs.length; j++) {
-      if (d <= segs[j].len + 1e-6) {
-        var s = segs[j];
-        var local = d / s.len;
-        if (s.type === 'h') {
-          return { x: s.x0 + side * local * s.dir, y: s.y0, nx: s.nx, ny: s.ny };
-        } else if (s.type === 'v') {
-          return { x: s.x0, y: s.y0 + side * local * s.dir, nx: s.nx, ny: s.ny };
-        } else {
-          var angle = s.a0 + (s.a1 - s.a0) * local;
-          return {
-            x: s.cx + cornerR * Math.cos(angle),
-            y: s.cy + cornerR * Math.sin(angle),
-            nx: Math.cos(angle),
-            ny: Math.sin(angle)
-          };
-        }
-      }
-      d -= segs[j].len;
-    }
-    // 容错：返回起点
-    return { x: l + cornerR, y: t2, nx: 0, ny: -1 };
-  }
-
-  // ========== 绘制音波条 ==========
-  // 沿周长每 ~3px 一条
-  var BAR_COUNT = Math.max(100, Math.round(peri / 3));
-
-  for (var i = 0; i < BAR_COUNT; i++) {
-    var t = i / BAR_COUNT;
-    var pt = getEdgePoint(t);
-
-    // 对应频率仓（按位置映射到频谱）
-    var binIdx = Math.min(Math.round(t * bufLen), bufLen - 1);
-    var val = (data[binIdx] || 0) / 255;
-
-    // 三次方映射：弱值→接近0，强值→接近1
-    var valPow = val * val * val;
-    // 条高 = 基础(3px) + 频率贡献 + 节拍增益
-    var barH = 3 + valPow * (MAX_BAR - 8) + beatScale * MAX_BAR * 0.9;
-
-    // 起点（封面边缘外 4px，沿外法线）
-    var sx = pt.x + pt.nx * 4;
-    var sy = pt.y + pt.ny * 4;
-    // 终点（再沿外法线延伸 barH）
-    var ex = sx + pt.nx * barH;
-    var ey = sy + pt.ny * barH;
-
-    // 透明度：弱频暗，强频亮，强拍加光
-    var alpha = 0.2 + valPow * 0.8 + beatScale * 0.5;
-
-    // 颜色：用主题色
-    var rInt = Math.round(R * 255);
-    var gInt = Math.round(G * 255);
-    var bInt = Math.round(B * 255);
-
-    // 渐变：根部实色 → 尾部透明
-    var grad = ctx.createLinearGradient(sx, sy, ex, ey);
-    grad.addColorStop(0, 'rgba(' + rInt + ',' + gInt + ',' + bInt + ',' + Math.min(1, alpha).toFixed(2) + ')');
-    grad.addColorStop(1, 'rgba(' + rInt + ',' + gInt + ',' + bInt + ',0)');
-
-    ctx.beginPath();
-    ctx.moveTo(sx, sy);
-    ctx.lineTo(ex, ey);
-    ctx.strokeStyle = grad;
-    ctx.lineWidth = Math.max(1.0, peri / BAR_COUNT * 0.55);
-    ctx.lineCap = 'round';
-    ctx.stroke();
-  }
-
-  // ========== 节拍脉冲光晕 ==========
-  if (beatScale > 0.2) {
-    var glowR = box + beatScale * MAX_BAR * 1.5;
-    var rI = Math.round(R * 255);
-    var gI = Math.round(G * 255);
-    var bI = Math.round(B * 255);
-    var grad2 = ctx.createRadialGradient(ox, oy, box, ox, oy, glowR);
-    grad2.addColorStop(0, 'rgba(' + rI + ',' + gI + ',' + bI + ',0)');
-    grad2.addColorStop(0.4, 'rgba(' + rI + ',' + gI + ',' + bI + ',' + (beatScale * 0.22).toFixed(2) + ')');
-    grad2.addColorStop(1, 'rgba(' + rI + ',' + gI + ',' + bI + ',0)');
-    ctx.beginPath();
-    ctx.arc(ox, oy, glowR, 0, Math.PI * 2);
-    ctx.fillStyle = grad2;
-    ctx.fill();
-  }
-
-  if (_vizActive) {
-    _vizAnimId = requestAnimationFrame(drawVisualizer);
-  }
-}
-
-
 // 辅助：在圆角矩形路径上画圆角矩形（用于未来剪裁）
 function roundRectPath(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -2455,59 +2114,6 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.lineTo(x, y + r);
   ctx.arcTo(x, y, x + r, y, r);
   ctx.closePath();
-}
-
-// 启动音波动效
-function startVisualizer(track) {
-  console.log('[Visualizer] startVisualizer called, track:', track ? (track.title || track.name) : null);
-  stopVisualizer();
-  if (!isElectronicTrack(track)) {
-    console.log('[Visualizer] Not electronic track, skip');
-    const c = $('#ampVisualizerCanvas');
-    if (c) c.classList.remove('visualizer-active');
-    return;
-  }
-  console.log('[Visualizer] Electronic track detected! Initializing AudioContext...');
-  if (!initAudioContext()) {
-    console.warn('[Visualizer] AudioContext init failed');
-    return;
-  }
-  resumeAudioContext();
-  console.log('[Visualizer] AudioContext ready, state:', _audioCtx.state);
-
-  // 更新音波颜色（从已提取的 CSS 变量读）
-  const player = $('#ampFullscreenPlayer');
-  if (player) {
-    const accentRgb = player.style.getPropertyValue('--amp-accent-rgb').trim();
-    if (accentRgb) _vizAccentColor = accentRgb;
-  }
-
-  _vizActive = true;
-  const c = $('#ampVisualizerCanvas');
-  if (c) {
-    c.classList.add('visualizer-active');
-    console.log('[Visualizer] Canvas activated, classList:', c.className);
-  }
-
-  // 等一帧让 canvas 可见后再开始绘制
-  requestAnimationFrame(() => {
-    console.log('[Visualizer] Starting draw loop');
-    drawVisualizer();
-  });
-}
-
-// 停止音波动效
-function stopVisualizer() {
-  _vizActive = false;
-  if (_vizAnimId) { cancelAnimationFrame(_vizAnimId); _vizAnimId = null; }
-  const canvas = $('#ampVisualizerCanvas');
-  if (canvas) {
-    canvas.classList.remove('visualizer-active');
-    const ctx = canvas.getContext('2d');
-    if (canvas.width > 0 && canvas.height > 0) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  }
 }
 
 // ========== 专辑取色引擎 ==========
@@ -2663,9 +2269,7 @@ function applyAlbumColors(colors) {
   });
 
   // 同步更新音波动效颜色
-  if (typeof _vizAccentColor !== 'undefined') {
-    _vizAccentColor = pRgb;
-  }
+
 }
 
 function openAmpFullscreenPlayer() {
@@ -2696,7 +2300,6 @@ function openAmpFullscreenPlayer() {
 
   // 启动音波动效（如果是电子乐且正在播放）
   if (state.isPlaying && state.currentTrack) {
-    startVisualizer(state.currentTrack);
   }
 }
 
@@ -2709,7 +2312,6 @@ function closeAmpFullscreenPlayer() {
     player.style.display = 'none';
     ampIsShowing = false;
     document.body.style.overflow = '';
-    stopVisualizer();   // 关闭全屏时停止音波
   }, 400);
 }
 
@@ -2805,9 +2407,7 @@ function updateAmpFullscreenPlayer() {
 
   // 切歌时重新判断音波动效
   if (state.isPlaying && ampIsShowing) {
-    startVisualizer(track);
   } else {
-    stopVisualizer();
   }
 }
 
