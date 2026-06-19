@@ -29,6 +29,7 @@ const STATIC_FILES = [
   ['/style.css', 'style.css'],
   ['/liquid-glass.js', 'liquid-glass.js'],
   ['/manifest.json', 'manifest.json'],
+  ['/service-worker.js', 'service-worker.js'],
   ['/icon-192.png', 'icon-192.png'],
   ['/icon-512.png', 'icon-512.png'],
 ];

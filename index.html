@@ -20,6 +20,18 @@
   <link rel="apple-touch-startup-image" href="/icon-512.png?v=20260619">
   <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png?v=20260619">
   <link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png?v=20260619">
+  <!-- Service Worker 注册 -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/service-worker.js').then(function(reg) {
+          console.log('[SW] Registered:', reg.scope);
+        }).catch(function(err) {
+          console.log('[SW] Failed:', err);
+        });
+      });
+    }
+  </script>
 </head>
 <body>
   <!-- 苹果液态玻璃 SVG 滤镜 -->
