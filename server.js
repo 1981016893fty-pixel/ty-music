@@ -955,31 +955,15 @@ const server = http.createServer(async (req, res) => {
       if (picId) {
         console.log(`[Album] Request by picId: picId="${picId}", album="${album}", artist="${artist}"`);
         
-        // 策略：同时用多种查询搜索，然后取并集，再用 picId 过滤
-        const queries = [];
-        if (artist && album) queries.push(`${artist} ${album}`); // 最精确
-        if (artist) queries.push(artist); // 艺人所有歌曲
-        if (album) queries.push(album); // 专辑名
+        // 策略：用 "artist album" 搜索，然后按 picId 过滤
+        // 这样能拿到这个专辑的部分歌曲（可能不是全部，但足够展示）
+        const query = (artist && album) ? `${artist} ${album}` : (artist || album || '');
+        const allSongs = await searchSongs(query, 100, 'netease');
         
-        // 并行搜索
-        const allResults = [];
-        await Promise.all(queries.map(async (q) => {
-          const songs = await searchSongs(q, 100, 'netease');
-          allResults.push(...songs);
-        }));
+        console.log(`[Album] Searched "${query}", got ${allSongs.length} songs`);
         
-        // 去重
-        const seen = new Set();
-        const uniqueSongs = allResults.filter(s => {
-          if (!s.id || seen.has(s.id)) return false;
-          seen.add(s.id);
-          return true;
-        });
-        
-        console.log(`[Album] Searched ${queries.length} queries, got ${uniqueSongs.length} unique songs`);
-        
-        // 过滤出 picId 匹配的所有歌曲（即这个专辑的所有曲目）
-        const albumSongs = uniqueSongs.filter(s => (s.picId || s.albumId || '') === picId);
+        // 过滤出 picId 匹配的所有歌曲（即这个专辑的歌曲）
+        const albumSongs = allSongs.filter(s => (s.picId || s.albumId || '') === picId);
         
         if (albumSongs.length === 0) {
           console.log(`[Album] No songs found with picId=${picId}`);
