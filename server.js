@@ -463,12 +463,41 @@ async function findAlbumCoverPicId(artist, album, songName) {
   const cached = albumCoverCache.get(cacheKey);
   if (cached !== undefined) return cached; // null is also cached
   
+
+  // 智能判断：album 字段是否可信
+  // 如果 album 和 songName 完全一样，或者 album 为空/太短，认为是错误数据
+  function isAlbumReliable(album, songName) {
+    if (!album || album.trim().length < 2) return false;
+    
+    const albumLower = album.toLowerCase().trim();
+    const songLower = (songName || '').toLowerCase().trim();
+    
+    // album 和 songName 完全一样 → 可疑（应该是不同的）
+    if (albumLower === songLower) return false;
+    
+    // album 包含在 songName 中，且长度接近 → 可疑（可能是数据错误）
+    if (songLower && albumLower && songLower.includes(albumLower) && Math.abs(album.length - songName.length) < 5) {
+      return false;
+    }
+    
+    // album 太短（< 2个字符）-> 不可信
+    if (album.trim().length < 2) return false;
+    
+    return true;
+  }
+  
+  const albumReliable = isAlbumReliable(album, songName);
+  if (!albumReliable) {
+    console.log(`[AlbumCover] Album "${album}" seems unreliable for song "${songName}", ignoring album field`);
+  }
+  
   try {
     // Build list of search queries to try (in priority order)
     const queries = [];
-    const coreAlbum = album ? album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim() : '';
+    const coreAlbum = albumReliable ? album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim() : '';
     const coreSong = songName ? songName.replace(/\s*[\(（].*[\)）]\s*/g, '').trim() : '';
     
+    // 优先使用可靠的组合
     if (artist && coreAlbum) queries.push(artist + ' ' + coreAlbum);
     if (artist && coreSong) queries.push(artist + ' ' + coreSong);
     if (coreSong) queries.push(coreSong);
@@ -484,29 +513,44 @@ async function findAlbumCoverPicId(artist, album, songName) {
           for (const s of data) {
             if (!s.pic_id) continue;
             
-            // 验证专辑是否匹配
-            const sAlbum = (s.album || '').toLowerCase();
-            const reqAlbum = (album || '').toLowerCase();
-            const reqCoreAlbum = coreAlbum.toLowerCase();
-            
-            // 专辑名完全匹配或包含
-            const albumMatch = sAlbum && (
-              sAlbum === reqAlbum ||
-              sAlbum.includes(reqCoreAlbum) ||
-              reqCoreAlbum.includes(sAlbum)
-            );
-            
-            if (albumMatch) {
-              console.log(`[AlbumCover] Found picId ${s.pic_id} via "${query}" (album: "${s.album}")`);
-              return s.pic_id;
+            // 验证专辑是否匹配（仅当 album 可靠时）
+            if (albumReliable) {
+              const sAlbum = (s.album || '').toLowerCase();
+              const reqAlbum = (album || '').toLowerCase();
+              const reqCoreAlbum = coreAlbum.toLowerCase();
+              
+              // 专辑名完全匹配或包含
+              const albumMatch = sAlbum && (
+                sAlbum === reqAlbum ||
+                sAlbum.includes(reqCoreAlbum) ||
+                reqCoreAlbum.includes(sAlbum)
+              );
+              
+              if (albumMatch) {
+                console.log(`[AlbumCover] Found picId ${s.pic_id} via "${query}" (album: "${s.album}")`);
+                return s.pic_id;
+              }
+            } else {
+              // album 不可靠时，只验证艺人是否匹配
+              if (artist && s.artist) {
+                const sArtist = Array.isArray(s.artist) ? s.artist.join(', ') : s.artist;
+                if (sArtist.toLowerCase().includes(artist.toLowerCase().split(',')[0].trim())) {
+                  console.log(`[AlbumCover] Found picId ${s.pic_id} via "${query}" (artist match, album ignored)`);
+                  return s.pic_id;
+                }
+              } else if (!artist) {
+                // 没有艺人信息，直接用第一个有 pic_id 的结果
+                console.log(`[AlbumCover] Found picId ${s.pic_id} via "${query}" (no artist filter)`);
+                return s.pic_id;
+              }
             }
           }
           
-          // 如果没找到专辑匹配的，退而求其次：用第一首有 pic_id 的（但记录警告）
+          // 如果没找到严格匹配的，退而求其次：用第一首有 pic_id 的（但记录警告）
           if (query === queries[0]) {
             const fallback = data.find(s => s.pic_id);
             if (fallback) {
-              console.log(`[AlbumCover] WARNING: No exact album match for "${album}", using fallback picId ${fallback.pic_id} from "${fallback.album}"`);
+              console.log(`[AlbumCover] WARNING: No exact match for "${songName}", using fallback picId ${fallback.pic_id} from "${fallback.album}" (artist: ${fallback.artist})`);
               return fallback.pic_id;
             }
           }
