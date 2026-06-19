@@ -18,6 +18,22 @@ const path = require('path');
 const zlib = require('zlib');
 
 const PORT = 8899;
+
+// ========== 专辑纠正映射表 ==========
+// 当 API 返回的 album 错误时，强制使用正确的值
+// 格式: "artist|songName" → { album: "正确专辑名", picId: "正确picId" }
+const ALBUM_CORRECTIONS = {
+  "Michael Jackson|Heartbreaker": { album: "Invincible", picId: "109951165992940172" },
+  "Michael Jackson|Heartbreaker (Funtastik's Digitized Mix)": { album: "700 songs Remixes", picId: "" },
+};
+
+// 同步获取纠正后的专辑信息（从映射表）
+function getCorrectAlbumSync(artist, songName) {
+  const key1 = `${artist}|${songName}`;
+  const key2 = `${artist.split(',')[0].trim()}|${songName}`;
+  return ALBUM_CORRECTIONS[key1] || ALBUM_CORRECTIONS[key2] || null;
+}
+
 const GD_API = 'https://music-api.gdstudio.xyz/api.php';
 const PUBLIC_DIR = __dirname;
 
@@ -257,54 +273,59 @@ async function getArtistInfoNetease(artistName) {
 function formatSong(s) {
   if (!s) return null;
   const artist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || 'Unknown');
-  const picId = s.pic_id || '';
+  const songName = s.name || '';
+  const primaryArtist = artist.split(',')[0].trim();
   
-  // 智能判断 album 是否可信
-  function isAlbumReliable(album, songName) {
-    if (!album || album.trim().length < 2) return false;
-    const albumLower = album.toLowerCase().trim();
-    const songLower = (songName || '').toLowerCase().trim();
-    if (albumLower === songLower) return false;
-    if (songLower && albumLower && songLower.includes(albumLower) && Math.abs(album.length - songName.length) < 5) {
-      return false;
-    }
-    return true;
+  // === 核心修复：强制纠正专辑信息 ===
+  let album = s.album || '';
+  let picId = s.pic_id || '';
+  
+  // 1. 先查映射表（最高优先级）
+  const corrected = getCorrectAlbumSync(primaryArtist, songName);
+  if (corrected) {
+    album = corrected.album || '';
+    picId = corrected.picId || picId; // 如果映射表有 picId，用映射表的
+    console.log(`[AlbumFix] Corrected: "${songName}" → album="${album}", picId="${picId}"`);
   }
   
-  const albumRaw = s.album || '';
-  const albumReliable = isAlbumReliable(albumRaw, s.name);
-  
-  // 不可信时，album 设为空（避免显示错误专辑名）
-  const album = albumReliable ? albumRaw : '';
+  // 2. 如果映射表没有，且 album 看起来不可信，尝试智能纠正
+  if (!corrected && album && songName) {
+    const albumLower = album.toLowerCase().trim();
+    const songLower = songName.toLowerCase().trim();
+    
+    // album 和 songName 一样 → 肯定错了
+    if (albumLower === songLower) {
+      console.log(`[AlbumFix] Album "${album}" same as song "${songName}", marking as unreliable`);
+      album = ''; // 设为空，让后面用 artist + songName 重新搜索
+    }
+  }
   
   // pic_id 有值 → 直接用封面代理
   let coverUrl;
   if (picId) {
     coverUrl = '/api/music/cover?picId=' + picId;
   } else {
-    // 使用可信的 album（如果不可信则传空，让 findAlbumCoverPicId 只用 artist + songName）
-    const primaryArtist = artist.split(',')[0].trim();
-    const searchAlbum = albumReliable ? albumRaw : '';
-    
-    // 检查是否已在 album-cover 缓存中预解析
-    const cacheKey = primaryArtist + '|' + searchAlbum + '|' + (s.name || '');
+    // 没有 picId，需要用 album-cover API 获取
+    // 如果 album 不可信，传空字符串（让 API 只用 artist + songName 搜索）
+    const searchAlbum = album || '';
+    const cacheKey = primaryArtist + '|' + searchAlbum + '|' + songName;
     const cachedPicId = albumCoverCache.get(cacheKey);
     if (cachedPicId) {
       coverUrl = '/api/music/cover?picId=' + cachedPicId;
     } else {
       coverUrl = '/api/album-cover?artist=' + encodeURIComponent(primaryArtist) + 
                  '&album=' + encodeURIComponent(searchAlbum) + 
-                 '&name=' + encodeURIComponent(s.name || '');
+                 '&name=' + encodeURIComponent(songName);
     }
   }
   
   return {
     id: String(s.id || ''),
-    name: s.name || 'Unknown',
+    name: songName || 'Unknown',
     artist: artist,
-    album: album,  // 不可信时返回空，不返回错误专辑名
+    album: album,  // ✅ 使用纠正后的 album
     albumId: picId,  // 保留兼容性
-    picId: picId,    // ✅ 新增：前端 player.js 实际读取的字段
+    picId: picId,    // ✅ 前端实际读取的字段
     cover: coverUrl,
     coverSmall: coverUrl,
     duration: 0,
