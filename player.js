@@ -943,12 +943,61 @@ audio.addEventListener('canplay', () => {
   if (playTimeout) { clearTimeout(playTimeout); playTimeout = null; }
 });
 
-// Progress bar click
-$('#progressBar').addEventListener('click', (e) => {
-  const rect = $('#progressBar').getBoundingClientRect();
-  const pct = (e.clientX - rect.left) / rect.width;
-  audio.currentTime = pct * (audio.duration || 0);
-});
+// Progress bar — 支持点击 + 拖拽（鼠标 & 触摸）
+(function () {
+  const bar = $('#progressBar');
+  const fill = $('#progressFill');
+  const thumb = $('#progressThumb');
+  let dragging = false;
+
+  function getClientX(e) {
+    return e.touches ? e.touches[0].clientX : e.clientX;
+  }
+
+  function applySeek(clientX) {
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    // 拖拽期间实时更新 UI，不立刻跳转（减少音频跳动）
+    fill.style.width = (pct * 100) + '%';
+    thumb.style.left = (pct * 100) + '%';
+    return pct;
+  }
+
+  function onStart(e) {
+    if (!audio.duration) return;
+    dragging = true;
+    bar.classList.add('seeking');
+    thumb.style.opacity = '1';
+    applySeek(getClientX(e));
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    applySeek(getClientX(e));
+    e.preventDefault();
+  }
+
+  function onEnd(e) {
+    if (!dragging) return;
+    dragging = false;
+    bar.classList.remove('seeking');
+    thumb.style.opacity = '';
+    const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+    const pct = Math.max(0, Math.min(1, (clientX - bar.getBoundingClientRect().left) / bar.getBoundingClientRect().width));
+    audio.currentTime = pct * (audio.duration || 0);
+  }
+
+  // 鼠标事件
+  bar.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+
+  // 触摸事件（移动端）
+  bar.addEventListener('touchstart', onStart, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
+})();
 
 // ========== Volume ==========
 function setVolume(v) {
@@ -962,10 +1011,43 @@ function setVolume(v) {
   else { icon.className = 'fa-solid fa-volume-high'; state.isMuted = false; }
 }
 
-$('#volumeBar').addEventListener('click', (e) => {
-  const rect = $('#volumeBar').getBoundingClientRect();
-  setVolume((e.clientX - rect.left) / rect.width);
-});
+// Volume bar — 支持点击 + 拖拽（鼠标 & 触摸）
+(function () {
+  const bar = $('#volumeBar');
+  let dragging = false;
+
+  function getClientX(e) {
+    return e.touches ? e.touches[0].clientX : e.clientX;
+  }
+
+  function applyVolume(clientX) {
+    const rect = bar.getBoundingClientRect();
+    const v = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    setVolume(v);
+    return v;
+  }
+
+  function onStart(e) {
+    dragging = true;
+    applyVolume(getClientX(e));
+    e.preventDefault();
+  }
+
+  function onMove(e) {
+    if (!dragging) return;
+    applyVolume(getClientX(e));
+    e.preventDefault();
+  }
+
+  function onEnd() { dragging = false; }
+
+  bar.addEventListener('mousedown', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onEnd);
+  bar.addEventListener('touchstart', onStart, { passive: false });
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('touchend', onEnd);
+})();
 
 $('#volumeBtn').addEventListener('click', () => {
   if (state.isMuted) setVolume(state._prevVol || 0.7);
@@ -2773,16 +2855,55 @@ function initAmpFullscreenPlayer() {
     });
   }
   
-  // 进度条点击
+  // 全屏进度条 — 支持点击 + 拖拽（鼠标 & 触摸）
   const progressBar = $('#ampProgressBar');
   if (progressBar) {
-    progressBar.addEventListener('click', (e) => {
+    const ampFill = $('#ampProgressFill');
+    const ampThumb = $('#ampProgressThumb');
+    let ampDragging = false;
+
+    function ampGetClientX(e) {
+      return e.touches ? e.touches[0].clientX : e.clientX;
+    }
+
+    function ampApplySeek(clientX) {
       const rect = progressBar.getBoundingClientRect();
-      const pct = (e.clientX - rect.left) / rect.width;
-      if (audio.duration) {
-        audio.currentTime = pct * audio.duration;
-      }
-    });
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (ampFill) ampFill.style.width = (pct * 100) + '%';
+      if (ampThumb) ampThumb.style.left = (pct * 100) + '%';
+      return pct;
+    }
+
+    function ampOnStart(e) {
+      if (!audio.duration) return;
+      ampDragging = true;
+      if (ampThumb) ampThumb.style.opacity = '1';
+      ampApplySeek(ampGetClientX(e));
+      e.preventDefault();
+    }
+
+    function ampOnMove(e) {
+      if (!ampDragging) return;
+      ampApplySeek(ampGetClientX(e));
+      e.preventDefault();
+    }
+
+    function ampOnEnd(e) {
+      if (!ampDragging) return;
+      ampDragging = false;
+      if (ampThumb) ampThumb.style.opacity = '';
+      const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
+      const rect = progressBar.getBoundingClientRect();
+      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      if (audio.duration) audio.currentTime = pct * audio.duration;
+    }
+
+    progressBar.addEventListener('mousedown', ampOnStart);
+    document.addEventListener('mousemove', ampOnMove);
+    document.addEventListener('mouseup', ampOnEnd);
+    progressBar.addEventListener('touchstart', ampOnStart, { passive: false });
+    document.addEventListener('touchmove', ampOnMove, { passive: false });
+    document.addEventListener('touchend', ampOnEnd);
   }
   
   // 点击播放器栏打开全屏播放器
