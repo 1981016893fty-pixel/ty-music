@@ -1058,11 +1058,14 @@ const server = http.createServer(async (req, res) => {
         }
         
         // 向后兼容：没有 songId 或 albumId 时，用专辑名搜索
-        console.log(`[Album] Fallback: using album name search`);
+        console.log(`[Album] Fallback: using album name search, songId=${songId}, albumId=${albumId}, targetAlbumId=${targetAlbumId}`);
         
         if (!album) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'Missing songId, albumId, or album parameter' }));
+          res.end(JSON.stringify({ 
+            error: 'Missing songId, albumId, or album parameter',
+            debug: { songId, albumId, targetAlbumId, album }
+          }));
           return;
         }
         
