@@ -74,7 +74,7 @@
   --radius-xl: 22px;
   --transition: 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
   --transition-fast: 0.12s cubic-bezier(0.25, 0.1, 0.25, 1);
-  --sidebar-width: 260px;
+  --sidebar-width: 240px;
   --player-height: 72px;
 }
 
@@ -135,7 +135,7 @@ body {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  padding: 18px 16px 8px;
+  padding: 18px 14px 8px;
   /* 玻璃内部阴影 — 营造厚度感 */
   box-shadow:
     var(--glass-shadow-soft),
@@ -2608,7 +2608,7 @@ body {
 .cover-flow-stage {
   position: relative;
   width: 100%;
-  height: 280px;
+  height: 300px;
   transform-style: preserve-3d;
   margin-top: 0;
 }
@@ -2618,10 +2618,10 @@ body {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 240px;
-  height: 240px;
-  margin-left: -120px;
-  margin-top: -120px;
+  width: 260px;
+  height: 260px;
+  margin-left: -130px;
+  margin-top: -130px;
   transform-style: preserve-3d;
   cursor: pointer;
   will-change: transform, opacity;
@@ -2636,6 +2636,9 @@ body {
   border: none;
   backface-visibility: hidden;
   -webkit-backface-visibility: hidden;
+  /* 提升图像清晰度：抗锯齿 + 高质量渲染 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .cf-front img {
@@ -2644,8 +2647,16 @@ body {
   object-fit: cover;
   pointer-events: none;
   display: block;
-  image-rendering: -webkit-optimize-contrast;
+  /* 高质量图像渲染，去除模糊优化 */
+  image-rendering: auto;
+  image-rendering: high-quality;
+  image-rendering: -webkit-optimize-quality;
   -webkit-font-smoothing: antialiased;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  /* 防止 GPU 层亚像素模糊 */
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 /* ---- 外封塑料高光 ---- */
@@ -2816,9 +2827,9 @@ body {
   position: absolute;
   left: 50%;
   top: 4px;
-  width: 240px;
-  height: 240px;
-  margin-left: -120px;
+  width: 260px;
+  height: 260px;
+  margin-left: -130px;
   border-radius: 2px;
   overflow: hidden;
   will-change: transform, opacity, filter;
@@ -2828,8 +2839,11 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scaleY(-1);
+  transform: scaleY(-1) translateZ(0);
   opacity: 0.5;
+  image-rendering: auto;
+  image-rendering: high-quality;
+  image-rendering: -webkit-optimize-quality;
 }
 
 /* ====== 底部信息 ====== */
@@ -3481,7 +3495,7 @@ body {
   .sidebar {
     position: fixed;
     left: 0; top: 0; bottom: 0;
-    width: 260px;
+    width: 220px;
     z-index: 200;
     transform: translateX(-100%);
     transition: transform 0.35s cubic-bezier(0.32, 0.04, 0.12, 1);

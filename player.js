@@ -1653,9 +1653,9 @@ async function performSearch(query) {
 
 function fixCoverUrl(url) {
   if (!url) return '';
-  // 已经是完整 http URL 且不含 ? — 追加 ?param=300y300（网易云 CDN）
+  // 已经是完整 http URL 且不含 ? — 追加 ?param=640y640（网易云 CDN，更高清）
   if (url.startsWith('http') && !url.includes('?')) {
-    return url + '?param=300y300';
+    return url + '?param=640y640';
   }
   // 已经是完整 http URL 且含 ? — 直接用
   if (url.startsWith('http')) {
@@ -4013,17 +4013,17 @@ function cfBuildStage() {
   }
   
   cfAlbums.forEach((album, i) => {
-    // 封面 URL：先用中等图快速加载，居中后再换高清大图
+    // 封面 URL：先用大图快速加载，居中后再换更高清大图
     var cover = (album.picUrl || album.cover || '');
-    // 初始加载用 480px（2x Retina 屏幕下 240px 容器需要 480px，兼顾加载速度）
+    // 初始加载用 640px（2x/3x Retina 屏幕下 240px 容器需要更高分辨率）
     var coverSmall = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverSmall = cover + '?param=480y480';
+      coverSmall = cover + '?param=640y640';
     }
-    // 大图用于居中后替换（960px，高清屏完全够用，支持 3x/4x Retina）
+    // 大图用于居中后替换（1280px，4x Retina 完全够用）
     var coverLarge = cover;
     if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverLarge = cover + '?param=960y960';
+      coverLarge = cover + '?param=1280y1280';
     }
     var albumId = album.id || album.albumId;
     var albumName = album.name || '';
@@ -4413,7 +4413,7 @@ const originalOpenAlbumDetail = openAlbumDetail;
 function createAlbumCard(album) {
   return '<div class="am-card album-card" data-album-id="' + (album.id || '') + '">' +
     '<div class="am-artwork">' +
-      '<img src="' + (album.picUrl || album.cover || '') + '?param=300y300" alt="" loading="lazy" onerror="this.parentElement.style.background=\'linear-gradient(135deg,#1a1a30,#15152a)\'">' +
+      '<img src="' + fixCoverUrl(album.picUrl || album.cover || '') + '" alt="" loading="lazy" onerror="this.parentElement.style.background=\'linear-gradient(135deg,#1a1a30,#15152a)\'">' +
       '<div class="am-play-overlay">' +
         '<div class="am-play-circle"><i class="fa-solid fa-compact-disc"></i></div>' +
       '</div>' +
