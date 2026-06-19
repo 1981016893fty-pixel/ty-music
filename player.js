@@ -715,6 +715,8 @@ function playTrack(track, index) {
   // 专辑名称（强制显示）
   try {
     var albumText = track.album || track.title || '未知专辑';
+    var picId = track.picId || track.albumId || ''; // 优先使用 picId（100% 准确）
+    
     // 迷你播放器
     var miniAlbumEl = $('#miniAlbum');
     if (miniAlbumEl) {
@@ -723,7 +725,8 @@ function playTrack(track, index) {
       miniAlbumEl.style.cursor = 'pointer';
       miniAlbumEl.title = '点击打开专辑';
       miniAlbumEl.onclick = function() {
-        openAlbumByName(albumText, track.artist, 'netease');
+        // 优先使用 picId（100% 准确），没有 picId 才用专辑名
+        openAlbumByName(albumText, track.artist, 'netease', picId);
       };
     }
     // 全屏播放器
@@ -736,11 +739,12 @@ function playTrack(track, index) {
       ampAlbumEl.onclick = function() {
         closeAmpFullscreenPlayer();
         setTimeout(function() {
-          openAlbumByName(albumText, track.artist, 'netease');
+          // 优先使用 picId（100% 准确），没有 picId 才用专辑名
+          openAlbumByName(albumText, track.artist, 'netease', picId);
         }, 400);
       };
     }
-  } catch(e) { console.warn('Album display error:', e); }
+ } catch(e) { console.warn('Album display error:', e); }
 
   // 获取并显示专辑信息
   fetchAndDisplayAlbumInfo(track);
@@ -3258,6 +3262,7 @@ async function openAlbumDetail(albumId) {
   const name = album.name || '未知专辑';
   const artist = typeof album.artist === 'object' ? (album.artist.name || '') : (album.artist || '');
   const cover = album.cover || album.picUrl || '';
+  const picId = album.picId || ''; // 从保存的专辑数据中提取 picId
   const source = album.source || 'netease';
   // 不再使用保存的 tracks（可能不准确），改为从 API 重新拉取
   // 始终从 API 重新拉取曲目（保存的 tracks 可能包含同名歌曲，不准确）
@@ -3265,8 +3270,8 @@ async function openAlbumDetail(albumId) {
   document.getElementById('albumDetailMeta').textContent = '加载中...';
   updateAlbumFavButton(albumId);
   
-  // 调用 openAlbumByName 重新从 API 获取并按专辑名精确过滤
-  await openAlbumByName(name, artist, source);
+  // 调用 openAlbumByName，优先使用 picId（100% 准确）
+  await openAlbumByName(name, artist, source, picId);
   // openAlbumByName 会自己渲染曲目列表和设置封面，直接返回
   return;
 }
@@ -3339,9 +3344,10 @@ function renderAlbumTracks(tracks) {
   });
 }
 
-// 通过专辑名称搜索曲目（新音源）
-async function openAlbumByName(albumName, artistName, source) {
-  console.log('[Album] openAlbumByName', { albumName, artistName, source });
+// 通过专辑名称或 picId 搜索曲目
+// 优先使用 picId（100% 准确），如果没有 picId 才用专辑名
+async function openAlbumByName(albumName, artistName, source, picId) {
+  console.log('[Album] openAlbumByName', { albumName, artistName, source, picId });
 
   // 导航到专辑详情页
   navigateTo('album-detail');
@@ -3349,14 +3355,32 @@ async function openAlbumByName(albumName, artistName, source) {
   const container = document.getElementById('albumTrackList');
   container.innerHTML = '<div class="scroll-loading">加载中...</div>';
   document.getElementById('albumDetailCover').src = '';
-  document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
+  
+  // 如果有 picId，显示"专辑"而不是具体的专辑名（因为我们用 picId 查找）
+  if (picId) {
+    document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
+  } else {
+    document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
+  }
+  
   document.getElementById('albumDetailArtist').textContent = artistName || '';
   document.getElementById('albumDetailMeta').textContent = source || 'netease';
 
   try {
-    const res = await fetch('/api/music/album?album=' + encodeURIComponent(albumName) +
-      '&artist=' + encodeURIComponent(artistName || '') +
-      '&source=' + (source || 'netease') + '&limit=30');
+    // 优先使用 picId（100% 准确）
+    let url;
+    if (picId) {
+      url = '/api/music/album?picId=' + encodeURIComponent(picId) +
+        '&artist=' + encodeURIComponent(artistName || '') +
+        '&source=' + (source || 'netease') + '&limit=50';
+    } else {
+      // 向后兼容：没有 picId 时用专辑名
+      url = '/api/music/album?album=' + encodeURIComponent(albumName) +
+        '&artist=' + encodeURIComponent(artistName || '') +
+        '&source=' + (source || 'netease') + '&limit=30';
+    }
+    
+    const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     const songs = data.songs || [];

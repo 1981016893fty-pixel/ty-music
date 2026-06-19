@@ -942,21 +942,72 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
-    // Album
+    // Album - 支持两种模式：
+    // 1. ?picId=xxx → 直接用 picId 搜索（100% 准确）
+    // 2. ?album=xxx → 向后兼容，用专辑名搜索（会按 picId 分组过滤）
     if (pathname === '/api/music/album') {
+      const picId = params.get('picId') || '';
       const album = params.get('album') || '';
       const artist = params.get('artist') || '';
-      const limit = parseInt(params.get('limit') || '30');
+      const limit = parseInt(params.get('limit') || '50');
       
-      if (!album) {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: 'Missing album parameter' }));
+      // 模式1：有 picId → 直接搜索这个 picId 的所有歌曲（最准确）
+      if (picId) {
+        console.log(`[Album] Request by picId: picId="${picId}", artist="${artist}"`);
+        
+        // 策略：用 artist 搜索，然后过滤出 picId 匹配的
+        // 这样能拿到这个专辑的所有歌曲
+        const query = artist || album || '';
+        const allSongs = await searchSongs(query, 100, 'netease');
+        
+        // 过滤出 picId 匹配的所有歌曲（即这个专辑的所有曲目）
+        const albumSongs = allSongs.filter(s => (s.picId || s.albumId || '') === picId);
+        
+        if (albumSongs.length === 0) {
+          // 如果没找到，尝试直接用 picId 作为关键词搜索
+          console.log(`[Album] No songs found with picId=${picId}, trying direct search...`);
+          const directSearch = await searchSongs(picId, 50, 'netease');
+          const directFiltered = directSearch.filter(s => (s.picId || s.albumId || '') === picId);
+          
+          if (directFiltered.length > 0) {
+            console.log(`[Album] Found ${directFiltered.length} songs via direct search`);
+            const seen = new Set();
+            const unique = directFiltered.filter(s => {
+              if (seen.has(s.id)) return false;
+              seen.add(s.id);
+              return true;
+            });
+            res.end(JSON.stringify({ songs: unique.slice(0, limit) }));
+            return;
+          }
+          
+          res.end(JSON.stringify({ songs: [] }));
+          return;
+        }
+        
+        // 去重
+        const seen = new Set();
+        const unique = albumSongs.filter(s => {
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        });
+        
+        console.log(`[Album] picId="${picId}": ${albumSongs.length} songs found → ${unique.length} unique`);
+        res.end(JSON.stringify({ songs: unique.slice(0, limit) }));
         return;
       }
       
-      console.log(`[Album] Request: album="${album}", artist="${artist}"`);
+      // 模式2：没有 picId，向后兼容用 album 名称搜索
+      if (!album) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing album or picId parameter' }));
+        return;
+      }
       
-      // 策略：用 "artist album" 精确搜索，然后按 picId 分组
+      console.log(`[Album] Request by album name: album="${album}", artist="${artist}"`);
+      
+      // 用 "artist album" 搜索，然后按 picId 分组
       const query = artist ? `${artist} ${album}` : album;
       const allSongs = await searchSongs(query, 50, 'netease');
       
@@ -965,7 +1016,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      // 核心修复：按 picId 分组，找到出现次数最多的 picId（即正确专辑的 picId）
+      // 按 picId 分组，找到出现次数最多的 picId
       const picIdCounts = {};
       allSongs.forEach(s => {
         const pid = s.picId || s.albumId || '';
@@ -986,13 +1037,13 @@ const server = http.createServer(async (req, res) => {
       
       console.log(`[Album] picId counts:`, picIdCounts, `→ main picId: ${mainPicId}`);
       
-      // 过滤出 picId 匹配的歌曲（即真正属于这个专辑的）
+      // 过滤出 picId 匹配的歌曲
       let filtered = [];
       if (mainPicId) {
         filtered = allSongs.filter(s => (s.picId || s.albumId || '') === mainPicId);
       }
       
-      // 如果按 picId 过滤后为空，退而求其次：用 album 字段模糊匹配
+      // 如果按 picId 过滤后为空，用 album 字段模糊匹配
       if (filtered.length === 0) {
         const coreAlbum = album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
         filtered = allSongs.filter(s => {
