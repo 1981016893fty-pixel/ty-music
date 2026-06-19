@@ -4445,3 +4445,52 @@ async function fetchNewAlbums() {
     document.getElementById('newAlbumsSection').style.display = 'none';
   }
 }
+
+/* ============================================
+   移动端侧边栏切换
+   ============================================ */
+function toggleMobileSidebar() {
+  var sidebar = document.getElementById('sidebar');
+  var isOpen = sidebar.classList.contains('show');
+  if (isOpen) {
+    sidebar.classList.remove('show');
+  } else {
+    sidebar.classList.add('show');
+  }
+}
+
+/* 点击主内容区时关闭侧边栏（移动端） */
+document.addEventListener('click', function(e) {
+  var sidebar = document.getElementById('sidebar');
+  var btn = document.getElementById('mobileMenuBtn');
+  if (window.innerWidth <= 768 && sidebar.classList.contains('show')) {
+    if (!sidebar.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      sidebar.classList.remove('show');
+    }
+  }
+});
+
+/* 在 navigateTo 执行后更新移动端标题 + 关闭侧边栏 */
+// 保存原始 navigateTo 引用
+var _originalNavigateTo = navigateTo;
+navigateTo = function(page) {
+  _originalNavigateTo(page);
+  updateMobileTitle(page);
+  if (window.innerWidth <= 768) {
+    var sb = document.getElementById('sidebar');
+    if (sb) sb.classList.remove('show');
+  }
+};
+
+function updateMobileTitle(page) {
+  var titles = {
+    'discover': 'TY Music',
+    'search': '浏览',
+    'local': '本地音乐',
+    'favorites': '喜爱',
+    'album-favorites': '专辑',
+    'playlists': '播放列表'
+  };
+  var el = document.getElementById('mobilePageTitle');
+  if (el) el.textContent = titles[page] || 'TY Music';
+}

@@ -3430,32 +3430,144 @@ body {
 /* ============================================
    响应式
    ============================================ */
+
+/* ---- 移动端顶部栏（默认隐藏） ---- */
+.mobile-topbar {
+  display: none;
+}
+
+/* ---- 移动端 < 768px ---- */
 @media (max-width: 768px) {
-  .sidebar { width: 64px; padding: 16px 8px; }
-  .logo-text, .nav-item span, .search-mini, .mini-info,
-  .sidebar-divider, .sidebar-footer .now-playing-mini { display: none; }
-  .nav-item { justify-content: center; padding: 10px; }
-  .logo { justify-content: center; padding: 8px; }
+  /* 隐藏侧边栏 */
+  .sidebar {
+    position: fixed;
+    left: 0; top: 0; bottom: 0;
+    width: 260px;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.35s cubic-bezier(0.32, 0.04, 0.12, 1);
+    border-right: 1px solid var(--border-highlight);
+    box-shadow: 4px 0 32px rgba(0,0,0,0.4);
+  }
+  .sidebar.show { transform: translateX(0); }
+
+  /* 显示移动端顶部栏 */
+  .mobile-topbar {
+    display: flex;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--glass-layer-1);
+    backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
+    -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
+    border-bottom: 1px solid var(--border-highlight);
+  }
+  .mobile-menu-btn {
+    width: 36px; height: 36px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--glass-layer-3);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .mobile-page-title {
+    font-size: 17px; font-weight: 700;
+    background: linear-gradient(135deg, var(--neon-purple), var(--neon-cyan));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mobile-topbar-spacer { height: 56px; }
+
+  /* 主内容区占满宽度 */
+  .main-content {
+    height: calc(100vh - var(--player-height) - 56px);
+  }
+
+  /* Hero */
   .hero-section { padding: 16px; }
-  .hero-card { padding: 26px 22px; }
-  .hero-title { font-size: 26px; }
-  .hero-art { width: 115px; height: 115px; }
-  .section { padding: 6px 12px; }
-  .am-card { width: 138px; }
-  .am-card .am-artwork { width: 138px; height: 138px; }
-  .am-card.wide { width: 250px; }
-  .album-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 14px; padding: 0 14px; }
+  .hero-card {
+    flex-direction: column-reverse;
+    padding: 24px 20px;
+    gap: 16px;
+  }
+  .hero-card::before { display: none; }
+  .hero-info { text-align: center; }
+  .hero-badge { display: inline-block; }
+  .hero-title { font-size: 24px; }
+  .hero-art {
+    width: 160px; height: 160px;
+    margin: 0 auto;
+  }
+  .hero-play-btn { margin: 0 auto; }
+
+  /* Section */
+  .section { padding: 14px 16px; }
+
+  /* 歌曲卡片 */
+  .am-card { width: 130px; }
+  .am-card .am-artwork { width: 130px; height: 130px; }
+  .am-card.wide { width: 220px; }
+  .am-card.wide .am-artwork { width: 72px; height: 72px; }
+
+  /* 专辑网格 */
+  .album-grid {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 14px;
+    padding: 0 16px;
+  }
   .album-card { padding: 10px; border-radius: 12px; }
   .album-card-cover { border-radius: 8px; }
   .album-card-title { font-size: 12px; }
   .album-card-artist { font-size: 10px; }
   .album-card-delete { top: 14px; right: 14px; width: 22px; height: 22px; font-size: 10px; }
-  .player-bar { padding: 0 10px; gap: 10px; }
-  .player-left { width: 170px; }
-  .player-right { width: auto; }
+
+  /* 播放器栏 */
+  .player-bar { padding: 0 12px; gap: 10px; }
+  .player-left { width: auto; min-width: 0; flex-shrink: 1; }
+  .player-right { width: auto; flex-shrink: 0; }
   .player-more { display: none; }
   .volume-bar { display: none; }
+  .player-center { max-width: 200px; }
+
+  /* 侧边面板占满屏幕 */
   .queue-panel, .lyrics-panel { width: 100%; }
+
+  /* 专辑详情 */
+  .album-detail-header { padding: 16px; }
+  .album-detail-info { flex-direction: column; align-items: center; text-align: center; gap: 16px; }
+  .album-detail-cover { width: 180px; height: 180px; }
+  .album-detail-actions { justify-content: center; }
+  .album-tracks-header { padding: 16px 16px 12px; }
+  .album-track-row { padding: 8px 12px; margin: 0 4px; }
+}
+
+/* ---- 超小屏幕 < 480px ---- */
+@media (max-width: 480px) {
+  .hero-title { font-size: 20px; }
+  .hero-art { width: 130px; height: 130px; }
+  .am-card { width: 110px; }
+  .am-card .am-artwork { width: 110px; height: 110px; }
+  .am-card .am-card-title { font-size: 12px; }
+  .am-card .am-card-subtitle { font-size: 11px; }
+  .scroll-row { gap: 12px; }
+  .section-title { font-size: 18px; }
+  .album-grid {
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 10px;
+    padding: 0 12px;
+  }
+  .player-left { gap: 8px; }
+  .player-title { font-size: 12px; }
+  .player-artist { font-size: 10px; }
+  .player-controls { gap: 12px; }
 }
 
 /* ============================================
