@@ -2990,7 +2990,7 @@ body {
   z-index: 201;   /* 在全屏播放器上层 */
   opacity: 0;
   transition: opacity 0.6s ease;
-  filter: blur(0.5px);  /* 轻微模糊增加柔和感 */
+  /* 不使用全局 blur，由 JS 在绘制时控制清晰度 */
 }
 
 /* 电子乐播放时显示音波（canvas 自身 class 控制） */

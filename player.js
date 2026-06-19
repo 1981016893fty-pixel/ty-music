@@ -2220,29 +2220,32 @@ function resumeAudioContext() {
   }
 }
 
-// 绘制圆形频谱音波
+// 绘制环形频谱音波 — 紧贴封面边缘，节拍驱动幅度，专辑主题色
 function drawVisualizer() {
   const canvas = $('#ampVisualizerCanvas');
   const wrapper = $('#ampArtworkWrapper');
   if (!canvas || !wrapper || !_analyser) return;
 
   const dpr = window.devicePixelRatio || 1;
-  const pad = 44; // 向四周扩展 px，形成封面外光晕
   const rect = wrapper.getBoundingClientRect();
-  const artW = rect.width;
-  const artH = rect.height;
-  const totalW = artW + pad * 2;
-  const totalH = artH + pad * 2;
+  const artSize = Math.min(rect.width, rect.height); // 封面是正方形
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top  + rect.height / 2;
+  const innerR = artSize / 2 + 2;   // 紧贴封面边缘（封面有 16px 圆角，+2px 留呼吸感）
+  const maxBarH = 38;               // 最大音波高度
 
-  // 定位 canvas 与封面对齐（fixed 定位，相对视口）
-  canvas.style.left = (rect.left - pad) + 'px';
-  canvas.style.top  = (rect.top  - pad) + 'px';
-  canvas.style.width  = totalW + 'px';
-  canvas.style.height = totalH + 'px';
+  // Canvas 尺寸 = 封面 + 两侧音波空间
+  const totalSize = artSize + maxBarH * 2 + 8;
+  const canvasX = cx - totalSize / 2;
+  const canvasY = cy - totalSize / 2;
 
-  // 设置 canvas 物理像素
-  const pw = Math.round(totalW * dpr);
-  const ph = Math.round(totalH * dpr);
+  canvas.style.left = canvasX + 'px';
+  canvas.style.top  = canvasY + 'px';
+  canvas.style.width  = totalSize + 'px';
+  canvas.style.height = totalSize + 'px';
+
+  const pw = Math.round(totalSize * dpr);
+  const ph = Math.round(totalSize * dpr);
   if (canvas.width !== pw || canvas.height !== ph) {
     canvas.width  = pw;
     canvas.height = ph;
@@ -2250,65 +2253,139 @@ function drawVisualizer() {
 
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, totalW, totalH);
+  ctx.clearRect(0, 0, totalSize, totalSize);
 
   // 频谱数据
   const bufLen = _analyser.frequencyBinCount; // 128
   const dataArray = new Uint8Array(bufLen);
   _analyser.getByteFrequencyData(dataArray);
 
-  // 中心点（canvas 坐标系内）
-  const cx = totalW / 2;
-  const cy = totalH / 2;
-  const innerR = Math.min(artW, artH) / 2 + 4; // 紧贴封面边缘
-  const outerRMax = innerR + 36;                // 最大延伸 36px
+  // 节拍能量：低频（0~15 仓）代表鼓点/贝斯，驱动整体幅度
+  const beatBins = 12; // 低频仓数，覆盖大部分流行/电子乐的鼓点频率
+  let beatEnergy = 0;
+  for (let i = 0; i < beatBins; i++) beatEnergy += dataArray[i];
+  beatEnergy = beatEnergy / (beatBins * 255); // 归一化 0~1
+  // 指数映射：让弱节拍更明显，强节拍更突出
+  const beatScale = Math.pow(beatEnergy, 0.7);
 
-  // 取 60 个频率仓（低频到高频，截掉过高频噪声）
-  const barCount = 60;
-  const startBin = 1;  // 跳过直流分量
-  const endBin = Math.min(startBin + barCount, bufLen - 1);
-  const usedBins = endBin - startBin;
-
+  // 颜色：专辑主题色
   const [rStr, gStr, bStr] = _vizAccentColor.split(',').map(s => s.trim());
-  const r = parseInt(rStr), g = parseInt(gStr), b = parseInt(bStr);
+  const r = parseInt(rStr) || 120, g = parseInt(gStr) || 80, b = parseInt(bStr) || 255;
 
-  // 画封面外圈音波（环形条形图）
+  // 封面是圆角矩形（非正圆），音波沿圆角矩形边缘绘制
+  // 策略：120 根条形，沿封面圆角矩形边缘等距分布
+  const barCount = 120;
+  const cornerR = 16; // 与封面 border-radius 一致
+  const w = artSize, h = artSize;
+  const half = artSize / 2;
+  const inset = 2; // 紧贴封面边缘 2px
+
+  // 计算圆角矩形周长上的点的位置
+  function pointOnRoundedRect(t) {
+    // t: 0~1 沿周长的比例
+    const perimeter = 2 * (w - 2*cornerR) + 2 * (h - 2*cornerR) + 2 * Math.PI * cornerR;
+    let d = t * perimeter;
+    // 上边（从左到右，y = -half + inset）
+    const topLen = w - 2*cornerR;
+    if (d < topLen) {
+      return { x: -half + cornerR + d, y: -half + inset };
+    }
+    d -= topLen;
+    // 右上圆角
+    const cornerLen = (Math.PI / 2) * cornerR;
+    if (d < cornerLen) {
+      const a = -Math.PI/2 + (d / cornerLen) * (Math.PI/2);
+      return { x: half - cornerR + Math.cos(a)*cornerR, y: -half + cornerR + Math.sin(a)*cornerR };
+    }
+    d -= cornerLen;
+    // 右边
+    if (d < h - 2*cornerR) {
+      return { x: half - inset, y: -half + cornerR + d };
+    }
+    d -= (h - 2*cornerR);
+    // 右下圆角
+    if (d < cornerLen) {
+      const a = 0 + (d / cornerLen) * (Math.PI/2);
+      return { x: half - cornerR + Math.cos(a)*cornerR, y: half - cornerR + Math.sin(a)*cornerR };
+    }
+    d -= cornerLen;
+    // 下边（从右到左）
+    if (d < topLen) {
+      return { x: half - cornerR - d, y: half - inset };
+    }
+    d -= topLen;
+    // 左下圆角
+    if (d < cornerLen) {
+      const a = Math.PI/2 + (d / cornerLen) * (Math.PI/2);
+      return { x: -half + cornerR + Math.cos(a)*cornerR, y: half - cornerR + Math.sin(a)*cornerR };
+    }
+    d -= cornerLen;
+    // 左边
+    if (d < h - 2*cornerR) {
+      return { x: -half + inset, y: half - cornerR - d };
+    }
+    d -= (h - 2*cornerR);
+    // 左上圆角
+    const a = Math.PI + (d / cornerLen) * (Math.PI/2);
+    return { x: -half + cornerR + Math.cos(a)*cornerR, y: -half + cornerR + Math.sin(a)*cornerR };
+  }
+
+  // 画音波：沿封面边缘向外的条形
+  // 用封面短边（128 仓中的后段）映射频率，低→封面边缘处，高→角落处
+  const freqStart = 0;
+  const freqEnd = Math.min(100, bufLen - 1);
+  const freqRange = freqEnd - freqStart;
+
   for (let i = 0; i < barCount; i++) {
-    const binIdx = startBin + Math.round((i / barCount) * usedBins);
-    const value = dataArray[binIdx] / 255; // 0~1
+    const t = i / barCount;
+    const pt = pointOnRoundedRect(t);
 
-    const angle = (i / barCount) * Math.PI * 2 - Math.PI / 2; // 从顶部开始
-    const barH = 4 + value * (outerRMax - innerR - 4);
-    const alpha = 0.3 + value * 0.7;
+    // 该点的法线方向（向外）
+    let nx, ny;
+    const px = pt.x, py = pt.y;
+    const absX = Math.abs(px), absY = Math.abs(py);
+    // 简化：法线方向 = 从中心指向该点的方向
+    const mag = Math.sqrt(px*px + py*py) || 1;
+    nx = px / mag;
+    ny = py / mag;
 
-    const x1 = cx + Math.cos(angle) * innerR;
-    const y1 = cy + Math.sin(angle) * innerR;
-    const x2 = cx + Math.cos(angle) * (innerR + barH);
-    const y2 = cy + Math.sin(angle) * (innerR + barH);
+    // 频率值：用低频（节拍敏感区）为主，叠加高频细节
+    const binIdx = freqStart + Math.round((i / barCount) * freqRange);
+    const val = (dataArray[binIdx] || 0) / 255;
+    // 节拍驱动：整体幅度由 beatScale 调制
+    const barH = 3 + val * maxBarH * (0.4 + 0.6 * beatScale);
+    const alpha = 0.35 + val * 0.65 * (0.5 + 0.5 * beatScale);
 
-    // 渐变：内→外，从主色到透明
-    const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-    grad.addColorStop(0, `rgba(${r},${g},${b},${alpha * 0.9})`);
+    // 起点（封面边缘外 2px）→ 终点（向外延伸 barH）
+    const sx = half + pt.x + nx * 2;
+    const sy = half + pt.y + ny * 2;
+    const ex = sx + nx * barH;
+    const ey = sy + ny * barH;
+
+    // 颜色渐变：内实外虚
+    const grad = ctx.createLinearGradient(sx, sy, ex, ey);
+    grad.addColorStop(0, `rgba(${r},${g},${b},${alpha.toFixed(2)})`);
     grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
 
     ctx.beginPath();
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(ex, ey);
     ctx.strokeStyle = grad;
-    ctx.lineWidth = Math.max(2, (2 * Math.PI * innerR / barCount) * 0.65);
+    ctx.lineWidth = Math.max(1.5, totalSize / barCount * 0.55);
     ctx.lineCap = 'round';
     ctx.stroke();
   }
 
-  // 外圈柔光晕（叠加低频能量的整体光晕）
-  const avgLow = dataArray.slice(0, 8).reduce((a, b) => a + b, 0) / 8 / 255;
-  if (avgLow > 0.05) {
-    const glowR = innerR + avgLow * 20;
-    const glow = ctx.createRadialGradient(cx, cy, innerR - 2, cx, cy, glowR + 16);
-    glow.addColorStop(0, `rgba(${r},${g},${b},${avgLow * 0.25})`);
+  // 节拍脉冲光晕：强节拍时在封面边缘加一圈发光
+  if (beatEnergy > 0.45) {
+    const pulseAlpha = (beatEnergy - 0.45) * 2.2;
+    const glow = ctx.createRadialGradient(half, half, innerR - 2, half, half, innerR + maxBarH * beatScale + 10);
+    glow.addColorStop(0, `rgba(${r},${g},${b},0)`);
+    glow.addColorStop(0.5, `rgba(${r},${g},${b},${(pulseAlpha * 0.18).toFixed(2)})`);
     glow.addColorStop(1, `rgba(${r},${g},${b},0)`);
     ctx.beginPath();
-    ctx.arc(cx, cy, glowR + 16, 0, Math.PI * 2);
+    // 画圆角矩形路径作为剪裁区域更准，这里用圆形近似
+    ctx.arc(half, half, innerR + maxBarH * beatScale * 0.5 + 6, 0, Math.PI * 2);
     ctx.fillStyle = glow;
     ctx.fill();
   }
