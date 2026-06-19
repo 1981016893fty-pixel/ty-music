@@ -28,6 +28,9 @@ const STATIC_FILES = [
   ['/player.js', 'player.js'],
   ['/style.css', 'style.css'],
   ['/liquid-glass.js', 'liquid-glass.js'],
+  ['/manifest.json', 'manifest.json'],
+  ['/icon-192.png', 'icon-192.png'],
+  ['/icon-512.png', 'icon-512.png'],
 ];
 
 // 内存缓存：{ raw: Buffer, gzip: Buffer, etag: string, contentType: string }
@@ -47,7 +50,13 @@ function preloadStaticFiles() {
     const gzip = zlib.gzipSync(raw, { level: 6 });
     const etag = calcEtag(raw);
     const ext = fileName.split('.').pop();
-    const contentType = { 'html': 'text/html; charset=utf-8', 'js': 'application/javascript; charset=utf-8', 'css': 'text/css; charset=utf-8' }[ext] || 'application/octet-stream';
+    const contentType = { 
+      'html': 'text/html; charset=utf-8', 
+      'js': 'application/javascript; charset=utf-8', 
+      'css': 'text/css; charset=utf-8',
+      'json': 'application/json; charset=utf-8',
+      'png': 'image/png'
+    }[ext] || 'application/octet-stream';
     staticCache.set(urlPath, { raw, gzip, etag, contentType });
     console.log(`[Cache] Preloaded ${fileName}: ${raw.length}B → gzip ${gzip.length}B (etag: ${etag})`);
   }
