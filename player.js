@@ -2263,240 +2263,177 @@ function resumeAudioContext() {
   }
 }
 
-// 绘制音波 — 紧贴封面圆角矩形边缘，节拍强弱分明，专辑主题色
-// 封面是正方形圆角矩形，音波条形从边缘向外辐射
+// 绘制音波 — 紧贴封面圆角矩形边缘，节拍强弱分明
+// 封面 CSS border-radius: 16px，音波条形沿圆角矩形周长分布
 function drawVisualizer() {
-  const canvas = $('#ampVisualizerCanvas');
-  const wrapper = $('#ampArtworkWrapper');
+  var canvas = document.getElementById('ampVisualizerCanvas');
+  var wrapper = document.getElementById('ampArtworkWrapper');
   if (!canvas || !wrapper || !_analyser || !_vizActive) return;
 
-  const dpr = window.devicePixelRatio || 1;
-  const rect = wrapper.getBoundingClientRect();
-  // 封面是正方形（由 CSS aspect-ratio: 1 保证）
-  const artSize = Math.round(Math.min(rect.width, rect.height));
-  const cx = Math.round(rect.left + rect.width / 2);
-  const cy = Math.round(rect.top  + rect.height / 2);
+  var dpr = window.devicePixelRatio || 1;
+  var rect = wrapper.getBoundingClientRect();
+  var artSize = Math.round(Math.min(rect.width, rect.height));
+  var cxPage = Math.round(rect.left + rect.width / 2);
+  var cyPage = Math.round(rect.top  + rect.height / 2);
 
-  // 圆角半径（与 CSS .amp-artwork border-radius: 16px 一致）
-  const R = 16;
-  // 音波条数（沿周长等距）
-  const BAR_COUNT = 160;
-  // 最大条高（强节拍时的像素高度）
-  const MAX_BAR = 42;
-  // Canvas 总尺寸 = 封面 + 两侧音波空间
-  const totalSize = artSize + MAX_BAR * 2 + 8;
-  const half = totalSize / 2;
+  // Canvas 尺寸：封面 + 音波空间
+  var MAX_BAR = 48;
+  var totalSize = artSize + MAX_BAR * 2 + 16;
+  var half = totalSize / 2;
 
-  // 将 canvas 定位到封面中心
-  canvas.style.left = (cx - half) + 'px';
-  canvas.style.top  = (cy - half) + 'px';
+  canvas.style.left = (cxPage - half) + 'px';
+  canvas.style.top  = (cyPage - half) + 'px';
   canvas.style.width  = totalSize + 'px';
   canvas.style.height = totalSize + 'px';
 
-  const pw = Math.round(totalSize * dpr);
-  const ph = Math.round(totalSize * dpr);
+  var pw = Math.round(totalSize * dpr);
+  var ph = Math.round(totalSize * dpr);
   if (canvas.width !== pw || canvas.height !== ph) {
     canvas.width  = pw;
     canvas.height = ph;
   }
 
-  const ctx = canvas.getContext('2d');
+  var ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, totalSize, totalSize);
 
-  // ---------- 频谱数据 ----------
-  const bufLen = _analyser.frequencyBinCount; // 128
-  const data = new Uint8Array(bufLen);
+  // 频谱数据
+  var bufLen = _analyser.frequencyBinCount;
+  var data = new Uint8Array(bufLen);
   _analyser.getByteFrequencyData(data);
 
-  // ---------- 节拍能量（低频 0~15 仓 = 鼓点/贝斯）----------
-  // 用指数加权平均，让脉冲更明显
-  let beatRaw = 0;
-  const BEAT_BINS = 16;
-  for (let i = 0; i < BEAT_BINS; i++) beatRaw += data[i];
-  beatRaw = beatRaw / (BEAT_BINS * 255); // 0~1
-  // 三次方映射：让弱拍接近 0，强拍接近 1，差距拉大
-  const beatScale = beatRaw * beatRaw * beatRaw;
+  // 节拍能量：低频（0~15 仓）→ 三次方映射拉大强弱差
+  var beatRaw = 0;
+  for (var i = 0; i < 16; i++) beatRaw += data[i];
+  beatRaw = beatRaw / (16 * 255);
+  var beatScale = beatRaw * beatRaw * beatRaw;
 
-  // ---------- 专辑主题色 ----------
-  const cols = _vizAccentColor.split(',').map(s => parseInt(s.trim()) || 0);
-  const r = cols[0] || 180, g = cols[1] || 94, b = cols[2] || 255;
+  // 专辑主题色（0~1 范围）
+  var cols = _vizAccentColor.split(',').map(function(s) { return parseInt(s.trim()) || 0; });
+  var R = (cols[0] || 180) / 255;
+  var G = (cols[1] || 94)  / 255;
+  var B = (cols[2] || 255) / 255;
 
-  // ---------- 圆角矩形周长参数 ----------
-  // 封面在 canvas 坐标系的中心为 (half, half)
-  // 封面左上角 = (half - artSize/2, half - artSize/2)
-  // 为简化，这里直接用中心坐标系 (ox, oy) = (half, half)
-  const artHalf = artSize / 2;
-  // 四条边（不含圆角）的长度
-  const sideLen = artSize - 2 * R;
-  // 一个圆角的弧长 = (π/2) * R
-  const cornerLen = (Math.PI / 2) * R;
-  // 总周长
-  const perimeter = 2 * sideLen + 2 * sideLen + 4 * cornerLen; // = 4*sideLen + 4*cornerLen
+  // ========== 圆角矩形参数 ==========
+  var ox = half, oy = half;            // canvas 中心
+  var box = artSize / 2 + 4;          // 封面半宽 + 4px 间隙
+  var cornerR = 16;                    // CSS border-radius
+  var side = artSize - cornerR * 2;    // 直边长度
+  var arcLen = Math.PI * cornerR / 2;  // 每个角的 90° 弧长
+  var peri = side * 4 + arcLen * 4;    // 总周长
 
-  // 将周长分数 t ∈ [0,1) 映射到封面边缘上的点 (px, py) 和 outward normal (nx, ny)
-  // 起点：上边中点偏左（上边从左到右），顺时针
+  // 在圆角矩形上按周长比例 t∈[0,1) 取点
+  // 返回 {x, y, nx, ny}：canvas 坐标 + 外法线单位向量
   function getEdgePoint(t) {
-    let d = t * perimeter;
-    let px, py, nx, ny;
+    var d = t * peri;
+    var l = half - box;    // 封面左边缘（canvas 坐标）
+    var r = half + box;    // 封面右边缘
+    var t2 = half - box;  // 封面上边缘
+    var b  = half + box;   // 封面下边缘
 
-    // 上边（从左到右，y = -artHalf，x 从 -artHalf+R 到 artHalf-R）
-    if (d < sideLen) {
-      px = -artHalf + R + d;
-      py = -artHalf;
-      nx = 0; ny = -1; // 向上
-      return { px, py, nx, ny };
-    }
-    d -= sideLen;
+    // 分段（逆时针）：上直边 → 右上角 → 右直边 → 右下角 → 下直边 → 左下角 → 左直边 → 左上角
+    var segs = [
+      { len: side, type: 'h',   x0: l + cornerR, y0: t2,                   nx: 0,  ny: -1, dir:  1 },
+      { len: arcLen, type: 'arc', cx: r - cornerR, cy: t2 + cornerR,       a0: -Math.PI/2, a1: 0 },
+      { len: side, type: 'v',   x0: r,         y0: t2 + cornerR,           nx: 1,  ny:  0, dir:  1 },
+      { len: arcLen, type: 'arc', cx: r - cornerR, cy: b - cornerR,        a0: 0,         a1: Math.PI/2 },
+      { len: side, type: 'h',   x0: r - cornerR, y0: b,                   nx: 0,  ny:  1, dir: -1 },
+      { len: arcLen, type: 'arc', cx: l + cornerR, cy: b - cornerR,        a0: Math.PI/2, a1: Math.PI },
+      { len: side, type: 'v',   x0: l,         y0: b - cornerR,           nx: -1, ny:  0, dir: -1 },
+      { len: arcLen, type: 'arc', cx: l + cornerR, cy: t2 + cornerR,       a0: Math.PI,   a1: Math.PI*3/2 },
+    ];
 
-    // 右上圆角（顺时针，角度从 -π/2 到 0）
-    if (d < cornerLen) {
-      const a = -Math.PI/2 + (d / cornerLen) * (Math.PI/2);
-      px = artHalf - R + Math.cos(a) * R;
-      py = -artHalf + R + Math.sin(a) * R;
-      // 法线方向 = 从圆心 (artHalf-R, -artHalf+R) 指向 (px, py)
-      const cdx = px - (artHalf - R);
-      const cdy = py - (-artHalf + R);
-      const cd = Math.sqrt(cdx*cdx + cdy*cdy) || 1;
-      nx = cdx / cd; ny = cdy / cd;
-      return { px, py, nx, ny };
+    for (var j = 0; j < segs.length; j++) {
+      if (d <= segs[j].len + 1e-6) {
+        var s = segs[j];
+        var local = d / s.len;
+        if (s.type === 'h') {
+          return { x: s.x0 + side * local * s.dir, y: s.y0, nx: s.nx, ny: s.ny };
+        } else if (s.type === 'v') {
+          return { x: s.x0, y: s.y0 + side * local * s.dir, nx: s.nx, ny: s.ny };
+        } else {
+          var angle = s.a0 + (s.a1 - s.a0) * local;
+          return {
+            x: s.cx + cornerR * Math.cos(angle),
+            y: s.cy + cornerR * Math.sin(angle),
+            nx: Math.cos(angle),
+            ny: Math.sin(angle)
+          };
+        }
+      }
+      d -= segs[j].len;
     }
-    d -= cornerLen;
-
-    // 右边（从上到下，x = artHalf，y 从 -artHalf+R 到 artHalf-R）
-    if (d < sideLen) {
-      px = artHalf;
-      py = -artHalf + R + d;
-      nx = 1; ny = 0; // 向右
-      return { px, py, nx, ny };
-    }
-    d -= sideLen;
-
-    // 右下圆角（角度从 0 到 π/2）
-    if (d < cornerLen) {
-      const a = 0 + (d / cornerLen) * (Math.PI/2);
-      px = artHalf - R + Math.cos(a) * R;
-      py = artHalf - R + Math.sin(a) * R;
-      const cdx = px - (artHalf - R);
-      const cdy = py - (artHalf - R);
-      const cd = Math.sqrt(cdx*cdx + cdy*cdy) || 1;
-      nx = cdx / cd; ny = cdy / cd;
-      return { px, py, nx, ny };
-    }
-    d -= cornerLen;
-
-    // 下边（从右到左，y = artHalf，x 从 artHalf-R 到 -artHalf+R）
-    if (d < sideLen) {
-      px = artHalf - R - d;
-      py = artHalf;
-      nx = 0; ny = 1; // 向下
-      return { px, py, nx, ny };
-    }
-    d -= sideLen;
-
-    // 左下圆角（角度从 π/2 到 π）
-    if (d < cornerLen) {
-      const a = Math.PI/2 + (d / cornerLen) * (Math.PI/2);
-      px = -artHalf + R + Math.cos(a) * R;
-      py = artHalf - R + Math.sin(a) * R;
-      const cdx = px - (-artHalf + R);
-      const cdy = py - (artHalf - R);
-      const cd = Math.sqrt(cdx*cdx + cdy*cdy) || 1;
-      nx = cdx / cd; ny = cdy / cd;
-      return { px, py, nx, ny };
-    }
-    d -= cornerLen;
-
-    // 左边（从下到上，x = -artHalf，y 从 artHalf-R 到 -artHalf+R）
-    if (d < sideLen) {
-      px = -artHalf;
-      py = artHalf - R - d;
-      nx = -1; ny = 0; // 向左
-      return { px, py, nx, ny };
-    }
-    d -= sideLen;
-
-    // 左上圆角（角度从 π 到 3π/2）
-    // 这里 d 一定 < cornerLen（因为周长已耗尽）
-    {
-      const a = Math.PI + (d / cornerLen) * (Math.PI/2);
-      px = -artHalf + R + Math.cos(a) * R;
-      py = -artHalf + R + Math.sin(a) * R;
-      const cdx = px - (-artHalf + R);
-      const cdy = py - (-artHalf + R);
-      const cd = Math.sqrt(cdx*cdx + cdy*cdy) || 1;
-      nx = cdx / cd; ny = cdy / cd;
-      return { px, py, nx, ny };
-    }
+    // 容错：返回起点
+    return { x: l + cornerR, y: t2, nx: 0, ny: -1 };
   }
 
-  // ---------- 绘制音波条 ----------
-  // 频率映射：低频（0~30 仓）映射到封面边缘各点，让鼓点驱动所有条
-  // 每条的高度 = 基础频率值 + 节拍增益
-  const freqLen = Math.min(100, bufLen);
+  // ========== 绘制音波条 ==========
+  // 沿周长每 ~3px 一条
+  var BAR_COUNT = Math.max(100, Math.round(peri / 3));
 
-  for (let i = 0; i < BAR_COUNT; i++) {
-    const t = i / BAR_COUNT;
-    const edge = getEdgePoint(t);
+  for (var i = 0; i < BAR_COUNT; i++) {
+    var t = i / BAR_COUNT;
+    var pt = getEdgePoint(t);
 
-    // 该点对应的频率仓（将 160 条映射到 0~freqLen）
-    const binIdx = Math.round((i / BAR_COUNT) * freqLen);
-    const freqVal = (data[binIdx] || 0) / 255; // 0~1
+    // 对应频率仓（按位置映射到频谱）
+    var binIdx = Math.min(Math.round(t * bufLen), bufLen - 1);
+    var val = (data[binIdx] || 0) / 255;
 
-    // 条高 = 基础值（频率） + 节拍增益（低频能量）
-    // 指数映射让弱拍更短、强拍更长
-    const valShaped = Math.pow(freqVal, 1.8);
-    const beatBoost  = Math.pow(beatRaw, 2.5) * MAX_BAR * 0.6;
-    const barH = 2 + valShaped * (MAX_BAR * 0.5) + beatBoost;
+    // 三次方映射：弱值→接近0，强值→接近1
+    var valPow = val * val * val;
+    // 条高 = 基础(3px) + 频率贡献 + 节拍增益
+    var barH = 3 + valPow * (MAX_BAR - 8) + beatScale * MAX_BAR * 0.9;
 
-    // 透明度：弱拍半透明，强拍不透明
-    const alpha = 0.25 + valShaped * 0.75 + beatScale * 0.3;
+    // 起点（封面边缘外 4px，沿外法线）
+    var sx = pt.x + pt.nx * 4;
+    var sy = pt.y + pt.ny * 4;
+    // 终点（再沿外法线延伸 barH）
+    var ex = sx + pt.nx * barH;
+    var ey = sy + pt.ny * barH;
 
-    // 起点 = 封面边缘（在 canvas 坐标中需要 +half 偏移）
-    const sx = half + edge.px + edge.nx * 2;
-    const sy = half + edge.py + edge.ny * 2;
-    // 终点 = 沿法线向外
-    const ex = sx + edge.nx * barH;
-    const ey = sy + edge.ny * barH;
+    // 透明度：弱频暗，强频亮，强拍加光
+    var alpha = 0.2 + valPow * 0.8 + beatScale * 0.5;
 
-    // 渐变：根部实色，尾部透明
-    const grad = ctx.createLinearGradient(sx, sy, ex, ey);
-    grad.addColorStop(0, `rgba(${r},${g},${b},${(Math.min(1, alpha)).toFixed(2)})`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    // 颜色：用主题色
+    var rInt = Math.round(R * 255);
+    var gInt = Math.round(G * 255);
+    var bInt = Math.round(B * 255);
+
+    // 渐变：根部实色 → 尾部透明
+    var grad = ctx.createLinearGradient(sx, sy, ex, ey);
+    grad.addColorStop(0, 'rgba(' + rInt + ',' + gInt + ',' + bInt + ',' + Math.min(1, alpha).toFixed(2) + ')');
+    grad.addColorStop(1, 'rgba(' + rInt + ',' + gInt + ',' + bInt + ',0)');
 
     ctx.beginPath();
     ctx.moveTo(sx, sy);
     ctx.lineTo(ex, ey);
     ctx.strokeStyle = grad;
-    // 条宽：角落处稍窄，直边处稍宽
-    ctx.lineWidth = Math.max(1.2, (totalSize / BAR_COUNT) * 0.52);
+    ctx.lineWidth = Math.max(1.0, peri / BAR_COUNT * 0.55);
     ctx.lineCap = 'round';
     ctx.stroke();
   }
 
-  // ---------- 节拍脉冲光晕（强节拍时）----------
-  if (beatScale > 0.15) {
-    // 保存当前 transform 状态
-    ctx.save();
-    // 重置到物理像素坐标系（取消 dpr 缩放）来画光晕
-    // 光晕用圆形近似即可，性能远好于圆角矩形剪裁
-    const pxHalf = pw / 2;
-    const pxGlowR = Math.round((artHalf + 4 + beatScale * MAX_BAR * 1.2) * dpr);
-    const grad = ctx.createRadialGradient(pxHalf, pxHalf, Math.round((artHalf - 2) * dpr), pxHalf, pxHalf, pxGlowR);
-    grad.addColorStop(0, `rgba(${r},${g},${b},0)`);
-    grad.addColorStop(0.6, `rgba(${r},${g},${b},${(beatScale * 0.22).toFixed(2)})`);
-    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+  // ========== 节拍脉冲光晕 ==========
+  if (beatScale > 0.2) {
+    var glowR = box + beatScale * MAX_BAR * 1.5;
+    var rI = Math.round(R * 255);
+    var gI = Math.round(G * 255);
+    var bI = Math.round(B * 255);
+    var grad2 = ctx.createRadialGradient(ox, oy, box, ox, oy, glowR);
+    grad2.addColorStop(0, 'rgba(' + rI + ',' + gI + ',' + bI + ',0)');
+    grad2.addColorStop(0.4, 'rgba(' + rI + ',' + gI + ',' + bI + ',' + (beatScale * 0.22).toFixed(2) + ')');
+    grad2.addColorStop(1, 'rgba(' + rI + ',' + gI + ',' + bI + ',0)');
     ctx.beginPath();
-    ctx.arc(pxHalf, pxHalf, pxGlowR, 0, Math.PI * 2);
-    ctx.fillStyle = grad;
+    ctx.arc(ox, oy, glowR, 0, Math.PI * 2);
+    ctx.fillStyle = grad2;
     ctx.fill();
-    ctx.restore(); // 恢复 dpr 缩放状态
   }
 
   if (_vizActive) {
     _vizAnimId = requestAnimationFrame(drawVisualizer);
   }
 }
+
 
 // 辅助：在圆角矩形路径上画圆角矩形（用于未来剪裁）
 function roundRectPath(ctx, x, y, w, h, r) {

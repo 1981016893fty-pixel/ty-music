@@ -71,6 +71,10 @@ function serveStatic(req, res, urlPath) {
   res.setHeader('Content-Type', cached.contentType);
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('ETag', etag);
+  // JS/CSS 禁止强缓存，保证每次都能协商更新
+  if (cached.contentType && (cached.contentType.includes('javascript') || cached.contentType.includes('css'))) {
+    res.setHeader('Cache-Control', 'no-cache');
+  }
 
   // 协商缓存：如果客户端已有最新版本，返回 304
   if (clientEtag === etag) {
