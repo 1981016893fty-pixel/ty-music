@@ -1000,12 +1000,16 @@ const server = http.createServer(async (req, res) => {
         // 如果没有 albumId，但有 songId，先用 songId 获取专辑ID
         if (!targetAlbumId && songId) {
           console.log(`[Album] Getting albumId from songId=${songId}`);
-          const detailUrl = `${NETEASE_API}/song/detail?id=${songId}&ids=[${songId}]`;
+          // 注意：网易云API的 ids 参数需要是 JSON 数组格式的字符串
+          const detailUrl = `${NETEASE_API}/song/detail?id=${songId}&ids=${encodeURIComponent('[' + songId + ']')}`;
+          console.log(`[Album] Detail URL: ${detailUrl}`);
           const detailData = await requestNetease(detailUrl);
           
           if (detailData && detailData.songs && detailData.songs.length > 0) {
             targetAlbumId = String(detailData.songs[0].album.id);
             console.log(`[Album] Got albumId=${targetAlbumId} from songId=${songId}`);
+          } else {
+            console.log(`[Album] Failed to get albumId from songId=${songId}, detailData:`, detailData);
           }
         }
         
