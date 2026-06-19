@@ -320,29 +320,9 @@ function formatSong(s) {
   const songName = s.name || '';
   const primaryArtist = artist.split(',')[0].trim();
   
-  // === 核心修复：强制纠正专辑信息 ===
-  let album = s.album || '';
-  let picId = s.pic_id || '';
-  
-  // 1. 先查映射表（最高优先级）
-  const corrected = getCorrectAlbumSync(primaryArtist, songName);
-  if (corrected) {
-    album = corrected.album || '';
-    picId = corrected.picId || picId; // 如果映射表有 picId，用映射表的
-    console.log(`[AlbumFix] Corrected: "${songName}" → album="${album}", picId="${picId}"`);
-  }
-  
-  // 2. 如果映射表没有，且 album 看起来不可信，尝试智能纠正
-  if (!corrected && album && songName) {
-    const albumLower = album.toLowerCase().trim();
-    const songLower = songName.toLowerCase().trim();
-    
-    // album 和 songName 一样 → 肯定错了
-    if (albumLower === songLower) {
-      console.log(`[AlbumFix] Album "${album}" same as song "${songName}", marking as unreliable`);
-      album = ''; // 设为空，让后面用 artist + songName 重新搜索
-    }
-  }
+  // 直接使用 API 返回的专辑信息（GD API 的 album 字段是正确的）
+  const album = s.album || '';
+  const picId = s.pic_id || '';
   
   // pic_id 有值 → 直接用封面代理
   let coverUrl;
@@ -350,7 +330,6 @@ function formatSong(s) {
     coverUrl = '/api/music/cover?picId=' + picId;
   } else {
     // 没有 picId，需要用 album-cover API 获取
-    // 如果 album 不可信，传空字符串（让 API 只用 artist + songName 搜索）
     const searchAlbum = album || '';
     const cacheKey = primaryArtist + '|' + searchAlbum + '|' + songName;
     const cachedPicId = albumCoverCache.get(cacheKey);
@@ -367,9 +346,9 @@ function formatSong(s) {
     id: String(s.id || ''),
     name: songName || 'Unknown',
     artist: artist,
-    album: album,  // ✅ 使用纠正后的 album
+    album: album,  // 直接使用 API 返回的 album
     albumId: picId,  // 保留兼容性
-    picId: picId,    // ✅ 前端实际读取的字段
+    picId: picId,    // 前端实际读取的字段
     cover: coverUrl,
     coverSmall: coverUrl,
     duration: 0,
