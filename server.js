@@ -303,7 +303,8 @@ function formatSong(s) {
     name: s.name || 'Unknown',
     artist: artist,
     album: album,  // 不可信时返回空，不返回错误专辑名
-    albumId: picId,
+    albumId: picId,  // 保留兼容性
+    picId: picId,    // ✅ 新增：前端 player.js 实际读取的字段
     cover: coverUrl,
     coverSmall: coverUrl,
     duration: 0,
