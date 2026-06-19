@@ -912,25 +912,11 @@ const server = http.createServer(async (req, res) => {
       if (!coverUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Cover not found' })); return; }
       // 调整封面尺寸
       coverUrl = coverUrl.replace(/\?param=\d+y\d+/, '') + `?param=${size}y${size}`;
-      console.log('[Cover] Proxying:', coverUrl.substring(0, 80));
-
-      const imgRes = await smartGet(coverUrl, {
-        'User-Agent': UA,
-        'Referer': 'https://music.126.com/'
-      });
-
-      res.setHeader('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+      // 302 重定向到网易云 CDN 直链，不经过服务器中转
+      res.statusCode = 302;
+      res.setHeader('Location', coverUrl);
       res.setHeader('Cache-Control', 'public, max-age=604800');
-      res.statusCode = imgRes.statusCode || 200;
-      imgRes.pipe(res);
-
-      imgRes.on('error', (e) => {
-        console.error('[Cover] Stream error:', e.message);
-        if (!res.headersSent) {
-          res.statusCode = 502;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
+      res.end();
     } catch (e) {
       console.error('[Cover] Exception:', e.message);
       if (!res.headersSent) {
@@ -971,25 +957,11 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      // 代理图片
-      console.log(`[Artist Photo] Proxying photo for ${name}: ${photoUrl.substring(0, 80)}...`);
-      const imgRes = await smartGet(photoUrl, {
-        'User-Agent': UA,
-        'Referer': 'https://music.163.com/'
-      });
-      
-      res.setHeader('Content-Type', imgRes.headers['content-type'] || 'image/jpeg');
+      // 302 重定向到 CDN 直链，不经过服务器中转
+      res.statusCode = 302;
+      res.setHeader('Location', photoUrl);
       res.setHeader('Cache-Control', 'public, max-age=604800');
-      res.statusCode = imgRes.statusCode || 200;
-      imgRes.pipe(res);
-      
-      imgRes.on('error', (e) => {
-        console.error('[Artist Photo] Stream error:', e.message);
-        if (!res.headersSent) {
-          res.statusCode = 502;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
+      res.end();
     } catch (e) {
       console.error('[Artist Photo] Exception:', e.message);
       if (!res.headersSent) {
