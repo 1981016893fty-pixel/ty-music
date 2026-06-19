@@ -99,7 +99,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
   background: var(--bg);
   color: var(--text);
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
   display: flex;
   -webkit-font-smoothing: antialiased;
@@ -128,8 +128,7 @@ body {
   position: relative;
   z-index: 10;
   width: var(--sidebar-width);
-  height: 100vh;
-  background: var(--glass-layer-1);
+  height: 100dvh;  background: var(--glass-layer-1);
   backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
   -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
   border-right: 1px solid var(--border-highlight);
@@ -3484,11 +3483,13 @@ body {
     background-clip: text;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  .mobile-topbar-spacer { height: 56px; }
+  .mobile-topbar-spacer { display: none; }
 
   /* 主内容区占满宽度 */
   .main-content {
-    height: calc(100vh - var(--player-height) - 56px);
+    flex: 1;
+    height: auto;
+    min-height: 0;
   }
 
   /* Hero */
