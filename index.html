@@ -13,6 +13,38 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all';this.onload=null">
 </head>
 <body>
+  <!-- 苹果液态玻璃 SVG 滤镜 -->
+  <svg style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <!-- Liquid Glass 核心滤镜 -->
+      <filter id="liquidGlass" x="-10%" y="-10%" width="120%" height="120%">
+        <!-- 1. 背景模糊 -->
+        <feGaussianBlur in="SourceGraphic" stdDeviation="20" result="blur"/>
+        <!-- 2. 高光提取 -->
+        <feColorMatrix in="blur" type="matrix"
+          values="1 0 0 0 0
+                  0 1 0 0 0
+                  0 0 1 0 0
+                  0 0 0 0.5 0" result="bright"/>
+        <!-- 3. 折射模拟（轻微扭曲） -->
+        <feTurbulence type="fractalNoise" baseFrequency="0.02" numOctaves="2" result="noise"/>
+        <feDisplacementMap in="blur" in2="noise" scale="3" xChannelSelector="R" yChannelSelector="G" result="displaced"/>
+        <!-- 4. 叠加高光 -->
+        <feComposite in="displaced" in2="bright" operator="over"/>
+      </filter>
+      <!-- 玻璃边缘散光滤镜 -->
+      <filter id="glassEdge" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="glow"/>
+        <feFlood flood-color="#b45eff" flood-opacity="0.3" result="color"/>
+        <feComposite in="color" in2="glow" operator="in" result="coloredGlow"/>
+        <feMerge>
+          <feMergeNode in="coloredGlow"/>
+          <feMergeNode in="SourceGraphic"/>
+        </feMerge>
+      </filter>
+    </defs>
+  </svg>
+
   <!-- 动态渐变背景 -->
   <div class="bg-gradient" id="bgGradient"></div>
 

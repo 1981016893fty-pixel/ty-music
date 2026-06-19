@@ -4509,3 +4509,54 @@ function updateMobileTitle(page) {
   var el = document.getElementById('mobilePageTitle');
   if (el) el.textContent = titles[page] || 'TY Music';
 }
+
+/* ============================================
+   液态玻璃动态高光（跟随鼠标）
+   ============================================ */
+(function initLiquidGlass() {
+  // 给播放栏加一个动态高光层
+  var playerBar = document.querySelector('.player-bar');
+  if (!playerBar) return;
+
+  // 创建高光元素
+  var highlight = document.createElement('div');
+  highlight.className = 'liquid-glass-highlight';
+  highlight.style.cssText = `
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    background: radial-gradient(
+      ellipse 120px 60px at 50% 50%,
+      rgba(255, 255, 255, 0.12) 0%,
+      rgba(255, 255, 255, 0.04) 40%,
+      transparent 70%
+    );
+  `;
+  playerBar.appendChild(highlight);
+
+  // 鼠标移动时更新高光位置
+  document.addEventListener('mousemove', function(e) {
+    var rect = playerBar.getBoundingClientRect();
+    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+      var x = e.clientX - rect.left;
+      var y = e.clientY - rect.top;
+      highlight.style.opacity = '1';
+      highlight.style.background = `radial-gradient(
+        ellipse 150px 80px at ${x}px ${y}px,
+        rgba(255, 255, 255, 0.15) 0%,
+        rgba(255, 255, 255, 0.05) 30%,
+        transparent 70%
+      )`;
+    } else {
+      highlight.style.opacity = '0';
+    }
+  });
+
+  // 鼠标离开窗口时隐藏高光
+  document.addEventListener('mouseleave', function() {
+    highlight.style.opacity = '0';
+  });
+})();

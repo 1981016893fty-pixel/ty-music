@@ -1585,18 +1585,29 @@ body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
   position: fixed;
   bottom: 0; left: 0; right: 0;
   height: var(--player-height);
-  background: var(--glass-layer-2);
-  backdrop-filter: blur(var(--glass-blur-2)) saturate(1.8);
-  -webkit-backdrop-filter: blur(var(--glass-blur-2)) saturate(1.8);
-  border-top: 1px solid var(--border-highlight);
+  /* 真正的液态玻璃 - 多层半透明叠加 */
+  background: 
+    linear-gradient(135deg, 
+      rgba(255, 255, 255, 0.08) 0%, 
+      rgba(255, 255, 255, 0.02) 50%, 
+      rgba(180, 94, 255, 0.04) 100%);
+  backdrop-filter: blur(60px) saturate(2) brightness(1.08);
+  -webkit-backdrop-filter: blur(60px) saturate(2) brightness(1.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 1px solid rgba(255, 255, 255, 0.05);
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
   display: flex; align-items: center;
   padding: 0 20px;
   gap: 20px;
   z-index: 100;
+  /* 玻璃阴影 */
   box-shadow:
-    0 -4px 32px rgba(0, 0, 0, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: background-color 0.2s ease;
+    0 -8px 32px rgba(0, 0, 0, 0.25),
+    /* 顶部高光 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    /* 底部环境光 */
+    0 0 60px rgba(180, 94, 255, 0.08);
+  transition: all 0.3s ease;
 }
 
 /* 播放器栏顶部液态玻璃折射高光 */
