@@ -657,8 +657,12 @@ function playTrack(track, index) {
   if (!track) return;
   if (index !== undefined) state.queueIndex = index;
   else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
-
+  
   state.currentTrack = track;
+  
+  // 调试：显示即将播放的歌曲
+  console.log('[PlayTrack] Playing:', track.title, 'by', track.artist, 'album:', track.album);
+  
   // 关键：在用户手势最前端初始化 AudioContext，确保 resume() 在手势中生效
   // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
   cacheTrack(track);
