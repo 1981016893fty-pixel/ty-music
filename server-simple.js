@@ -802,57 +802,11 @@ const server = http.createServer(async (req, res) => {
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      console.log('[Proxy] Streaming audio for id:', id);
-
-      // 服务器作为代理去请求 CDN（带正确 Referer），然后 pipe 给前端
-      // 转发浏览器的 Range 头，支持 seek 和分段加载
-      const cdnHeaders = {
-        'Referer': 'https://music.163.com/',
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      };
-      if (req.headers['range']) {
-        cdnHeaders['Range'] = req.headers['range'];
-      }
-
-      const proxyReq = https.get(audioUrl, {
-        headers: cdnHeaders,
-        timeout: 30000
-      }, (proxyRes) => {
-        // CDN 返回非 2xx
-        if (proxyRes.statusCode !== 200 && proxyRes.statusCode !== 206) {
-          console.error('[Proxy] CDN returned', proxyRes.statusCode, 'for id:', id);
-          if (!res.headersSent) {
-            res.statusCode = 502;
-            res.end(JSON.stringify({ error: `CDN returned ${proxyRes.statusCode}` }));
-          }
-          return;
-        }
-        // 转发状态码（200 或 206 Partial Content）
-        res.statusCode = proxyRes.statusCode;
-        // 转发 Content-Type、Content-Length、Content-Range 等 header
-        res.setHeader('Content-Type', proxyRes.headers['content-type'] || 'audio/mpeg');
-        res.setHeader('Accept-Ranges', 'bytes');
-        if (proxyRes.headers['content-length']) {
-          res.setHeader('Content-Length', proxyRes.headers['content-length']);
-        }
-        if (proxyRes.headers['content-range']) {
-          res.setHeader('Content-Range', proxyRes.headers['content-range']);
-        }
-        res.setHeader('Cache-Control', 'public, max-age=600');
-        proxyRes.pipe(res);
-      });
-
-      proxyReq.on('error', (e) => {
-        console.error('[Proxy] Request error:', e.message);
-        if (!res.headersSent) {
-          res.statusCode = 502;
-          res.end(JSON.stringify({ error: e.message }));
-        }
-      });
-
-      // 前端断开时，也断开到 CDN 的连接
-      res.on('close', () => proxyReq.destroy());
-
+      // 302 重定向到 CDN 直链，浏览器直接请求 CDN，不经过服务器中转
+      res.statusCode = 302;
+      res.setHeader('Location', audioUrl);
+      res.setHeader('Cache-Control', 'public, max-age=600');
+      res.end();
     } catch (e) {
       console.error('[Proxy] Exception:', e.message);
       if (!res.headersSent) {
