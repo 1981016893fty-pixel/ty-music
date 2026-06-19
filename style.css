@@ -141,10 +141,7 @@ body {
     var(--glass-shadow-soft),
     inset 1px 0 0 rgba(255, 255, 255, 0.03),
     2px 0 40px rgba(180, 94, 255, 0.04);
-  transition: width 0.35s cubic-bezier(0.32, 0.04, 0.12, 1),
-              min-width 0.35s cubic-bezier(0.32, 0.04, 0.12, 1),
-              padding 0.35s cubic-bezier(0.32, 0.04, 0.12, 1),
-              background-color 0.2s ease;
+  transition: background-color 0.2s ease;
 }
 
 /* 侧边栏收起按钮 — 桌面端显示 */
@@ -169,7 +166,6 @@ body {
 /* 收起后主内容区扩展 */
 body.sidebar-hidden .main-content { flex: 1; }
 body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
-
 .sidebar::after {
   content: '';
   position: absolute;
@@ -246,72 +242,6 @@ body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
 }
 .sidebar-toggle-btn .fa-chevron-left { transition: transform 0.3s ease; }
 .sidebar.collapsed .sidebar-toggle-btn .fa-chevron-left { transform: rotate(180deg); }
-
-/* 移动端关闭侧边栏按钮（默认隐藏，移动端显示） */
-.sidebar-close-btn {
-  display: none;
-  width: 24px; height: 24px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: var(--glass-layer-3);
-  color: var(--text-secondary);
-  font-size: 10px;
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-left: auto;
-  transition: all 0.15s ease;
-}
-.sidebar-close-btn:hover {
-  background: rgba(255, 61, 161, 0.15);
-  color: var(--neon-pink);
-  border-color: rgba(255, 61, 161, 0.25);
-}
-
-/* 桌面端：侧边栏收起后显示的浮动展开按钮 */
-.sidebar-reveal-btn {
-  display: none;
-  position: fixed;
-  top: 16px;
-  left: 16px;
-  z-index: 110;
-  width: 36px; height: 36px;
-  border-radius: 10px;
-  border: 1px solid var(--border-highlight);
-  background: var(--glass-layer-1);
-  backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
-  -webkit-backdrop-filter: blur(var(--glass-blur-1)) saturate(1.6);
-  color: var(--text-secondary);
-  font-size: 13px;
-  cursor: pointer;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04);
-  transition: all 0.2s ease;
-  animation: revealFadeIn 0.35s cubic-bezier(0.32, 0.04, 0.12, 1);
-}
-.sidebar-reveal-btn:hover {
-  background: var(--glass-layer-4);
-  color: var(--neon-purple);
-  border-color: rgba(180, 94, 255, 0.25);
-  box-shadow: 0 0 16px rgba(180, 94, 255, 0.15);
-  transform: scale(1.08);
-}
-.sidebar-reveal-btn:active {
-  transform: scale(0.95);
-}
-/* 桌面端收起侧边栏后显示展开按钮 */
-@media (min-width: 769px) {
-  body.sidebar-hidden .sidebar-reveal-btn {
-    display: flex;
-  }
-}
-
-@keyframes revealFadeIn {
-  from { opacity: 0; transform: translateX(-12px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
 
 /* 侧边栏搜索框 — 轻玻璃卡片 */
 .search-mini {
@@ -572,7 +502,6 @@ body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
   overflow-y: auto; overflow-x: hidden;
   scroll-behavior: smooth;
   padding-bottom: 16px;
-  transition: margin-left 0.35s cubic-bezier(0.32, 0.04, 0.12, 1);
 }
 
 .main-content::-webkit-scrollbar { width: 5px; }
@@ -3605,28 +3534,6 @@ body.sidebar-hidden .sidebar { width: 0; min-width: 0; }
     box-shadow: 4px 0 32px rgba(0,0,0,0.4);
   }
   .sidebar.show { transform: translateX(0); }
-
-  /* 移动端隐藏桌面端收起按钮，显示关闭按钮 */
-  .sidebar-toggle-btn { display: none !important; }
-  .sidebar-close-btn { display: flex; }
-
-  /* 移动端隐藏浮动展开按钮 */
-  .sidebar-reveal-btn { display: none !important; }
-
-  /* 移动端侧边栏遮罩层 */
-  .sidebar-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    z-index: 199;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.35s ease;
-  }
-  .sidebar-overlay.show {
-    opacity: 1;
-    pointer-events: auto;
-  }
 
   /* 显示移动端顶部栏 */
   .mobile-topbar {

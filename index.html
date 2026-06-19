@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TY Music - 免费听遍全网音乐</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23b44dff'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
-  <link rel="preload" href="style.css?v=20260620a" as="style">
-  <link rel="preload" href="player.js?v=20260620a" as="script">
+  <link rel="preload" href="style.css?v=20260620" as="style">
+  <link rel="preload" href="player.js?v=20260620" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260620a">
+  <link rel="stylesheet" href="style.css?v=20260620">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -76,11 +76,6 @@
     <span class="mobile-page-title" id="mobilePageTitle">TY Music</span>
   </div>
 
-  <!-- 桌面端：侧边栏收起后用于重新展开的浮动按钮 -->
-  <button class="sidebar-reveal-btn" id="sidebarRevealBtn" onclick="toggleSidebar()" title="展开侧边栏">
-    <i class="fa-solid fa-chevron-right"></i>
-  </button>
-
   <!-- 侧边栏 -->
   <aside class="sidebar" id="sidebar">
     <div class="logo">
@@ -93,13 +88,8 @@
         <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
       </svg>
       <span class="logo-text">TY Music</span>
-      <!-- 桌面端：收起侧边栏按钮 -->
       <button class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleSidebar()" title="收起侧边栏">
         <i class="fa-solid fa-chevron-left"></i>
-      </button>
-      <!-- 移动端：关闭侧边栏按钮 -->
-      <button class="sidebar-close-btn" id="sidebarCloseBtn" onclick="toggleMobileSidebar()" title="关闭">
-        <i class="fa-solid fa-xmark"></i>
       </button>
     </div>
 
@@ -157,9 +147,6 @@
       </div>
     </div>
   </aside>
-
-  <!-- 移动端侧边栏遮罩层 -->
-  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleMobileSidebar()"></div>
 
   <!-- 主内容区 -->
   <main class="main-content">
@@ -612,7 +599,7 @@
       }
     }, 5000);
   </script>
-  <script src="player.js?v=20260620a" defer></script>
+  <script src="player.js?v=20260620" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>
