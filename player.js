@@ -1371,8 +1371,35 @@ async function loadDiscover() {
   // Recent plays
   if (state.recentPlays.length) {
     const recentTracks = state.recentPlays.map(r => {
-      const existing = state.queue.find(q => q.id === r.id);
-      return existing || { id: r.id, title: r.title, artist: r.artist, cover: r.cover || '', coverSmall: r.cover || '', picId: r.picId || '', duration: 0, previewUrl: '', source: 'netease', _gdSource: true };
+      // 优先从 trackCache 拿完整信息（含 album、picId）
+      const cached = state.trackCache.get(r.id);
+      if (cached) {
+        return {
+          id: r.id,
+          title: cached.title || r.title,
+          artist: cached.artist || r.artist,
+          album: cached.album || r.album || '',      // ✅ 补全 album
+          cover: cached.cover || r.cover || '',
+          coverSmall: cached.coverSmall || r.cover || '',
+          picId: cached.picId || r.picId || '', // ✅ 补全 picId
+          duration: cached.duration || 0,
+          previewUrl: cached.previewUrl || r.previewUrl || '',
+          source: cached.source || r.source || 'netease',
+        };
+      }
+      // 没有缓存，直接用 recentPlays 的数据（可能缺 album）
+      return { 
+        id: r.id, 
+        title: r.title, 
+        artist: r.artist, 
+        album: r.album || '',       // ✅ 已有 album 字段
+        cover: r.cover || '', 
+        coverSmall: r.cover || '', 
+        picId: r.picId || '',     // ✅ 已有 picId 字段
+        duration: 0, 
+        previewUrl: '', 
+        source: r.source || 'netease',
+      };
     });
     addToQueue(recentTracks);
     renderScrollRow('#recentTracks', recentTracks, true);
