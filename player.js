@@ -1474,7 +1474,7 @@ async function loadGenreDetail(genreId) {
 
   $('#genreTracks').innerHTML = '<div style="padding:20px;text-align:center">加载中...</div>';
   try {
-    const queryMap = { pop: '流行歌曲', rock: '摇滚歌曲', electronic: '电子音乐', hiphop: '嘻哈说唱', jazz: '爵士乐', classical: '古典音乐', rnb: 'R&B 节奏蓝调', country: '乡村音乐', kpop: 'K-pop 韩国流行', chinese: '华语歌曲', latin: '拉丁音乐', anime: '动漫歌曲' };
+    const queryMap = { pop: '热门流行', rock: '经典摇滚', electronic: '电子舞曲', hiphop: '嘻哈说唱', jazz: '爵士经典', classical: '古典音乐', rnb: 'R&B节奏蓝调', country: '乡村音乐', kpop: 'K-pop韩国流行', chinese: '华语热门', latin: '拉丁音乐', anime: '动漫主题曲' };
     const tracks = await universalSearch(queryMap[genreId] || genreId, 80, 'netease');
     genreDetailCache[genreId] = tracks;
     addToQueue(tracks);
