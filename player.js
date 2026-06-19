@@ -3436,8 +3436,8 @@ async function openArtistPage(artistName) {
   if (bg) bg.style.backgroundImage = '';
   try {
     var data = await Promise.all([
-      fetch('/api/music/search?keywords='+encodeURIComponent(artistName)+'&source=netease&limit=50').then(r=>r.json()).then(d=>d.songs||[]).catch(()=>[]),
-      fetch('/api/music/artist?name='+encodeURIComponent(artistName)+'&source=netease&limit=50').then(r=>r.json()).then(d=>d.songs||[]).catch(()=>[])
+      fetch('/api/music/search?keywords='+encodeURIComponent(artistName)+'&source=netease&limit=100').then(r=>r.json()).then(d=>d.songs||[]).catch(()=>[]),
+      fetch('/api/music/artist?name='+encodeURIComponent(artistName)+'&source=netease&limit=100').then(r=>r.json()).then(d=>d.songs||[]).catch(()=>[])
     ]);
     var fs = data[0], as = data[1], seen = new Set(), tracks = [];
     fs.forEach(function(s){if(!seen.has(s.id)){seen.add(s.id);s.source='netease';s.picId=s.picId||'';tracks.push(normalizeTrack(s));}});
@@ -3488,7 +3488,7 @@ async function loadMoreArtistSongs() {
   }
   
   try {
-    var data = await fetch('/api/music/artist?name='+encodeURIComponent(currentArtistName)+'&source=netease&limit=50&offset='+currentArtistOffset).then(r=>r.json()).catch(()=>[]);
+    var data = await fetch('/api/music/artist?name='+encodeURIComponent(currentArtistName)+'&source=netease&limit=100&offset='+currentArtistOffset).then(r=>r.json()).catch(()=>[]);
     var newSongs = data.songs || [];
     
     if (!newSongs.length) {
