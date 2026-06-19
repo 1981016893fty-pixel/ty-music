@@ -986,86 +986,62 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
-    // Album - 使用网易云API获取准确的专辑信息
+    // Album - 使用 picId 精准过滤（最可靠的方法）
     // 参数：
-    //   - songId: 歌曲ID（用来获取专辑ID）
-    //   - albumId: 专辑ID（直接获取专辑信息，优先使用）
-    //   - album: 专辑名称（向后兼容）
-    //   - artist: 艺人名称（向后兼容）
+    //   - songId: 歌曲ID（用来获取 picId）
+    //   - picId: 专辑封面ID（直接过滤）
+    //   - album: 专辑名称（向后兼容，用于搜索）
+    //   - artist: 艺人名称（向后兼容，用于搜索）
     if (pathname === '/api/music/album') {
       const songId = params.get('songId') || '';
-      const albumId = params.get('albumId') || '';
+      const picId = params.get('picId') || '';
       const album = params.get('album') || '';
       const artist = params.get('artist') || '';
       const limit = parseInt(params.get('limit') || '50');
       
       try {
-        let targetAlbumId = albumId;
+        let targetPicId = picId;
         
-        // 如果没有 albumId，但有 songId，先用 songId 获取专辑ID
-        if (!targetAlbumId && songId) {
-          console.log(`[Album] Getting albumId from songId=${songId}`);
-          // 注意：网易云API的 ids 参数需要是 JSON 数组格式的字符串
-          const detailUrl = `${NETEASE_API}/song/detail?id=${songId}&ids=${encodeURIComponent('[' + songId + ']')}`;
-          console.log(`[Album] Detail URL: ${detailUrl}`);
-          const detailData = await requestNetease(detailUrl);
+        // 如果没有 picId，但有 songId，先用 songId 获取 picId
+        if (!targetPicId && songId) {
+          console.log(`[Album] Getting picId from songId=${songId}`);
+          const searchUrl = `${GD_API}?types=search&source=netease&name=${songId}&count=1`;
+          const searchData = await requestGD(searchUrl);
           
-          console.log(`[Album] Detail data:`, JSON.stringify(detailData).substring(0, 200));
-          
-          if (detailData && detailData.songs && detailData.songs.length > 0) {
-            targetAlbumId = String(detailData.songs[0].album.id);
-            console.log(`[Album] Got albumId=${targetAlbumId} from songId=${songId}`);
-          } else {
-            console.log(`[Album] Failed to get albumId from songId=${songId}, detailData:`, detailData);
+          if (Array.isArray(searchData) && searchData.length > 0) {
+            targetPicId = searchData[0].pic_id || '';
+            console.log(`[Album] Got picId=${targetPicId} from songId=${songId}`);
           }
         }
         
-        // 如果有 albumId，直接用网易云API获取专辑信息
-        if (targetAlbumId) {
-          console.log(`[Album] Fetching album from Netease API: albumId=${targetAlbumId}`);
-          const albumUrl = `${NETEASE_API}/album?id=${targetAlbumId}`;
-          console.log(`[Album] Album URL: ${albumUrl}`);
-          const albumData = await requestNetease(albumUrl);
+        // 如果有 picId，用 artist + album 搜索，然后按 picId 过滤
+        if (targetPicId) {
+          console.log(`[Album] Filtering by picId=${targetPicId}, album="${album}", artist="${artist}"`);
           
-          console.log(`[Album] Album data received, has album: ${!!albumData?.album}, has songs: ${!!albumData?.songs}`);
+          // 策略：用 "artist album" 搜索
+          const query = (artist && album) ? `${artist} ${album}` : (artist || album || '');
+          const allSongs = await searchSongs(query, 100, 'netease');
           
-          if (albumData && albumData.album && albumData.songs) {
-            const albumInfo = albumData.album;
-            const songs = albumData.songs.slice(0, limit);
-            
-            console.log(`[Album] Netease API returned: album="${albumInfo.name}", ${songs.length} songs`);
-            
-            // 转换为我们的格式
-            const formattedSongs = songs.map(s => ({
-              id: String(s.id),
-              name: s.name || '',
-              artist: s.artists.map(a => a.name).join(', '),
-              album: albumInfo.name || '',
-              albumId: String(albumInfo.picId || ''),
-              picId: String(albumInfo.picId || ''),
-              cover: '/api/music/cover?picId=' + (albumInfo.picId || ''),
-              coverSmall: '/api/music/cover?picId=' + (albumInfo.picId || ''),
-              duration: Math.round((s.duration || 0) / 1000),
-              source: 'netease'
-            }));
-            
-            res.end(JSON.stringify({ songs: formattedSongs }));
+          console.log(`[Album] Searched "${query}", got ${allSongs.length} songs`);
+          
+          // 过滤出 picId 匹配的所有歌曲（即这个专辑的歌曲）
+          const albumSongs = allSongs.filter(s => (s.picId || s.albumId || '') === targetPicId);
+          
+          if (albumSongs.length === 0) {
+            console.log(`[Album] No songs found with picId=${targetPicId}`);
+            res.end(JSON.stringify({ songs: [] }));
             return;
-          } else {
-            console.log(`[Album] Netease API failed, response:`, JSON.stringify(albumData).substring(0, 200));
-            console.log(`[Album] Falling back to search`);
           }
+          
+          console.log(`[Album] picId="${targetPicId}": ${albumSongs.length} songs found`);
+          res.end(JSON.stringify({ songs: albumSongs.slice(0, limit) }));
+          return;
         }
         
-        // 向后兼容：没有 songId 或 albumId 时，用专辑名搜索
-        console.log(`[Album] Fallback: using album name search, songId=${songId}, albumId=${albumId}, targetAlbumId=${targetAlbumId}`);
-        
+        // 向后兼容：没有 songId 或 picId 时，用专辑名搜索
         if (!album) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ 
-            error: 'Missing songId, albumId, or album parameter',
-            debug: { songId, albumId, targetAlbumId, album }
-          }));
+          res.end(JSON.stringify({ error: 'Missing songId, picId, or album parameter' }));
           return;
         }
         
@@ -1150,11 +1126,15 @@ const server = http.createServer(async (req, res) => {
         res.end(JSON.stringify({ 
           error: 'Failed to fetch album info', 
           message: e.message,
-          stack: e.stack?.substring(0, 500)
+          note: '网易云API的 /api/album 接口已不可用，请使用picId过滤搜索结果'
         }));
         return;
       }
     }
+    
+    // ============================================
+    // 艺人详情
+    // ============================================
     
     // Artist songs
     if (pathname === '/api/music/artist') {
