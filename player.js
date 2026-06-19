@@ -659,6 +659,9 @@ function playTrack(track, index) {
   else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
 
   state.currentTrack = track;
+  // 关键：在用户手势最前端初始化 AudioContext，确保 resume() 在手势中生效
+  if (typeof initAudioContext === 'function') initAudioContext();
+  if (typeof resumeAudioContext === 'function') resumeAudioContext();
   
   // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
   cacheTrack(track);
@@ -853,6 +856,9 @@ function togglePlay() {
     state.isPlaying = false;
     updatePlayBtn();
   } else {
+    // 关键：在用户手势中初始化/恢复 AudioContext，否则浏览器会 blocked
+    if (typeof initAudioContext === 'function') initAudioContext();
+    if (typeof resumeAudioContext === 'function') resumeAudioContext();
     audio.play().then(() => {
       state.isPlaying = true;
       updatePlayBtn();
@@ -867,11 +873,10 @@ $('#miniPlayBtn').addEventListener('click', togglePlay);
 audio.addEventListener('play', () => {
   state.isPlaying = true;
   updatePlayBtn();
-  // 尽早初始化 AudioContext，避免全屏后才初始化导致音频断开
-  if (typeof initAudioContext === 'function') initAudioContext();
-  if (typeof resumeAudioContext === 'function') resumeAudioContext();
+  // AudioContext 已在 togglePlay 用户手势中初始化，这里只管全屏可视化
   if (ampIsShowing) { updateAmpPlayBtn(); startVisualizer(state.currentTrack); }
 });
+
 audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) { updateAmpPlayBtn(); stopVisualizer(); } });
 audio.addEventListener('ended', () => {
   if (state.repeatMode === 2) { audio.currentTime = 0; audio.play(); }
@@ -2214,6 +2219,8 @@ function initAudioContext() {
     const AudioCtx = window.AudioContext || window.webkitAudioContext;
     if (!AudioCtx) return false;
     _audioCtx = new AudioCtx();
+    // 新创建的 AudioContext 初始状态是 suspended，必须在用户手势中 resume
+    _audioCtx.resume().catch(() => {});
     _analyser = _audioCtx.createAnalyser();
     _analyser.fftSize = 256;
     _analyser.smoothingTimeConstant = 0.80;
