@@ -246,7 +246,7 @@ function normalizeTrack(song) {
 async function searchLocal(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
     var url = '/api/search?keywords=' + encodeURIComponent(keywords) + '&limit=' + limit;
     var res = await fetch(url, { signal: ctrl.signal });
@@ -265,7 +265,7 @@ async function searchLocal(keywords, limit) {
 async function fetchHotSongs(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
     var res = await fetch('/api/discover/hot?limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -298,7 +298,7 @@ async function fetchPlaylistSongs(limit) {
 async function searchNetease(keywords, limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
     var res = await fetch('/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -316,7 +316,7 @@ async function searchNetease(keywords, limit) {
 async function fetchNeteaseHot(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 8000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
     var res = await fetch('/api/music/hot?source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -1414,7 +1414,7 @@ async function loadDiscover() {
 async function loadDiscoverData() {
   // 渲染骨架屏占位
   $('#heroTitle').textContent = '加载中...';
-  $('#heroArtist').textContent = '';
+  $('#heroArtist').textContent = '正在连接服务器...';
   $('#heroAlbum').textContent = '';
   // 热门骨架屏
   var skeletonHTML = '';
@@ -1423,17 +1423,27 @@ async function loadDiscoverData() {
   }
   $('#hotTracks').innerHTML = skeletonHTML;
 
+  // Render 免费服务冷启动需要约 30 秒，提前 8 秒后提示用户等待
+  var wakeTimer = setTimeout(function() {
+    var h = $('#heroArtist');
+    if (h && h.textContent === '正在连接服务器...') {
+      h.textContent = '服务唤醒中，请稍候（约 30 秒）...';
+    }
+  }, 8000);
+
   // 只拉 6 首热门（减少网络传输量），hero 独立拉 1 首
   try {
     var hotTracks = await fetchNeteaseHot(6);
+    clearTimeout(wakeTimer);
     if (!hotCache) {
       hotCache = (hotTracks && hotTracks.length) ? hotTracks : [];
       if (hotCache.length) addToQueue(hotCache);
     }
     renderScrollRow('#hotTracks', hotCache);
   } catch (e) {
+    clearTimeout(wakeTimer);
     console.warn('[Discover] Hot failed:', e);
-    $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">热门加载失败</div>';
+    $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">热门加载失败，请刷新重试</div>';
   }
 
   // Hero：只拉 1 首

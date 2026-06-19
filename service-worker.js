@@ -3,7 +3,7 @@
  * PWA 离线缓存 + 桌面安装支持
  */
 
-const CACHE_NAME = 'ty-music-v4';
+const CACHE_NAME = 'ty-music-v5';
 
 // 安装事件：跳过等待，立即接管
 self.addEventListener('install', event => {
