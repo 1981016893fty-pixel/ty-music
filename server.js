@@ -35,6 +35,7 @@ function getCorrectAlbumSync(artist, songName) {
 }
 
 const GD_API = 'https://music-api.gdstudio.xyz/api.php';
+const NETEASE_API = 'https://music.163.com/api';
 const PUBLIC_DIR = __dirname;
 
 // === 预压缩 + 缓存文件内容（避免每次请求都读磁盘） ===
@@ -169,6 +170,44 @@ function requestGD(url) {
       console.error('[GD] Request error:', e.message);
       reject(e);
     });
+  });
+}
+
+// 调用网易云音乐 API（直接访问，获取准确的专辑信息）
+function requestNetease(url) {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const options = {
+      hostname: parsedUrl.hostname,
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://music.163.com/',
+      }
+    };
+    
+    options.agent = getAgentForUrl(url);
+    
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(data));
+        } catch (e) {
+          console.error('[Netease] Parse error:', data.substring(0, 100));
+          reject(new Error('Parse error'));
+        }
+      });
+    });
+    
+    req.on('error', (e) => {
+      console.error('[Netease] Request error:', e.message);
+      reject(e);
+    });
+    
+    req.end();
   });
 }
 
@@ -942,120 +981,154 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
-    // Album - 支持两种模式：
-    // 1. ?picId=xxx → 直接用 picId 搜索（100% 准确）
-    // 2. ?album=xxx → 向后兼容，用专辑名搜索（会按 picId 分组过滤）
+    // Album - 使用网易云API获取准确的专辑信息
+    // 参数：
+    //   - songId: 歌曲ID（用来获取专辑ID）
+    //   - albumId: 专辑ID（直接获取专辑信息，优先使用）
+    //   - album: 专辑名称（向后兼容）
+    //   - artist: 艺人名称（向后兼容）
     if (pathname === '/api/music/album') {
-      const picId = params.get('picId') || '';
+      const songId = params.get('songId') || '';
+      const albumId = params.get('albumId') || '';
       const album = params.get('album') || '';
       const artist = params.get('artist') || '';
       const limit = parseInt(params.get('limit') || '50');
       
-      // 模式1：有 picId → 用 picId 过滤搜索结果（最准确）
-      if (picId) {
-        console.log(`[Album] Request by picId: picId="${picId}", album="${album}", artist="${artist}"`);
+      try {
+        let targetAlbumId = albumId;
         
-        // 策略：用 "artist album" 搜索，然后按 picId 过滤
-        // 这样能拿到这个专辑的部分歌曲（可能不是全部，但足够展示）
-        const query = (artist && album) ? `${artist} ${album}` : (artist || album || '');
-        const allSongs = await searchSongs(query, 100, 'netease');
+        // 如果没有 albumId，但有 songId，先用 songId 获取专辑ID
+        if (!targetAlbumId && songId) {
+          console.log(`[Album] Getting albumId from songId=${songId}`);
+          const detailUrl = `${NETEASE_API}/song/detail?id=${songId}&ids=[${songId}]`;
+          const detailData = await requestNetease(detailUrl);
+          
+          if (detailData && detailData.songs && detailData.songs.length > 0) {
+            targetAlbumId = String(detailData.songs[0].album.id);
+            console.log(`[Album] Got albumId=${targetAlbumId} from songId=${songId}`);
+          }
+        }
         
-        console.log(`[Album] Searched "${query}", got ${allSongs.length} songs`);
+        // 如果有 albumId，直接用网易云API获取专辑信息
+        if (targetAlbumId) {
+          console.log(`[Album] Fetching album from Netease API: albumId=${targetAlbumId}`);
+          const albumUrl = `${NETEASE_API}/album?id=${targetAlbumId}`;
+          const albumData = await requestNetease(albumUrl);
+          
+          if (albumData && albumData.album && albumData.songs) {
+            const albumInfo = albumData.album;
+            const songs = albumData.songs.slice(0, limit);
+            
+            console.log(`[Album] Netease API returned: album="${albumInfo.name}", ${songs.length} songs`);
+            
+            // 转换为我们的格式
+            const formattedSongs = songs.map(s => ({
+              id: String(s.id),
+              name: s.name || '',
+              artist: s.artists.map(a => a.name).join(', '),
+              album: albumInfo.name || '',
+              albumId: String(albumInfo.picId || ''),
+              picId: String(albumInfo.picId || ''),
+              cover: '/api/music/cover?picId=' + (albumInfo.picId || ''),
+              coverSmall: '/api/music/cover?picId=' + (albumInfo.picId || ''),
+              duration: Math.round((s.duration || 0) / 1000),
+              source: 'netease'
+            }));
+            
+            res.end(JSON.stringify({ songs: formattedSongs }));
+            return;
+          } else {
+            console.log(`[Album] Netease API failed, falling back to search`);
+          }
+        }
         
-        // 过滤出 picId 匹配的所有歌曲（即这个专辑的歌曲）
-        const albumSongs = allSongs.filter(s => (s.picId || s.albumId || '') === picId);
+        // 向后兼容：没有 songId 或 albumId 时，用专辑名搜索
+        if (!album) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Missing songId, albumId, or album parameter' }));
+          return;
+        }
         
-        if (albumSongs.length === 0) {
-          console.log(`[Album] No songs found with picId=${picId}`);
+        console.log(`[Album] Fallback: searching by album="${album}", artist="${artist}"`);
+        
+        // 用 "artist album" 搜索，然后按 picId 分组
+        const query = artist ? `${artist} ${album}` : album;
+        const allSongs = await searchSongs(query, 50, 'netease');
+        
+        if (allSongs.length === 0) {
           res.end(JSON.stringify({ songs: [] }));
           return;
         }
         
-        console.log(`[Album] picId="${picId}": ${albumSongs.length} songs found`);
-        res.end(JSON.stringify({ songs: albumSongs.slice(0, limit) }));
-        return;
-      }
-      
-      // 模式2：没有 picId，向后兼容用 album 名称搜索
-      if (!album) {
-        res.statusCode = 400;
-        res.end(JSON.stringify({ error: 'Missing album or picId parameter' }));
-        return;
-      }
-      
-      console.log(`[Album] Request by album name: album="${album}", artist="${artist}"`);
-      
-      // 用 "artist album" 搜索，然后按 picId 分组
-      const query = artist ? `${artist} ${album}` : album;
-      const allSongs = await searchSongs(query, 50, 'netease');
-      
-      if (allSongs.length === 0) {
-        res.end(JSON.stringify({ songs: [] }));
-        return;
-      }
-      
-      // 按 picId 分组，找到出现次数最多的 picId
-      const picIdCounts = {};
-      allSongs.forEach(s => {
-        const pid = s.picId || s.albumId || '';
-        if (pid) {
-          picIdCounts[pid] = (picIdCounts[pid] || 0) + 1;
-        }
-      });
-      
-      // 找到最多的 picId
-      let mainPicId = '';
-      let maxCount = 0;
-      for (const [pid, count] of Object.entries(picIdCounts)) {
-        if (count > maxCount) {
-          maxCount = count;
-          mainPicId = pid;
-        }
-      }
-      
-      console.log(`[Album] picId counts:`, picIdCounts, `→ main picId: ${mainPicId}`);
-      
-      // 过滤出 picId 匹配的歌曲
-      let filtered = [];
-      if (mainPicId) {
-        filtered = allSongs.filter(s => (s.picId || s.albumId || '') === mainPicId);
-      }
-      
-      // 如果按 picId 过滤后为空，用 album 字段模糊匹配
-      if (filtered.length === 0) {
-        const coreAlbum = album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
-        filtered = allSongs.filter(s => {
-          if (!s.album) return false;
-          const sCore = s.album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
-          return sCore === coreAlbum || s.album.toLowerCase().includes(coreAlbum);
+        // 按 picId 分组，找到出现次数最多的 picId
+        const picIdCounts = {};
+        allSongs.forEach(s => {
+          const pid = s.picId || s.albumId || '';
+          if (pid) {
+            picIdCounts[pid] = (picIdCounts[pid] || 0) + 1;
+          }
         });
-      }
-      
-      // 按艺人二次过滤（可选）
-      let finalSongs = filtered;
-      if (artist && filtered.length > 0) {
-        const artistLower = artist.toLowerCase().split(',')[0].trim();
-        const artistFiltered = filtered.filter(s => {
-          if (!s.artist) return false;
-          return s.artist.toLowerCase().includes(artistLower) ||
-                 artistLower.includes(s.artist.toLowerCase().split(',')[0].trim());
-        });
-        if (artistFiltered.length > 0) {
-          finalSongs = artistFiltered;
+        
+        // 找到最多的 picId
+        let mainPicId = '';
+        let maxCount = 0;
+        for (const [pid, count] of Object.entries(picIdCounts)) {
+          if (count > maxCount) {
+            maxCount = count;
+            mainPicId = pid;
+          }
         }
+        
+        console.log(`[Album] picId counts:`, picIdCounts, `→ main picId: ${mainPicId}`);
+        
+        // 过滤出 picId 匹配的歌曲
+        let filtered = [];
+        if (mainPicId) {
+          filtered = allSongs.filter(s => (s.picId || s.albumId || '') === mainPicId);
+        }
+        
+        // 如果按 picId 过滤后为空，用 album 字段模糊匹配
+        if (filtered.length === 0) {
+          const coreAlbum = album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
+          filtered = allSongs.filter(s => {
+            if (!s.album) return false;
+            const sCore = s.album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
+            return sCore === coreAlbum || s.album.toLowerCase().includes(coreAlbum);
+          });
+        }
+        
+        // 按艺人二次过滤（可选）
+        let finalSongs = filtered;
+        if (artist && filtered.length > 0) {
+          const artistLower = artist.toLowerCase().split(',')[0].trim();
+          const artistFiltered = filtered.filter(s => {
+            if (!s.artist) return false;
+            return s.artist.toLowerCase().includes(artistLower) ||
+                   artistLower.includes(s.artist.toLowerCase().split(',')[0].trim());
+          });
+          if (artistFiltered.length > 0) {
+            finalSongs = artistFiltered;
+          }
+        }
+        
+        // 去重
+        const seen = new Set();
+        finalSongs = finalSongs.filter(s => {
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        });
+        
+        console.log(`[Album] "${album}": ${allSongs.length} total → ${finalSongs.length} filtered`);
+        res.end(JSON.stringify({ songs: finalSongs.slice(0, limit) }));
+        return;
+        
+      } catch (e) {
+        console.error('[Album] Error:', e.message);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: 'Failed to fetch album info' }));
+        return;
       }
-      
-      // 去重
-      const seen = new Set();
-      finalSongs = finalSongs.filter(s => {
-        if (seen.has(s.id)) return false;
-        seen.add(s.id);
-        return true;
-      });
-      
-      console.log(`[Album] "${album}": ${allSongs.length} total → ${finalSongs.length} filtered`);
-      res.end(JSON.stringify({ songs: finalSongs.slice(0, limit) }));
-      return;
     }
     
     // Artist songs

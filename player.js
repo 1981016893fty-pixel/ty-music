@@ -716,6 +716,7 @@ function playTrack(track, index) {
   try {
     var albumText = track.album || track.title || '未知专辑';
     var picId = track.picId || track.albumId || ''; // 优先使用 picId（100% 准确）
+    var songId = track.id || ''; // 歌曲ID（用来从网易云API获取准确的专辑信息）
     
     // 迷你播放器
     var miniAlbumEl = $('#miniAlbum');
@@ -725,8 +726,8 @@ function playTrack(track, index) {
       miniAlbumEl.style.cursor = 'pointer';
       miniAlbumEl.title = '点击打开专辑';
       miniAlbumEl.onclick = function() {
-        // 优先使用 picId（100% 准确），同时传 album 名称作为后备
-        openAlbumByName(albumText, track.artist, 'netease', picId);
+        // 使用歌曲ID从网易云API获取准确的专辑信息
+        openAlbumBySongId(songId, albumText, track.artist, 'netease');
       };
     }
     // 全屏播放器
@@ -739,8 +740,8 @@ function playTrack(track, index) {
       ampAlbumEl.onclick = function() {
         closeAmpFullscreenPlayer();
         setTimeout(function() {
-          // 优先使用 picId（100% 准确），同时传 album 名称作为后备
-          openAlbumByName(albumText, track.artist, 'netease', picId);
+          // 使用歌曲ID从网易云API获取准确的专辑信息
+          openAlbumBySongId(songId, albumText, track.artist, 'netease');
         }, 400);
       };
     }
@@ -3264,14 +3265,20 @@ async function openAlbumDetail(albumId) {
   const cover = album.cover || album.picUrl || '';
   const picId = album.picId || ''; // 从保存的专辑数据中提取 picId
   const source = album.source || 'netease';
-  // 不再使用保存的 tracks（可能不准确），改为从 API 重新拉取
-  // 始终从 API 重新拉取曲目（保存的 tracks 可能包含同名歌曲，不准确）
-  // 先显示加载中
-  document.getElementById('albumDetailMeta').textContent = '加载中...';
-  updateAlbumFavButton(albumId);
   
-  // 调用 openAlbumByName，优先使用 picId（100% 准确）
-  await openAlbumByName(name, artist, source, picId);
+  // 如果有 picId，尝试从网易云API获取准确的专辑信息
+  if (picId) {
+    // 用 picId 作为 albumId 调用新的API
+    // 注意：这里需要先把 picId 转换为网易云的 albumId
+    // 但我们现在没有这个映射，所以还是用旧的方法
+    updateAlbumFavButton(albumId);
+    await openAlbumByName(name, artist, source, picId);
+    return;
+  }
+  
+  // 没有 picId，调用 openAlbumByName 重新从 API 获取
+  updateAlbumFavButton(albumId);
+  await openAlbumByName(name, artist, source, '');
   // openAlbumByName 会自己渲染曲目列表和设置封面，直接返回
   return;
 }
@@ -3344,41 +3351,108 @@ function renderAlbumTracks(tracks) {
   });
 }
 
-// 通过专辑名称或 picId 搜索曲目
-// 优先使用 picId（100% 准确），如果没有 picId 才用专辑名
-async function openAlbumByName(albumName, artistName, source, picId) {
-  console.log('[Album] openAlbumByName', { albumName, artistName, source, picId });
-
+// 通过歌曲ID从网易云API获取准确的专辑信息
+async function openAlbumBySongId(songId, albumName, artistName, source) {
+  console.log('[Album] openAlbumBySongId', { songId, albumName, artistName, source });
+  
   // 导航到专辑详情页
   navigateTo('album-detail');
-
+  
   const container = document.getElementById('albumTrackList');
   container.innerHTML = '<div class="scroll-loading">加载中...</div>';
   document.getElementById('albumDetailCover').src = '';
+  document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
+  document.getElementById('albumDetailArtist').textContent = artistName || '';
+  document.getElementById('albumDetailMeta').textContent = '正在从网易云获取专辑信息...';
   
-  // 如果有 picId，显示"专辑"而不是具体的专辑名（因为我们用 picId 查找）
-  if (picId) {
-    document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
-  } else {
-    document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
+  try {
+    // 调用新的API接口，使用 songId 参数
+    const res = await fetch('/api/music/album?songId=' + encodeURIComponent(songId) +
+      '&source=' + (source || 'netease') + '&limit=50');
+    
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const songs = data.songs || [];
+    
+    if (songs.length === 0) {
+      container.innerHTML = '<p class="empty-state">未找到该专辑的曲目</p>';
+      document.getElementById('albumDetailMeta').textContent = '未找到专辑信息';
+      return;
+    }
+    
+    // 标准化为 track 对象，并去重
+    const seenIds = new Set();
+    const tracks = [];
+    for (const s of songs) {
+      const tid = String(s.id || '');
+      if (!tid || seenIds.has(tid)) continue;
+      seenIds.add(tid);
+      s.source = source || 'netease';
+      s.picId = s.picId || '';
+      tracks.push(normalizeTrack(s));
+    }
+    
+    currentAlbumTracks = tracks;
+    
+    // 设置专辑封面（使用第一首歌的封面）
+    const albumCoverEl = document.getElementById('albumDetailCover');
+    if (tracks[0] && tracks[0].coverSmall) {
+      albumCoverEl.src = tracks[0].coverSmall;
+    } else if (tracks[0] && tracks[0].picId) {
+      albumCoverEl.src = '/api/music/cover?picId=' +
+        encodeURIComponent(tracks[0].picId) + '&source=' + (source || 'netease') + '&size=500';
+    }
+    albumCoverEl.dataset.artist = artistName || (tracks[0] && tracks[0].artist) || '';
+    albumCoverEl.onerror = function() { fallbackCover(this); };
+    
+    // 更新专辑标题（使用API返回的准确专辑名）
+    const accurateAlbumName = tracks[0].album || albumName;
+    document.getElementById('albumDetailTitle').textContent = accurateAlbumName;
+    document.getElementById('albumDetailArtist').textContent = artistName || tracks[0].artist || '';
+    document.getElementById('albumDetailMeta').textContent = (source || 'netease') + ' · ' + tracks.length + ' 首';
+    
+    // 设置专辑收藏按钮
+    window.currentAlbumId = accurateAlbumName;
+    window.currentAlbumData = {
+      id: accurateAlbumName,
+      name: accurateAlbumName,
+      artist: { name: artistName || tracks[0].artist || '' },
+      cover: tracks[0] ? tracks[0].coverSmall || tracks[0].cover || '' : '',
+      picId: tracks[0] ? tracks[0].picId || '' : '',
+      source: source || 'netease',
+      trackCount: tracks.length,
+      tracks: tracks.map(function(t) { return { id: t.id, title: t.title, artist: t.artist }; }),
+    };
+    updateAlbumFavButton(accurateAlbumName);
+    
+    // 渲染曲目列表
+    renderAlbumTracks(tracks);
+  } catch (e) {
+    console.error('[Album] Error loading album by songId:', e);
+    container.innerHTML = '<p class="empty-state">加载专辑失败</p>';
+    document.getElementById('albumDetailMeta').textContent = '加载失败';
   }
+}
+
+// 通过专辑名称搜索曲目（向后兼容）
+async function openAlbumByName(albumName, artistName, source, picId) {
+  console.log('[Album] openAlbumByName (fallback)', { albumName, artistName, source, picId });
   
+  // 导航到专辑详情页
+  navigateTo('album-detail');
+  
+  const container = document.getElementById('albumTrackList');
+  container.innerHTML = '<div class="scroll-loading">加载中...</div>';
+  document.getElementById('albumDetailCover').src = '';
+  document.getElementById('albumDetailTitle').textContent = albumName || '专辑';
   document.getElementById('albumDetailArtist').textContent = artistName || '';
   document.getElementById('albumDetailMeta').textContent = source || 'netease';
-
+  
   try {
-    // 优先使用 picId（100% 准确）
-    let url;
-    if (picId) {
-      url = '/api/music/album?picId=' + encodeURIComponent(picId) +
-        '&artist=' + encodeURIComponent(artistName || '') +
-        '&source=' + (source || 'netease') + '&limit=50';
-    } else {
-      // 向后兼容：没有 picId 时用专辑名
-      url = '/api/music/album?album=' + encodeURIComponent(albumName) +
-        '&artist=' + encodeURIComponent(artistName || '') +
-        '&source=' + (source || 'netease') + '&limit=30';
-    }
+    // 向后兼容：没有 songId 时用专辑名
+    const url = '/api/music/album?album=' + encodeURIComponent(albumName) +
+      '&artist=' + encodeURIComponent(artistName || '') +
+      '&source=' + (source || 'netease') + '&limit=30';
     
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
