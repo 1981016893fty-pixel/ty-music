@@ -683,8 +683,52 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   // ========== 静态文件（gzip 压缩 + 内存缓存）==========
+
+  // 1. 精确匹配的内存缓存（STATIC_FILES）
   if (staticCache.has(pathname)) {
     serveStatic(req, res, pathname);
+    return;
+  }
+
+  // 2. /vendor/ 目录：直接从磁盘读取（Font Awesome 等第三方库）
+  if (pathname.startsWith('/vendor/')) {
+    const filePath = path.join(__dirname, pathname);
+    // 安全检查：防止路径穿越
+    if (!filePath.startsWith(__dirname + '/vendor/')) {
+      res.statusCode = 403; res.end('Forbidden'); return;
+    }
+    try {
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).slice(1);
+      const contentType = {
+        'html': 'text/html; charset=utf-8',
+        'js': 'application/javascript; charset=utf-8',
+        'css': 'text/css; charset=utf-8',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'gif': 'image/gif',
+        'svg': 'image/svg+xml',
+        'woff2': 'font/woff2',
+        'woff': 'font/woff',
+        'ttf': 'font/ttf',
+        'json': 'application/json; charset=utf-8',
+      }[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30天
+      const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
+      if (acceptGzip && (ext === 'css' || ext === 'js' || ext === 'html')) {
+        const gzipped = zlib.gzipSync(data);
+        res.setHeader('Content-Encoding', 'gzip');
+        res.setHeader('Content-Length', gzipped.length);
+        res.end(gzipped);
+      } else {
+        res.setHeader('Content-Length', data.length);
+        res.end(data);
+      }
+    } catch (e) {
+      res.statusCode = 404; res.end('Not found');
+    }
     return;
   }
 
@@ -761,15 +805,21 @@ const server = http.createServer(async (req, res) => {
       console.log('[Proxy] Streaming audio for id:', id);
 
       // 服务器作为代理去请求 CDN（带正确 Referer），然后 pipe 给前端
+      // 转发浏览器的 Range 头，支持 seek 和分段加载
+      const cdnHeaders = {
+        'Referer': 'https://music.163.com/',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+      };
+      if (req.headers['range']) {
+        cdnHeaders['Range'] = req.headers['range'];
+      }
+
       const proxyReq = https.get(audioUrl, {
-        headers: {
-          'Referer': 'https://music.163.com/',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-        },
+        headers: cdnHeaders,
         timeout: 30000
       }, (proxyRes) => {
-        // 如果 CDN 返回 403/40x，返回错误
-        if (proxyRes.statusCode !== 200) {
+        // CDN 返回非 2xx
+        if (proxyRes.statusCode !== 200 && proxyRes.statusCode !== 206) {
           console.error('[Proxy] CDN returned', proxyRes.statusCode, 'for id:', id);
           if (!res.headersSent) {
             res.statusCode = 502;
@@ -777,11 +827,16 @@ const server = http.createServer(async (req, res) => {
           }
           return;
         }
-        // 转发 Content-Type、Content-Length 等 header
+        // 转发状态码（200 或 206 Partial Content）
+        res.statusCode = proxyRes.statusCode;
+        // 转发 Content-Type、Content-Length、Content-Range 等 header
         res.setHeader('Content-Type', proxyRes.headers['content-type'] || 'audio/mpeg');
         res.setHeader('Accept-Ranges', 'bytes');
         if (proxyRes.headers['content-length']) {
           res.setHeader('Content-Length', proxyRes.headers['content-length']);
+        }
+        if (proxyRes.headers['content-range']) {
+          res.setHeader('Content-Range', proxyRes.headers['content-range']);
         }
         res.setHeader('Cache-Control', 'public, max-age=600');
         proxyRes.pipe(res);
