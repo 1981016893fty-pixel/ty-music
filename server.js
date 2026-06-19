@@ -954,77 +954,77 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       
-      // GD API 按歌曲名搜索，不是按专辑名。需要：
-      // 1. 提取核心专辑名（去掉括号后缀如 "(deluxe version)"）
-      // 2. 用艺名+专辑名一起搜索
-      // 3. 按 album 字段精确过滤
-      const coreAlbum = album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim();
-      const query = artist ? `${artist} ${coreAlbum}` : album;
+      console.log(`[Album] Request: album="${album}", artist="${artist}"`);
       
-      // 搜索时用较大 limit 确保覆盖
+      // 策略：用 "artist album" 精确搜索，然后按 picId 分组
+      const query = artist ? `${artist} ${album}` : album;
       const allSongs = await searchSongs(query, 50, 'netease');
       
-      // 改进：按专辑名严格过滤
-      const filtered = allSongs.filter(function(s) {
-        if (!s.album) return false;
-        
-        const sAlbum = s.album.toLowerCase();
-        const reqAlbum = album.toLowerCase();
-        const reqCore = coreAlbum.toLowerCase();
-        
-        // 严格匹配策略：
-        // 1. 完全相等
-        // 2. 核心专辑名完全匹配（去掉括号后）
-        // 3. 搜索结果的专辑名包含请求的核心专辑名，且长度差距不大（避免误匹配）
-        const sCoreAlbum = sAlbum.replace(/\s*[\(（].*[\)）]\s*/g, '').trim();
-        
-        // 完全匹配
-        if (sAlbum === reqAlbum) return true;
-        
-        // 核心专辑名完全匹配
-        if (sCoreAlbum === reqCore) return true;
-        
-        // 包含关系匹配，但要求长度差距不超过 50%（避免 "Abbey Road" 匹配到 "Abbey Road (Super Deluxe Edition)" 之外的）
-        if (sAlbum.includes(reqCore) || reqCore.includes(sCoreAlbum)) {
-          const lenDiff = Math.abs(sAlbum.length - reqAlbum.length);
-          const maxLen = Math.max(sAlbum.length, reqAlbum.length);
-          if (maxLen > 0 && (lenDiff / maxLen) < 0.5) {
-            return true;
-          }
+      if (allSongs.length === 0) {
+        res.end(JSON.stringify({ songs: [] }));
+        return;
+      }
+      
+      // 核心修复：按 picId 分组，找到出现次数最多的 picId（即正确专辑的 picId）
+      const picIdCounts = {};
+      allSongs.forEach(s => {
+        const pid = s.picId || s.albumId || '';
+        if (pid) {
+          picIdCounts[pid] = (picIdCounts[pid] || 0) + 1;
         }
-        
-        return false;
       });
       
+      // 找到最多的 picId
+      let mainPicId = '';
+      let maxCount = 0;
+      for (const [pid, count] of Object.entries(picIdCounts)) {
+        if (count > maxCount) {
+          maxCount = count;
+          mainPicId = pid;
+        }
+      }
+      
+      console.log(`[Album] picId counts:`, picIdCounts, `→ main picId: ${mainPicId}`);
+      
+      // 过滤出 picId 匹配的歌曲（即真正属于这个专辑的）
+      let filtered = [];
+      if (mainPicId) {
+        filtered = allSongs.filter(s => (s.picId || s.albumId || '') === mainPicId);
+      }
+      
+      // 如果按 picId 过滤后为空，退而求其次：用 album 字段模糊匹配
+      if (filtered.length === 0) {
+        const coreAlbum = album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
+        filtered = allSongs.filter(s => {
+          if (!s.album) return false;
+          const sCore = s.album.replace(/\s*[\(（].*[\)）]\s*/g, '').trim().toLowerCase();
+          return sCore === coreAlbum || s.album.toLowerCase().includes(coreAlbum);
+        });
+      }
+      
       // 按艺人二次过滤（可选）
-      var finalSongs = filtered;
+      let finalSongs = filtered;
       if (artist && filtered.length > 0) {
-        var artistLower = artist.toLowerCase().split(',')[0].trim();
-        var artistFiltered = filtered.filter(function(s) {
+        const artistLower = artist.toLowerCase().split(',')[0].trim();
+        const artistFiltered = filtered.filter(s => {
           if (!s.artist) return false;
           return s.artist.toLowerCase().includes(artistLower) ||
                  artistLower.includes(s.artist.toLowerCase().split(',')[0].trim());
         });
-        // 只有当艺人过滤后还有结果时才使用
         if (artistFiltered.length > 0) {
           finalSongs = artistFiltered;
         }
       }
       
       // 去重
-      var seen = new Set();
-      finalSongs = finalSongs.filter(function(s) {
+      const seen = new Set();
+      finalSongs = finalSongs.filter(s => {
         if (seen.has(s.id)) return false;
         seen.add(s.id);
         return true;
       });
       
-      // 移除降级逻辑：如果严格过滤后没有结果，不再返回所有搜索结果
-      if (finalSongs.length === 0) {
-        console.log(`[Album] No match for "${album}" (searched "${query}"), returning empty (was ${allSongs.length} raw results)`);
-      }
-      
-      console.log(`[Album] "${album}": searched "${query}" → ${allSongs.length} total, ${finalSongs.length} filtered`);
+      console.log(`[Album] "${album}": ${allSongs.length} total → ${finalSongs.length} filtered`);
       res.end(JSON.stringify({ songs: finalSongs.slice(0, limit) }));
       return;
     }
