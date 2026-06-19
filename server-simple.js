@@ -274,14 +274,14 @@ async function getArtistPhotoUrl(artistName) {
 // 格式化 GD API 搜索结果为 player.js 格式
 function formatGDSong(s) {
   const artistStr = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '未知歌手');
-  const picId = s.pic_id || '';
+  const picId = s.pic_id || s.albumId || '';
 
   return {
     id: String(s.id || ''),
     name: s.name || '未知歌曲',
     artist: artistStr,
     album: s.album || '',
-    albumId: picId,
+    albumId: s.albumId || '',   // 优先用真实 albumId，GD API 不一定有
     cover: picId ? `/api/cover?albumId=${picId}&size=300` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
     coverSmall: picId ? `/api/cover?albumId=${picId}&size=200` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
     picId: picId,
@@ -434,28 +434,75 @@ async function searchLyric(artist, title) {
 // 获取专辑歌曲（使用 netease_album 搜索，返回专辑内所有歌曲）
 async function getAlbumSongs(albumName, artistName, limit = 30) {
   try {
-    // 使用 netease_album 搜索，直接返回专辑内的所有歌曲
+    // 【优先方案】用网易云专辑搜索 API 精确匹配专辑名+歌手名，获取真实 albumId
+    // 避免同名专辑（不同歌手的专辑叫同一个名字）导致混淆
+    if (artistName && albumName) {
+      try {
+        const searchQuery = albumName + ' ' + artistName;
+        const albumSearchUrl = `https://music.163.com/api/search/get?s=${encodeURIComponent(searchQuery)}&type=10&limit=5`;
+        const albumSearchData = await httpsGetJSON(albumSearchUrl, 10000);
+        
+        if (albumSearchData && albumSearchData.code === 200 && albumSearchData.result && albumSearchData.result.albums) {
+          const albums = albumSearchData.result.albums;
+          // 精确匹配：专辑名完全一致 + 歌手名匹配
+          const matched = albums.find(function(a) {
+            const nameMatch = a.name === albumName;
+            const albumArtist = a.artist && a.artist.name ? a.artist.name : '';
+            const artistMatch = albumArtist.indexOf(artistName) !== -1 || artistName.indexOf(albumArtist) !== -1;
+            return nameMatch && artistMatch;
+          });
+          
+          if (matched && matched.id) {
+            console.log(`[Album] Precise match: "${albumName}" by "${artistName}" → albumId=${matched.id}`);
+            // 用真实 albumId 获取专辑内歌曲
+            const albumDetailUrl = `https://music.163.com/api/album/${matched.id}`;
+            const albumDetail = await httpsGetJSON(albumDetailUrl, 10000);
+            
+            if (albumDetail && albumDetail.code === 200 && albumDetail.album && albumDetail.album.songs) {
+              const songs = albumDetail.album.songs.map(function(s) {
+                return {
+                  id: String(s.id),
+                  name: s.name,
+                  artist: s.artists ? s.artists.map(function(a) { return a.name; }).join(', ') : '未知歌手',
+                  album: s.album ? s.album.name : albumName,
+                  pic_id: s.album ? String(s.album.picId || '') : '',
+                  albumId: matched.id,
+                  picId: s.album ? String(s.album.picId || '') : '',
+                  duration: 0,
+                  source: 'netease'
+                };
+              });
+              console.log(`[Album] Got ${songs.length} songs from albumId=${matched.id}`);
+              return songs.slice(0, limit);
+            }
+          }
+        }
+      } catch (e) {
+        console.log(`[Album] Precise search failed, fallback: ${e.message}`);
+      }
+    }
+    
+    // 【回退方案】使用 GD API netease_album 搜索
     const results = await gdSearchAlbum(albumName, Math.max(limit, 50));
     
     if (results.length === 0) {
-      // 回退：用普通搜索（兼容性）
       console.log(`[Album] "${albumName}" album search empty, fallback to regular search`);
       return await gdSearch(albumName, limit);
     }
     
-    // 如果有歌手名，过滤出该歌手的歌（同一专辑可能有不同歌手的版本）
+    // 如果有歌手名，过滤出该歌手的歌
     if (artistName) {
       const artistFiltered = results.filter(function(s) {
         const songArtist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '');
         return songArtist.indexOf(artistName) !== -1 || artistName.indexOf(songArtist) !== -1;
       });
       if (artistFiltered.length > 0) {
-        console.log(`[Album] "${albumName}" by "${artistName}": ${artistFiltered.length} tracks`);
+        console.log(`[Album] "${albumName}" by "${artistName}": ${artistFiltered.length} tracks (GD fallback)`);
         return artistFiltered.slice(0, limit);
       }
     }
     
-    console.log(`[Album] "${albumName}": ${results.length} tracks`);
+    console.log(`[Album] "${albumName}": ${results.length} tracks (GD fallback, no artist filter)`);
     return results.slice(0, limit);
   } catch (e) {
     console.error('[Album] Error:', e.message);
