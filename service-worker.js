@@ -3,17 +3,17 @@
  * PWA 离线缓存 + 桌面安装支持
  */
 
-const CACHE_NAME = 'ty-music-v3';
+const CACHE_NAME = 'ty-music-v4';
 
 // 安装事件：跳过等待，立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v3...');
+  console.log('[SW] Installing v4...');
   self.skipWaiting();
 });
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v3');
+  console.log('[SW] Activated v4');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
