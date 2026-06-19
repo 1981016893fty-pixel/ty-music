@@ -4451,13 +4451,16 @@ async function fetchNewAlbums() {
    ============================================ */
 function toggleSidebar() {
   var sidebar = document.getElementById('sidebar');
+  var revealBtn = document.getElementById('sidebarRevealBtn');
   var isCollapsed = sidebar.classList.contains('collapsed');
   if (isCollapsed) {
     sidebar.classList.remove('collapsed');
     document.body.classList.remove('sidebar-hidden');
+    if (revealBtn) revealBtn.classList.remove('show');
   } else {
     sidebar.classList.add('collapsed');
     document.body.classList.add('sidebar-hidden');
+    if (revealBtn) revealBtn.classList.add('show');
   }
 }
 
@@ -4466,21 +4469,26 @@ function toggleSidebar() {
    ============================================ */
 function toggleMobileSidebar() {
   var sidebar = document.getElementById('sidebar');
+  var overlay = document.getElementById('sidebarOverlay');
   var isOpen = sidebar.classList.contains('show');
   if (isOpen) {
     sidebar.classList.remove('show');
+    if (overlay) overlay.classList.remove('show');
   } else {
     sidebar.classList.add('show');
+    if (overlay) overlay.classList.add('show');
   }
 }
 
-/* 点击主内容区时关闭侧边栏（移动端） */
+/* 点击主内容区或遮罩层时关闭侧边栏（移动端） */
 document.addEventListener('click', function(e) {
   var sidebar = document.getElementById('sidebar');
   var btn = document.getElementById('mobileMenuBtn');
+  var overlay = document.getElementById('sidebarOverlay');
   if (window.innerWidth <= 768 && sidebar.classList.contains('show')) {
     if (!sidebar.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
       sidebar.classList.remove('show');
+      if (overlay) overlay.classList.remove('show');
     }
   }
 });
