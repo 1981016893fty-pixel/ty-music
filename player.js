@@ -671,8 +671,9 @@ function playTrack(track, index) {
   state.recentPlays = state.recentPlays.filter(r => r.id !== track.id);
   state.recentPlays.unshift({
     id: track.id, title: track.title, artist: track.artist,
+    album: track.album || '',  // ✅ 保存专辑名
     cover: track.cover || track.coverSmall || '', source: track.source,
-    picId: track.picId || '',
+    picId: track.picId || '',  // ✅ 保存picId（100%准确）
     previewUrl: track.previewUrl,
   });
 
