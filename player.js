@@ -316,7 +316,7 @@ async function searchNetease(keywords, limit) {
 async function fetchNeteaseHot(limit) {
   limit = limit || 80;
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 30000);
+  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
   try {
     var res = await fetch('/api/music/hot?source=netease&limit=' + limit, { signal: ctrl.signal });
     clearTimeout(timer);
@@ -1516,7 +1516,8 @@ async function loadDiscover() {
   // 加载新专辑推荐
 }
 
-async function loadDiscoverData() {
+async function loadDiscoverData(retryCount) {
+  retryCount = retryCount || 0;
   // 渲染骨架屏占位
   $('#heroTitle').textContent = '加载中...';
   $('#heroArtist').textContent = '正在连接服务器...';
@@ -1565,13 +1566,28 @@ async function loadDiscoverData() {
       updateDynamicGradient(h);
       addToQueue(heroRes);
     } else {
-      $('#heroTitle').textContent = '暂无推荐';
-      $('#heroArtist').textContent = '试试搜索你想听的歌曲';
+      // 数据为空——可能是 Render 冷启动还没准备好
+      if (retryCount < 3) {
+        $('#heroTitle').textContent = '服务唤醒中...';
+        $('#heroArtist').textContent = '正在自动重试（第 ' + (retryCount + 1) + ' 次）...';
+        $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">服务唤醒中，自动重试...</div>';
+        setTimeout(function() { loadDiscoverData(retryCount + 1); }, 5000);
+        return;
+      }
+      $('#heroTitle').textContent = '加载失败';
+      $('#heroArtist').innerHTML = '<span style="color:var(--neon-cyan);text-decoration:underline;cursor:pointer" onclick="loadDiscoverData(0)">点击重试</span>';
+      $('#hotTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">加载失败，<span style="color:var(--neon-cyan);text-decoration:underline;cursor:pointer" onclick="loadDiscoverData(0)">点击重试</span></div>';
     }
   } catch (e) {
     console.warn('[Discover] Hero failed:', e);
-    $('#heroTitle').textContent = '暂无推荐';
-    $('#heroArtist').textContent = '试试搜索你想听的歌曲';
+    if (retryCount < 3) {
+      $('#heroTitle').textContent = '服务唤醒中...';
+      $('#heroArtist').textContent = '正在自动重试（第 ' + (retryCount + 1) + ' 次）...';
+      setTimeout(function() { loadDiscoverData(retryCount + 1); }, 5000);
+      return;
+    }
+    $('#heroTitle').textContent = '加载失败';
+    $('#heroArtist').innerHTML = '<span style="color:var(--neon-cyan);text-decoration:underline;cursor:pointer" onclick="loadDiscoverData(0)">点击重试</span>';
   }
 }
 
