@@ -681,6 +681,9 @@ function playTrack(track, index) {
   // 【关键修复】立即同步保存，不依赖异步回调。防止页面关闭时数据丢失
   saveAll();
 
+  // 实时刷新最近播放列表 UI（如果当前在主页，立刻能看到新歌加到顶部）
+  refreshRecentTracksUI();
+
   // Update UI
   const coverSrc = track.coverSmall || track.cover || '';
   const playerCoverImg = $('#playerCover');
@@ -1437,6 +1440,32 @@ function renderScrollRow(containerId, tracks, wide = false) {
     return;
   }
   container.innerHTML = tracks.map(t => createAMCard(t, wide)).join('');
+}
+
+// 实时刷新最近播放列表 UI，每次播放新歌时调用
+function refreshRecentTracksUI() {
+  var container = $('#recentTracks');
+  if (!container) return;
+  if (!state.recentPlays || !state.recentPlays.length) {
+    container.innerHTML = '<div style="padding:20px 0;text-align:center;color:var(--text-secondary);font-size:13px">暂无播放记录</div>';
+    return;
+  }
+  var recentTracks = state.recentPlays.map(function(r) {
+    var cached = state.trackCache.get(r.id);
+    if (cached) return {
+      id: r.id, title: cached.title || r.title, artist: cached.artist || r.artist,
+      album: cached.album || r.album || '', cover: cached.cover || r.cover || '',
+      coverSmall: cached.coverSmall || r.cover || '', picId: cached.picId || r.picId || '',
+      duration: cached.duration || 0, previewUrl: cached.previewUrl || r.previewUrl || '',
+      source: cached.source || r.source || 'netease',
+    };
+    return {
+      id: r.id, title: r.title, artist: r.artist, album: r.album || '',
+      cover: r.cover || '', coverSmall: r.cover || '', picId: r.picId || '',
+      duration: 0, previewUrl: r.previewUrl || '', source: r.source || 'netease',
+    };
+  });
+  container.innerHTML = recentTracks.map(function(t) { return createAMCard(t, true); }).join('');
 }
 
 // ========== Discover Page ==========
