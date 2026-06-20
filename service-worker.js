@@ -4,7 +4,7 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v11';
+const CACHE_NAME = 'ty-music-v12';
 const STATIC_ASSETS = [
   '/index.html',
   '/style.css',
@@ -15,7 +15,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v11...');
+  console.log('[SW] Installing v12...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] Precaching static assets');
@@ -26,7 +26,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v11');
+  console.log('[SW] Activated v12');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {

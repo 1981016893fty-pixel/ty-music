@@ -1082,45 +1082,53 @@ setVolume(0.7);
 // ========== Queue Navigation ==========
 function getQueue() { return state.isShuffled ? state.shuffledQueue : state.queue; }
 
-// 最近播放列表切歌：从 recentPlays 里随机选一首（非当前歌）
-function getRandomRecentTrack() {
+// 最近播放列表按顺序切歌：下一首 (+1) 或上一首 (-1)
+function getSequentialRecentTrack(direction) {
   var list = state.recentPlays;
   if (!list || list.length <= 1) return null;
   var currentId = state.currentTrack ? state.currentTrack.id : null;
-  // 过滤掉当前歌
-  var candidates = list.filter(function(r) { return r.id !== currentId; });
-  if (!candidates.length) return null;
-  var pick = candidates[Math.floor(Math.random() * candidates.length)];
-  // 从 trackCache 恢复完整 track 对象
-  var cached = state.trackCache.get(pick.id);
+  var currentIdx = list.findIndex(function(r) { return r.id === currentId; });
+  if (currentIdx < 0) {
+    // 当前歌不在最近播放列表里，从第一个开始
+    return resolveRecentTrack(list[0]);
+  }
+  var newIdx = currentIdx + direction;
+  if (newIdx < 0 || newIdx >= list.length) return null;
+  return resolveRecentTrack(list[newIdx]);
+}
+
+function resolveRecentTrack(entry) {
+  var cached = state.trackCache.get(entry.id);
   if (cached) return cached;
-  // 没有缓存，用 recentPlays 里的数据构建一个基本 track 对象
   return {
-    id: pick.id,
-    title: pick.title,
-    artist: pick.artist,
-    album: pick.album || '',
-    cover: pick.cover || '',
-    coverSmall: pick.cover || '',
-    picId: pick.picId || '',
+    id: entry.id,
+    title: entry.title,
+    artist: entry.artist,
+    album: entry.album || '',
+    cover: entry.cover || '',
+    coverSmall: entry.cover || '',
+    picId: entry.picId || '',
     duration: 0,
-    previewUrl: pick.previewUrl || '',
-    source: pick.source || 'netease',
+    previewUrl: entry.previewUrl || '',
+    source: entry.source || 'netease',
   };
 }
 
+function playTrackFromRecent(track) {
+  var qIdx = state.queue.findIndex(function(t) { return t.id === track.id; });
+  if (qIdx < 0) {
+    state.queue.push(track);
+    qIdx = state.queue.length - 1;
+  }
+  state.queueIndex = qIdx;
+  playTrack(track, qIdx);
+}
+
 function playNext() {
-  // 优先从最近播放列表随机切歌
-  var randomTrack = getRandomRecentTrack();
-  if (randomTrack) {
-    // 把这首歌加入 queue（如果不在的话），然后播放
-    var qIdx = state.queue.findIndex(function(t) { return t.id === randomTrack.id; });
-    if (qIdx < 0) {
-      state.queue.push(randomTrack);
-      qIdx = state.queue.length - 1;
-    }
-    state.queueIndex = qIdx;
-    playTrack(randomTrack, qIdx);
+  // 优先从最近播放列表切下一首
+  var nextTrack = getSequentialRecentTrack(1);
+  if (nextTrack) {
+    playTrackFromRecent(nextTrack);
     return;
   }
   // 最近播放列表只有一首歌，不跳转
@@ -1146,16 +1154,10 @@ function playNext() {
 }
 
 function playPrev() {
-  // 优先从最近播放列表随机切歌
-  var randomTrack = getRandomRecentTrack();
-  if (randomTrack) {
-    var qIdx = state.queue.findIndex(function(t) { return t.id === randomTrack.id; });
-    if (qIdx < 0) {
-      state.queue.push(randomTrack);
-      qIdx = state.queue.length - 1;
-    }
-    state.queueIndex = qIdx;
-    playTrack(randomTrack, qIdx);
+  // 优先从最近播放列表切上一首
+  var prevTrack = getSequentialRecentTrack(-1);
+  if (prevTrack) {
+    playTrackFromRecent(prevTrack);
     return;
   }
   // 最近播放列表只有一首歌，不跳转
