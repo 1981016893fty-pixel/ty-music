@@ -3602,6 +3602,16 @@ body {
   .album-detail-actions { justify-content: center; }
   .album-tracks-header { padding: 16px 16px 12px; }
   .album-track-row { padding: 8px 12px; margin: 0 4px; }
+
+  /* 移动端 song list 优化：减少右侧固定宽度，让歌名有足够空间 */
+  .track-row { padding: 10px 12px; gap: 10px; }
+  .track-row .row-cover { width: 40px; height: 40px; border-radius: 6px; }
+  .track-row .row-title { font-size: 13px; }
+  .track-row .row-artist { font-size: 11px; }
+  .track-row .row-duration { display: none; }
+  .track-row .row-actions { opacity: 1; gap: 0; }
+  .track-row .row-actions.mobile { gap: 0; }
+  .track-row .row-action-btn { width: 28px; height: 28px; font-size: 13px; }
 }
 
 /* ---- 超小屏幕 < 480px ---- */

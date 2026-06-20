@@ -873,6 +873,7 @@ audio.addEventListener('ended', () => {
 });
 
 // Audio progress
+let _progressBarDragging = false; // 拖拽进度条时阻止 timeupdate 覆盖 UI
 audio.addEventListener('timeupdate', () => {
   const d = audio.duration || 0;
   // 保护：duration 为 Infinity 或 NaN 时跳过
@@ -884,9 +885,12 @@ audio.addEventListener('timeupdate', () => {
     state.currentTrack.duration = d;
     $('#durationTime').textContent = formatTime(d);
   }
-  const pct = Math.min(100, Math.max(0, (audio.currentTime / d) * 100));
-  $('#progressFill').style.width = pct + '%';
-  $('#progressThumb').style.left = pct + '%';
+  // 拖拽期间不写进度条 UI（避免与拖拽位置互相打架）
+  if (!_progressBarDragging) {
+    const pct = Math.min(100, Math.max(0, (audio.currentTime / d) * 100));
+    $('#progressFill').style.width = pct + '%';
+    $('#progressThumb').style.left = pct + '%';
+  }
   $('#currentTime').textContent = formatTime(audio.currentTime);
 
   // Sync dynamic lyrics
@@ -966,6 +970,7 @@ audio.addEventListener('canplay', () => {
   function onStart(e) {
     if (!audio.duration) return;
     dragging = true;
+    _progressBarDragging = true; // 阻止 timeupdate 覆盖 UI
     bar.classList.add('seeking');
     thumb.style.opacity = '1';
     applySeek(getClientX(e));
@@ -984,8 +989,26 @@ audio.addEventListener('canplay', () => {
     bar.classList.remove('seeking');
     thumb.style.opacity = '';
     const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
-    const pct = Math.max(0, Math.min(1, (clientX - bar.getBoundingClientRect().left) / bar.getBoundingClientRect().width));
-    audio.currentTime = pct * (audio.duration || 0);
+    const rect = bar.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const targetTime = pct * (audio.duration || 0);
+    // 先更新 UI 到目标位置（立刻显示，seeked 前就显示正确位置）
+    fill.style.width = (pct * 100) + '%';
+    thumb.style.left = (pct * 100) + '%';
+    $('#currentTime').textContent = formatTime(targetTime);
+    // 设 currentTime，seeked 事件后再允许 timeupdate 写 UI
+    audio.currentTime = targetTime;
+    // 一次性 seeked 监听器：跳转完成后才恢复 timeupdate 的 UI 写入
+    const onSeeked = () => {
+      _progressBarDragging = false;
+      audio.removeEventListener('seeked', onSeeked);
+    };
+    audio.addEventListener('seeked', onSeeked);
+    // 兜底：1秒后强制恢复（防止 seeked 不触发）
+    setTimeout(() => {
+      _progressBarDragging = false;
+      audio.removeEventListener('seeked', onSeeked);
+    }, 1000);
   }
 
   // 鼠标事件
@@ -1790,6 +1813,7 @@ function fallbackCover(img) {
 }
 function renderTrackList(containerId, tracks) {
   const container = typeof containerId === 'string' ? $(containerId) : containerId;
+  const isMobile = window.innerWidth <= 768;
   container.innerHTML = tracks.map((t, i) => `
     <div class="track-row" data-track-id="${t.id}" data-idx="${i}">
       <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${esc(t.artist || '')}" data-album="${esc(t.album || '')}" data-name="${esc(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
@@ -1797,8 +1821,8 @@ function renderTrackList(containerId, tracks) {
         <div class="row-title">${esc(t.title)}</div>
         <div class="row-artist">${esc(t.artist)}${t.album ? ' — ' + esc(t.album) : ''}</div>
       </div>
-      <span class="row-duration">${formatTime(t.duration)}</span>
-      <div class="row-actions">
+      ${isMobile ? '' : '<span class="row-duration">' + formatTime(t.duration) + '</span>'}
+      <div class="row-actions ${isMobile ? 'mobile' : ''}">
         <button class="row-action-btn like-btn ${isFavorite(t.id) ? 'liked' : ''}" onclick="event.stopPropagation(); toggleFavById('${t.id}')">
           <i class="fa-${isFavorite(t.id) ? 'solid' : 'regular'} fa-heart"></i>
         </button>
@@ -2574,7 +2598,7 @@ function updateAmpProgress() {
     duration.textContent = formatTime(audio.duration || 0);
   }
   
-  if (progressFill && audio.duration) {
+  if (progressFill && audio.duration && !_progressBarDragging) {
     const pct = (audio.currentTime / audio.duration) * 100;
     progressFill.style.width = pct + '%';
     if (progressThumb) {
@@ -2877,6 +2901,7 @@ function initAmpFullscreenPlayer() {
     function ampOnStart(e) {
       if (!audio.duration) return;
       ampDragging = true;
+      _progressBarDragging = true; // 阻止 timeupdate 覆盖 UI
       if (ampThumb) ampThumb.style.opacity = '1';
       ampApplySeek(ampGetClientX(e));
       e.preventDefault();
@@ -2891,11 +2916,28 @@ function initAmpFullscreenPlayer() {
     function ampOnEnd(e) {
       if (!ampDragging) return;
       ampDragging = false;
+      // 不立刻清除 _progressBarDragging，等 seeked 事件
       if (ampThumb) ampThumb.style.opacity = '';
       const clientX = e.changedTouches ? e.changedTouches[0].clientX : e.clientX;
       const rect = progressBar.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      if (audio.duration) audio.currentTime = pct * audio.duration;
+      if (!audio.duration) return;
+      const targetTime = pct * audio.duration;
+      // 先更新 UI 到目标位置
+      if (ampFill) ampFill.style.width = (pct * 100) + '%';
+      if (ampThumb) ampThumb.style.left = (pct * 100) + '%';
+      audio.currentTime = targetTime;
+      // 一次性 seeked 监听器
+      const onAmpSeeked = () => {
+        _progressBarDragging = false;
+        audio.removeEventListener('seeked', onAmpSeeked);
+      };
+      audio.addEventListener('seeked', onAmpSeeked);
+      // 兜底：1秒后强制恢复
+      setTimeout(() => {
+        _progressBarDragging = false;
+        audio.removeEventListener('seeked', onAmpSeeked);
+      }, 1000);
     }
 
     progressBar.addEventListener('mousedown', ampOnStart);
