@@ -1406,8 +1406,8 @@ function renderScrollRow(containerId, tracks, wide = false) {
 let hotCache;
 
 async function loadDiscover() {
-  if (state._discoverLoaded) return;
-  state._discoverLoaded = true;
+  // 不再使用 _discoverLoaded 短路，每次进入主页都重新加载数据
+  // PWA 桌面图标启动时如果首次加载失败，重新进入也能重试
 
   // Genre cards
   const genres = [
