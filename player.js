@@ -1135,54 +1135,21 @@ function playTrackFromRecent(track) {
 }
 
 function playNext() {
-  // 随机播放模式：从最近播放列表随机切歌；顺序模式：按列表切下一首
+  // 切歌始终在最近播放列表里：随机=随机选，顺序=下一首
   var nextTrack = state.isShuffled ? getRandomRecentTrack() : getSequentialRecentTrack(1);
   if (nextTrack) {
     playTrackFromRecent(nextTrack);
-    return;
   }
-  // 最近播放列表只有一首歌，不跳转
-  if (state.recentPlays.length <= 1) return;
-  // fallback：用原有 queue 逻辑
-  const q = getQueue();
-  if (!q.length) return;
-  const idx = state.isShuffled
-    ? state.shuffledQueue.findIndex(t => t.id === state.currentTrack?.id) + 1
-    : state.queueIndex + 1;
-  if (idx >= q.length) {
-    if (state.repeatMode === 1) {
-      if (state.isShuffled) state.shuffledQueue = [...state.queue].sort(() => Math.random() - 0.5);
-      playTrack(state.isShuffled ? state.shuffledQueue[0] : state.queue[0], 0);
-    } else {
-      state.isPlaying = false; updatePlayBtn();
-    }
-    return;
-  }
-  const track = q[idx];
-  state.queueIndex = state.isShuffled ? state.queue.indexOf(track) : idx;
-  playTrack(track);
+  // recentPlays 不足 2 首，不跳转
 }
 
 function playPrev() {
-  // 随机播放模式：从最近播放列表随机切歌；顺序模式：按列表切上一首
+  // 切歌始终在最近播放列表里：随机=随机选，顺序=上一首
   var prevTrack = state.isShuffled ? getRandomRecentTrack() : getSequentialRecentTrack(-1);
   if (prevTrack) {
     playTrackFromRecent(prevTrack);
-    return;
   }
-  // 最近播放列表只有一首歌，不跳转
-  if (state.recentPlays.length <= 1) return;
-  // fallback：当前歌曲重新开始
-  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
-  const q = getQueue();
-  if (!q.length) return;
-  const idx = state.isShuffled
-    ? state.shuffledQueue.findIndex(t => t.id === state.currentTrack?.id) - 1
-    : state.queueIndex - 1;
-  if (idx < 0) { audio.currentTime = 0; return; }
-  const track = q[idx];
-  state.queueIndex = state.isShuffled ? state.queue.indexOf(track) : idx;
-  playTrack(track);
+  // recentPlays 不足 2 首，不跳转
 }
 
 $('#nextBtn').addEventListener('click', playNext);
