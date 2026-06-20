@@ -667,13 +667,14 @@ function playTrack(track, index) {
   // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
   cacheTrack(track);
 
-  // Record recent play
+  // Record recent play，最多 30 首，超出清空
+  if (state.recentPlays.length >= 30) state.recentPlays = [];
   state.recentPlays = state.recentPlays.filter(r => r.id !== track.id);
   state.recentPlays.unshift({
     id: track.id, title: track.title, artist: track.artist,
-    album: track.album || '',  // ✅ 保存专辑名
+    album: track.album || '',
     cover: track.cover || track.coverSmall || '', source: track.source,
-    picId: track.picId || '',  // ✅ 保存picId（100%准确）
+    picId: track.picId || '',
     previewUrl: track.previewUrl,
   });
 
@@ -1092,7 +1093,7 @@ function getRandomRecentTrack() {
   return resolveRecentTrack(candidates[Math.floor(Math.random() * candidates.length)]);
 }
 
-// 最近播放列表按顺序切歌：下一首 (+1) 或上一首 (-1)
+// 最近播放列表按顺序切歌：下一首 (+1) 或上一首 (-1)，到头循环
 function getSequentialRecentTrack(direction) {
   var list = state.recentPlays;
   if (!list || list.length <= 1) return null;
@@ -1102,8 +1103,7 @@ function getSequentialRecentTrack(direction) {
     // 当前歌不在最近播放列表里，从第一个开始
     return resolveRecentTrack(list[0]);
   }
-  var newIdx = currentIdx + direction;
-  if (newIdx < 0 || newIdx >= list.length) return null;
+  var newIdx = (currentIdx + direction + list.length) % list.length;
   return resolveRecentTrack(list[newIdx]);
 }
 
