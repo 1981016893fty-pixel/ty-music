@@ -4,7 +4,7 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v14';
+const CACHE_NAME = 'ty-music-v15';
 const STATIC_ASSETS = [
   '/index.html',
   '/style.css',
