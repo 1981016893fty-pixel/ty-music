@@ -653,12 +653,13 @@ function displayAlbumInfo(albumId, albumName) {
   // 已由 playTrack 直接处理，此函数保留为空以兼容旧调用
 }
 
-function playTrack(track, index) {
+function playTrack(track, index, skipRecentUpdate) {
   if (!track) return;
   if (index !== undefined) state.queueIndex = index;
   else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
   
-  state.currentTrack = track;
+  // 只有 skipRecentUpdate 为 true 时（切歌），才跳过 recentPlays 更新
+  if (!skipRecentUpdate) {state.currentTrack = track;
   
   // 调试：显示即将播放的歌曲
   console.log('[PlayTrack] Playing:', track.title, 'by', track.artist, 'album:', track.album);
@@ -683,6 +684,7 @@ function playTrack(track, index) {
 
   // 实时刷新最近播放列表 UI（如果当前在主页，立刻能看到新歌加到顶部）
   refreshRecentTracksUI();
+  } // end if (!skipRecentUpdate)
 
   // Update UI
   const coverSrc = track.coverSmall || track.cover || '';
@@ -1134,7 +1136,7 @@ function playTrackFromRecent(track) {
     qIdx = state.queue.length - 1;
   }
   state.queueIndex = qIdx;
-  playTrack(track, qIdx);
+  playTrack(track, qIdx, true); // true = 切歌时不更新 recentPlays 顺序
 }
 
 function playNext() {
