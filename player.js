@@ -300,15 +300,21 @@ async function searchNetease(keywords, limit) {
   var ctrl = new AbortController();
   var timer = setTimeout(function() { ctrl.abort(); }, 30000);
   try {
-    var res = await fetch('/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit, { signal: ctrl.signal });
+    var url = '/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit;
+    console.log('[Search] fetching:', url);
+    var res = await fetch(url, { signal: ctrl.signal });
     clearTimeout(timer);
-    if (!res.ok) return [];
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     var data = await res.json();
-    if (!data.songs || !data.songs.length) return [];
+    if (!data.songs || !data.songs.length) {
+      console.warn('[Search] No results for "' + keywords + '"');
+      return [];
+    }
+    console.log('[Search] Got', data.songs.length, 'tracks for "' + keywords + '"');
     return data.songs.map(function(s) { return normalizeNeteaseTrack(s); });
   } catch (e) {
-    console.warn('[Search] Failed for "' + keywords + '":', e.message);
-    return [];
+    console.error('[Search] Failed for "' + keywords + '":', e.message);
+    throw e; // 抛出错误，让调用方处理
   }
 }
 
@@ -1622,10 +1628,17 @@ async function loadGenreDetail(genreId) {
   try {
     const queryMap = { pop: '热门流行', rock: '经典摇滚', electronic: '电子舞曲', hiphop: '嘻哈说唱', jazz: '爵士经典', classical: '古典音乐', rnb: 'R&B节奏蓝调', country: '乡村音乐', kpop: 'K-pop韩国流行', chinese: '华语热门', latin: '拉丁音乐', anime: '动漫主题曲' };
     const tracks = await universalSearch(queryMap[genreId] || genreId, 80, 'netease');
+    if (!tracks || !tracks.length) {
+      $('#genreTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">暂无结果，<span style="color:var(--neon-cyan);cursor:pointer" onclick="loadGenreDetail(\'' + genreId + '\')">重试</span></div>';
+      return;
+    }
     genreDetailCache[genreId] = tracks;
     addToQueue(tracks);
     renderScrollRow('#genreTracks', tracks);
-  } catch (e) { $('#genreTracks').innerHTML = '<div style="padding:20px;text-align:center">加载失败</div>'; }
+  } catch (e) {
+    console.error('[Genre] load failed:', genreId, e);
+    $('#genreTracks').innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">加载失败：' + (e && e.message || '网络错误') + '，<span style="color:var(--neon-cyan);cursor:pointer" onclick="loadGenreDetail(\'' + genreId + '\')">重试</span></div>';
+  }
 }
 
 function hideGenreDetail() { $('#genreSection').style.display = 'none'; }
