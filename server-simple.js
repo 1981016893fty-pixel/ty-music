@@ -342,22 +342,63 @@ async function gdSearch(keywords, limit = 30) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
-  try {
-    const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(keywords)}&count=${limit}`;
-    const data = await dedupedGetJSON(url, 15000);
-    if (Array.isArray(data) && data.length > 0) {
-      // 先批量补全 pic_id，再格式化
-      await fillMissingPicIdsRaw(data);
-      const result = data.map(formatGDSong);
-      cacheSet(cacheKey, result, CACHE_TTL.search);
-      return result;
+  // 备用关键词：主关键词搜不到时自动换词
+  const fallbackKeywords = getSearchFallbacks(keywords);
+
+  for (const kw of fallbackKeywords) {
+    try {
+      const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(kw)}&count=${limit}`;
+      console.log(`[GD Search] Trying: "${kw}"`);
+      const data = await dedupedGetJSON(url, 15000);
+      if (Array.isArray(data) && data.length > 0) {
+        // 先批量补全 pic_id，再格式化
+        await fillMissingPicIdsRaw(data);
+        const result = data.map(formatGDSong);
+        // 只缓存原始关键词的结果
+        if (kw === keywords) {
+          cacheSet(cacheKey, result, CACHE_TTL.search);
+        }
+        console.log(`[GD Search] Got ${result.length} tracks for "${kw}"`);
+        return result;
+      }
+      console.log(`[GD Search] Empty result for "${kw}", trying fallback...`);
+    } catch (e) {
+      console.warn(`[GD Search] Error for "${kw}":`, e.message);
+      // 继续尝试下一个备用关键词
     }
-    console.log(`[GD Search] Empty result for "${keywords}"`);
-    return [];
-  } catch (e) {
-    console.error('[GD Search] Error:', e.message);
-    return [];
   }
+  console.log(`[GD Search] All fallbacks failed for "${keywords}"`);
+  return [];
+}
+
+// 搜索备用关键词映射
+function getSearchFallbacks(keywords) {
+  const fallbacks = {
+    '嘻哈说唱': ['嘻哈', '说唱', 'hiphop', 'rap', '热门说唱'],
+    '热门流行': ['流行', '热门', '流行歌曲', '华语流行'],
+    '经典摇滚': ['摇滚', 'rock', '经典摇滚乐'],
+    '电子舞曲': ['电子', 'EDM', '电子音乐', '电音'],
+    '爵士经典': ['爵士', 'jazz', '经典爵士'],
+    '古典音乐': ['古典', 'classical', '古典音乐推荐'],
+    'R&B节奏蓝调': ['R&B', 'rnb', '节奏蓝调'],
+    '乡村音乐': ['乡村', 'country', '民谣'],
+    'K-pop韩国流行': ['K-pop', 'kpop', '韩国流行'],
+    '华语热门': ['华语', '中文歌', '华语热门歌曲'],
+    '拉丁音乐': ['拉丁', 'latin', '拉丁音乐推荐'],
+    '动漫主题曲': ['动漫', 'anime', '动漫歌曲', '日本动漫'],
+  };
+  // 精确匹配
+  if (fallbacks[keywords]) {
+    return [keywords, ...fallbacks[keywords]];
+  }
+  // 部分匹配（如"嘻哈说唱 2026"）
+  for (const key of Object.keys(fallbacks)) {
+    if (keywords.includes(key) || key.includes(keywords)) {
+      return [keywords, ...fallbacks[key]];
+    }
+  }
+  // 无匹配，返回原始关键词
+  return [keywords];
 }
 
 // GD Studio API 搜索专辑曲目（使用 netease_album，返回专辑内所有歌曲）

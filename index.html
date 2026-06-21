@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TY Music - 免费听遍全网音乐</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23b44dff'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
-  <link rel="preload" href="style.css?v=20260620w" as="style">
-  <link rel="preload" href="player.js?v=20260620w" as="script">
+  <link rel="preload" href="style.css?v=20260621a" as="style">
+  <link rel="preload" href="player.js?v=20260621a" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260620w">
+  <link rel="stylesheet" href="style.css?v=20260621a">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -574,9 +574,21 @@
       <h3><i class="fa-solid fa-gear"></i> 关于</h3>
       <p style="color:var(--text-secondary);font-size:14px;line-height:1.8">
         <strong>TY Music</strong> — 全网音乐播放器<br>
-        音源：GD Studio API（网易云音乐，免费完整歌曲）<br>
         320kbps 高品质 | 无需登录<br>
       </p>
+      <div style="margin-top:16px;border-top:1px solid rgba(255,255,255,0.07);padding-top:16px">
+        <p style="color:var(--text-secondary);font-size:13px;margin-bottom:10px;font-weight:600;letter-spacing:.5px;">
+          <i class="fa-solid fa-wand-magic-sparkles" style="color:var(--neon-cyan);margin-right:6px"></i>隐藏功能
+        </p>
+        <div style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:rgba(255,255,255,0.04);border-radius:10px;cursor:pointer" onclick="document.getElementById('settingsModal').style.display='none';navigateTo('album-favorites');">
+          <i class="fa-solid fa-layer-group" style="color:var(--neon-purple);margin-top:2px;font-size:16px;flex-shrink:0"></i>
+          <div>
+            <div style="color:var(--text-primary);font-size:13px;font-weight:600">Cover Flow</div>
+            <div style="color:var(--text-secondary);font-size:12px;margin-top:2px">iPod 风格 3D 翻转展示收藏专辑，在专辑页右上角可开启</div>
+          </div>
+          <i class="fa-solid fa-chevron-right" style="color:var(--text-secondary);margin-left:auto;margin-top:3px;font-size:11px;flex-shrink:0"></i>
+        </div>
+      </div>
       <div class="modal-actions">
         <button class="btn-save" id="cancelSettings">关闭</button>
       </div>
@@ -600,7 +612,7 @@
       }
     }, 32000);
   </script>
-  <script src="player.js?v=20260620w" defer></script>
+  <script src="player.js?v=20260621a" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>
