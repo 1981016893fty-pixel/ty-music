@@ -833,21 +833,86 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // 7. 音频直链重定向（302 redirect，让浏览器直连网易云 CDN，无需 Render 中转）
-  // 这是解决播放卡顿的根本方案：Render 服务器在美国，中转音频会引入 1-2 跳国际延迟
-  // 直接 302 → CDN，中国用户直连网易云国内 CDN 节点，速度最快
-  // 7. 音频代理播放（服务器中转，绕过 CDN 防盗链）
+  // 7. 音频代理播放
+  // - 默认：302 重定向到 CDN（浏览器直连，Render 零带宽）
+  // - stream=1：服务器中转流式传输（用于微信小程序等需要绕过域名白名单限制的场景）
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
+    const streamMode = params.get('stream') === '1';
     if (!id) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing id' })); return; }
     try {
       const audioUrl = await gdGetSongUrl(id);
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
-      // 302 重定向到 CDN 直链，浏览器直接请求 CDN，不经过服务器中转
-      res.statusCode = 302;
-      res.setHeader('Location', audioUrl);
-      res.setHeader('Cache-Control', 'public, max-age=600');
-      res.end();
+
+      if (streamMode) {
+        // 流式代理：服务器下载音频然后管道传输给客户端，域名始终是 ty-music.onrender.com
+        const parsedUrl = new URL(audioUrl);
+        const proto = parsedUrl.protocol === 'https:' ? https : http;
+        const reqOptions = {
+          hostname: parsedUrl.hostname,
+          path: parsedUrl.pathname + parsedUrl.search,
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Referer': 'https://music.163.com/',
+            'Accept': '*/*'
+          },
+          timeout: 30000
+        };
+        // 转发客户端的 Range 请求头（支持 seek）
+        if (req.headers.range) {
+          reqOptions.headers['Range'] = req.headers.range;
+        }
+        const proxyReq = proto.request(reqOptions, (audioRes) => {
+          const code = audioRes.statusCode;
+          // 处理重定向（CDN 可能再跳一层）
+          if (code >= 300 && code < 400 && audioRes.headers.location) {
+            res.statusCode = 302;
+            res.setHeader('Location', audioRes.headers.location);
+            res.end();
+            return;
+          }
+          res.statusCode = code;
+          res.setHeader('Content-Type', audioRes.headers['content-type'] || 'audio/mpeg');
+          res.setHeader('Accept-Ranges', 'bytes');
+          res.setHeader('Cache-Control', 'public, max-age=600');
+          if (audioRes.headers['content-length']) {
+            res.setHeader('Content-Length', audioRes.headers['content-length']);
+          }
+          if (audioRes.headers['content-range']) {
+            res.setHeader('Content-Range', audioRes.headers['content-range']);
+          }
+          audioRes.pipe(res);
+          audioRes.on('error', (err) => {
+            console.error('[Stream Proxy] Audio response error:', err.message);
+            if (!res.headersSent) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: 'Stream failed' }));
+            }
+          });
+        });
+        proxyReq.on('error', (err) => {
+          console.error('[Stream Proxy] Request error:', err.message);
+          if (!res.headersSent) {
+            res.statusCode = 502;
+            res.end(JSON.stringify({ error: 'Upstream unreachable' }));
+          }
+        });
+        proxyReq.on('timeout', () => {
+          proxyReq.destroy();
+          if (!res.headersSent) {
+            res.statusCode = 504;
+            res.end(JSON.stringify({ error: 'Upstream timeout' }));
+          }
+        });
+        proxyReq.end();
+      } else {
+        // 默认模式：302 重定向到 CDN 直链
+        res.statusCode = 302;
+        res.setHeader('Location', audioUrl);
+        res.setHeader('Cache-Control', 'public, max-age=600');
+        res.end();
+      }
     } catch (e) {
       console.error('[Proxy] Exception:', e.message);
       if (!res.headersSent) {
