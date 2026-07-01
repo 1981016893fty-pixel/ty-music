@@ -979,7 +979,7 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/music/album') {
     const album = params.get('album') || '';
     const artist = params.get('artist') || '';
-    const limit = parseInt(params.get('limit') || '30');
+    const limit = parseInt(params.get('limit') || '100');
     const songs = await getAlbumSongs(album, artist, limit);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ songs }));
