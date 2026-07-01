@@ -1203,6 +1203,91 @@ const server = http.createServer(async (req, res) => {
       return;
     }
     
+    // ============================================
+    // 专辑详情 — 直接调用网易云音乐 API /api/album
+    // 参数: id=专辑ID → 返回该专辑全部歌曲（最完整）
+    // ============================================
+    if (pathname === '/api/album') {
+      const id = params.get('id') || '';
+      if (!id) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing id' }));
+        return;
+      }
+      try {
+        const albumUrl = `https://music.163.com/api/album?id=${id}`;
+        const albumData = await requestNetease(albumUrl);
+        if (!albumData || !albumData.songs || !albumData.songs.length) {
+          // 专辑API失败，返回空
+          res.end(JSON.stringify({ songs: [] }));
+          return;
+        }
+        // 格式化歌曲列表
+        const songs = albumData.songs.map(s => {
+          const artist = s.ar ? s.ar.map(a => a.name).join(', ') : '未知艺人';
+          const albumName = albumData.album ? albumData.album.name : (s.al ? s.al.name : '');
+          const picId = albumData.album ? String(albumData.album.picId || albumData.album.id || '') : '';
+          return {
+            id:      String(s.id),
+            name:    s.name || '未知歌曲',
+            artist:  artist,
+            album:   albumName,
+            albumId: String(s.al?.id || id),
+            picId:   picId,
+            cover:   picId ? `/api/music/cover?picId=${picId}` : '/static/default-cover.png',
+            url:     '',
+          };
+        });
+        console.log(`[Album] id=${id}: loaded ${songs.length} songs`);
+        res.end(JSON.stringify({ songs }));
+      } catch (e) {
+        console.error('[Album] Error:', e.message);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+    
+    // ============================================
+    // 根据专辑名搜索歌曲（备用方案，不需要专辑ID）
+    // 参数: name=专辑名&artist=艺人名
+    // ============================================
+    if (pathname === '/api/album/search') {
+      const name = params.get('name') || '';
+      const artist = params.get('artist') || '';
+      const limit = parseInt(params.get('limit') || '100');
+      if (!name) {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: 'Missing name' }));
+        return;
+      }
+      try {
+        const query = artist ? `${artist} ${name}` : name;
+        const songs = await searchSongs(query, limit, 'netease');
+        // 按专辑名过滤（模糊匹配）
+        const filtered = songs.filter(s => {
+          if (!s.album) return false;
+          const hay = s.album.toLowerCase();
+          const needle = name.toLowerCase();
+          return hay.includes(needle) || needle.includes(hay);
+        });
+        // 去重
+        const seen = new Set();
+        const unique = filtered.filter(s => {
+          if (seen.has(s.id)) return false;
+          seen.add(s.id);
+          return true;
+        });
+        console.log(`[Album/Search] "${name}": ${songs.length} searched → ${unique.length} matched`);
+        res.end(JSON.stringify({ songs: unique }));
+      } catch (e) {
+        console.error('[Album/Search] Error:', e.message);
+        res.statusCode = 500;
+        res.end(JSON.stringify({ error: e.message }));
+      }
+      return;
+    }
+    
     // 404
     res.statusCode = 404;
     res.end(JSON.stringify({ error: `Not found: ${pathname}` }));
