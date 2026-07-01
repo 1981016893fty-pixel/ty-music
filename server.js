@@ -344,13 +344,20 @@ function formatSong(s) {
     }
   }
   
+  // 专辑ID：NetEase API 有 s.al.id，GD Studio API 没有（留空让前端补查）
+  const trueAlbumId = String(s.al?.id || '');
+  // 封面ID：NetEase API 有 s.al.picId，GD Studio API 有 s.pic_id
+  const truePicId = String(s.al?.picId || s.pic_id || '');
+  // 如果 truePicId 为空但 picId 有值，用 picId
+  const finalPicId = truePicId || picId;
+
   return {
     id: String(s.id || ''),
     name: songName || 'Unknown',
     artist: artist,
-    album: album,  // 直接使用 API 返回的 album
-    albumId: picId,  // 保留兼容性
-    picId: picId,    // 前端实际读取的字段
+    album: album,
+    albumId: trueAlbumId,   // 专辑ID（NetEase API 才有）
+    picId: finalPicId,       // 封面图ID
     cover: coverUrl,
     coverSmall: coverUrl,
     duration: 0,
