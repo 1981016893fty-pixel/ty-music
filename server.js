@@ -315,6 +315,30 @@ async function getArtistInfoNetease(artistName) {
   return null;
 }
 
+// 用网易云原生搜索接口查询歌曲的 albumId
+// 返回 Map<songName_artist → albumId>
+async function fetchNeteaseAlbumIds(keywords, limit) {
+  try {
+    const url = `${NETEASE_API}/search?s=${encodeURIComponent(keywords)}&type=1&limit=${limit}&offset=0`;
+    const data = await requestNetease(url);
+    const result = new Map();
+    const songs = data?.result?.songs || [];
+    for (const s of songs) {
+      const key = (s.name || '').toLowerCase() + '|' + (s.artists?.[0]?.name || '').toLowerCase();
+      const albumId = String(s.album?.id || '');
+      const albumName = s.album?.name || '';
+      const picId = String(s.album?.picId || s.album?.pic_id || '');
+      if (albumId) {
+        result.set(key, { albumId, albumName, picId });
+      }
+    }
+    return result;
+  } catch (e) {
+    console.error('[Netease Search] Failed:', e.message);
+    return new Map();
+  }
+}
+
 // Format song data
 function formatSong(s) {
   if (!s) return null;
@@ -400,8 +424,9 @@ async function searchSongs(keywords, limit, source) {
           return findAlbumCoverPicId(primaryArtist, reliableAlbum, songName);
         })).then(() => console.log('[Search] Album cover pre-warm complete'));
       }
+      // 同步格式化 GD Studio 结果
       const seen = new Set();
-      return data
+      const gdSongs = data
         .map(formatSong)
         .filter(s => {
           if (!s) return false;
@@ -409,6 +434,35 @@ async function searchSongs(keywords, limit, source) {
           seen.add(s.id);
           return true;
         });
+
+      // 异步用网易云搜索补全 albumId（非阻塞，5秒超时）
+      try {
+        const neteaseMap = await Promise.race([
+          fetchNeteaseAlbumIds(keywords, limit),
+          new Promise(resolve => setTimeout(() => resolve(new Map()), 5000))
+        ]);
+        if (neteaseMap.size > 0) {
+          for (const song of gdSongs) {
+            if (!song.albumId) {
+              const key = (song.name || '').toLowerCase() + '|' + ((song.artist || '').split(',')[0].trim().toLowerCase());
+              const found = neteaseMap.get(key);
+              if (found) {
+                song.albumId = found.albumId;
+                if (!song.picId && found.picId) {
+                  song.picId = found.picId;
+                  song.cover = '/api/music/cover?picId=' + found.picId;
+                  song.coverSmall = song.cover;
+                }
+                console.log(`[Search] Enriched "${song.name}" with albumId=${found.albumId}`);
+              }
+            }
+          }
+        }
+      } catch (enrichErr) {
+        console.warn('[Search] Netease enrich failed (non-fatal):', enrichErr.message);
+      }
+
+      return gdSongs;
     }
     return [];
   } catch (e) {
