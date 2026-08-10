@@ -17,6 +17,51 @@ function resolveMusicResource(value) {
   return base ? base + value : value;
 }
 
+// Native macOS media bridge. It is intentionally a no-op in the browser, so
+// the web player keeps the exact same playback path outside the Tauri shell.
+const nativeMediaInvoke = (...args) => {
+  const invoke = window.__TAURI__?.core?.invoke;
+  return typeof invoke === 'function' ? invoke(...args).catch(() => {}) : Promise.resolve();
+};
+const nativeArtworkCache = new Map();
+let nativeSyncTimer = 0;
+function artworkAsBase64(source) {
+  const resolved = resolveMusicResource(source);
+  if (!resolved) return Promise.resolve(null);
+  if (nativeArtworkCache.has(resolved)) return Promise.resolve(nativeArtworkCache.get(resolved));
+  return fetch(resolved).then(response => response.ok ? response.blob() : null).then(blob => {
+    if (!blob) return null;
+    return new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = typeof reader.result === 'string' ? reader.result.split(',')[1] : null;
+        if (value) nativeArtworkCache.set(resolved, value);
+        resolve(value);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  }).catch(() => null);
+}
+function syncNativeNowPlaying(options = {}) {
+  if (!window.__TY_MUSIC_DESKTOP__ || !state?.currentTrack) return;
+  const track = state.currentTrack;
+  const send = artwork_data => nativeMediaInvoke('now_playing_update', {
+    payload: {
+      title: track.title || 'TY Music', artist: track.artist || null,
+      album: track.album || null, duration: Number.isFinite(audio?.duration) && audio.duration > 0 ? audio.duration : (track.duration || null),
+      position: Number.isFinite(audio?.currentTime) ? audio.currentTime : 0,
+      isPlaying: Boolean(state.isPlaying), artworkData: artwork_data || null
+    }
+  });
+  if (options.artwork) artworkAsBase64(track.coverSmall || track.cover || '').then(send);
+  else send(null);
+}
+function scheduleNativePositionSync() {
+  if (!window.__TY_MUSIC_DESKTOP__ || nativeSyncTimer) return;
+  nativeSyncTimer = window.setTimeout(() => { nativeSyncTimer = 0; syncNativeNowPlaying(); }, 500);
+}
+
 // Keep API results alive for the lifetime of the tab. Navigation only swaps
 // views, so returning to a page should reuse the already-rendered catalog
 // instead of waking the server and upstream source again.
@@ -835,9 +880,12 @@ function playTrack(track, index, skipRecentUpdate) {
   if (!track) return;
   if (index !== undefined) state.queueIndex = index;
   else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
+
+  // 当前播放项始终要切换；skipRecentUpdate 只控制是否写入最近播放记录。
+  state.currentTrack = track;
   
   // 只有 skipRecentUpdate 为 true 时（切歌），才跳过 recentPlays 更新
-  if (!skipRecentUpdate) {state.currentTrack = track;
+  if (!skipRecentUpdate) {
   
   // 调试：显示即将播放的歌曲
   console.log('[PlayTrack] Playing:', track.title, 'by', track.artist, 'album:', track.album);
@@ -881,6 +929,7 @@ function playTrack(track, index, skipRecentUpdate) {
   $('#playerTitle').textContent = track.title;
   $('#playerArtist').textContent = track.artist;
   window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
+  syncNativeNowPlaying({ artwork: true });
   // 时长：先显示已有值，等音频加载后再从 audio.duration 更新
   $('#durationTime').textContent = track.duration > 0 ? formatTime(track.duration) : '0:00';
   document.title = `${track.title} - ${track.artist} | TY Music`;
@@ -1017,6 +1066,7 @@ function updatePlayBtn() {
   const cls = state.isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
   icon.className = cls;
   miniIcon.className = cls;
+  scheduleNativePositionSync();
 }
 
 function updateQueueHighlight() {
@@ -1048,11 +1098,12 @@ $('#miniPlayBtn').addEventListener('click', togglePlay);
 audio.addEventListener('play', () => {
   state.isPlaying = true;
   updatePlayBtn();
+  syncNativeNowPlaying();
   // AudioContext 已在 togglePlay 用户手势中初始化，这里只管全屏可视化
   if (ampIsShowing) updateAmpPlayBtn();
 });
 
-audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); if (ampIsShowing) updateAmpPlayBtn(); });
+audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); syncNativeNowPlaying(); if (ampIsShowing) updateAmpPlayBtn(); });
 audio.addEventListener('ended', () => {
   if (state.repeatMode === 2) { audio.currentTime = 0; audio.play(); }
   else playNext();
@@ -1077,6 +1128,7 @@ audio.addEventListener('timeupdate', () => {
     setSliderValue('#progressBar', pct);
   }
   $('#currentTime').textContent = formatTime(audio.currentTime);
+  scheduleNativePositionSync();
 
   // Sync dynamic lyrics
   syncLyrics();

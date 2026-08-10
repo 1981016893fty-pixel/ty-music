@@ -51,7 +51,23 @@ window.__TY_MUSIC_API_BASE__ = 'https://ty-music.onrender.com';
   }))).observe(document, { childList: true, subtree: true });
   window.addEventListener('DOMContentLoaded', () => {
     const listen = window.__TAURI__?.event?.listen;
-    if (listen) listen('ty:media-toggle', () => document.querySelector('#playBtn')?.click());
+    const click = selector => document.querySelector(selector)?.click();
+    if (!listen) return;
+    listen('ty:media-toggle', () => click('#playBtn'));
+    listen('ty:media-play', () => {
+      if (window.__TY_MUSIC_STATE__?.isPlaying === false) click('#playBtn');
+      else if (!document.querySelector('#playBtn i')?.classList.contains('fa-pause')) click('#playBtn');
+    });
+    listen('ty:media-pause', () => {
+      if (document.querySelector('#playBtn i')?.classList.contains('fa-pause')) click('#playBtn');
+    });
+    listen('ty:media-next', () => click('#nextBtn'));
+    listen('ty:media-previous', () => click('#prevBtn'));
+    listen('ty:media-seek', event => {
+      const position = Number(event?.payload);
+      const audio = document.querySelector('#audioPlayer');
+      if (audio && Number.isFinite(position) && position >= 0) audio.currentTime = position;
+    });
   });
 })();
 </script>`;
