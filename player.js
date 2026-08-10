@@ -2733,19 +2733,25 @@ function applyAmpArtwork(artwork, urls, idx, trackId) {
     artwork.style.backgroundImage = '';
     return;
   }
+  // CSS background URLs are not covered by the desktop bridge's img.src
+  // rewrite. Resolve before both preloading and assigning the background so
+  // Tauri never requests its own local /api route for album artwork.
+  const sourceUrl = typeof window.__TY_MUSIC_RESOLVE_URL__ === 'function'
+    ? window.__TY_MUSIC_RESOLVE_URL__(urls[idx])
+    : urls[idx];
   const img = new Image();
   img.onload = function() {
     if (trackId && getActiveTrack()?.id !== trackId) return;
-    artwork.style.backgroundImage = `url(${urls[idx]})`;
+    artwork.style.backgroundImage = `url("${sourceUrl}")`;
     artwork.style.backgroundSize = 'cover';
     artwork.style.backgroundPosition = 'center';
-    window.ampCoverSrc = urls[idx];
-    window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: urls[idx] } }));
+    window.ampCoverSrc = sourceUrl;
+    window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: sourceUrl } }));
   };
   img.onerror = function() {
     applyAmpArtwork(artwork, urls, idx + 1, trackId);
   };
-  img.src = urls[idx];
+  img.src = sourceUrl;
 }
 
 // 辅助：在圆角矩形路径上画圆角矩形（用于未来剪裁）

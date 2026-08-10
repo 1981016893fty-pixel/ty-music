@@ -33,6 +33,7 @@ document.documentElement.classList.add('ty-desktop');
     if (typeof value !== 'string' || !value.startsWith('/api/')) return value;
     return base + value;
   };
+  window.__TY_MUSIC_RESOLVE_URL__ = resolve;
   const imageSrc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
   if (imageSrc?.set) Object.defineProperty(HTMLImageElement.prototype, 'src', {
     configurable: true, get: imageSrc.get,
