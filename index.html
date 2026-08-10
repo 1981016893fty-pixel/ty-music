@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TY Music - 免费听遍全网音乐</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23b44dff'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
-  <link rel="preload" href="style.css?v=20260810playlist-detail" as="style">
-  <link rel="preload" href="player.js?v=20260810playlist-detail" as="script">
+  <link rel="preload" href="style.css?v=20260810brand-title" as="style">
+  <link rel="preload" href="player.js?v=20260810brand-title" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260810playlist-detail">
+  <link rel="stylesheet" href="style.css?v=20260810brand-title">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -720,23 +720,23 @@
   <audio id="audioPlayer" preload="auto"></audio>
 
   <script>
-    document.title = 'TY Music [JS运行中]';
+    document.title = 'TY Music · 让喜欢的声音回到当下';
     console.log('[Diagnostic] Inline script executed at', new Date().toISOString());
-    // 如果30秒后heroTitle还是加载中，说明JS已加载但数据加载失败，提供重试按钮
+    // If the live catalog is slow, keep the fallback shell and offer a quiet retry.
     setTimeout(function() {
       var h = document.getElementById('heroTitle');
       if (h && (h.textContent === '启动中...' || h.textContent === '加载中...' || h.textContent === 'JS加载中...')) {
-        h.textContent = '加载超时';
+        h.textContent = '正在准备你的音乐';
         var artistEl = document.getElementById('heroArtist');
         if (artistEl) {
-          artistEl.innerHTML = '服务可能处于冷启动状态，<span style="color:var(--neon-cyan);text-decoration:underline;cursor:pointer" onclick="loadDiscoverData(0)">点击重试</span>';
+          artistEl.innerHTML = '音乐很快就到，<span style="color:var(--neon-cyan);text-decoration:underline;cursor:pointer" onclick="loadDiscoverData(0)">重新连接</span>';
         }
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810playlist-detail">
-  <script src="soft-aurora-react.js?v=20260810playlist-detail" defer></script>
-  <script src="player.js?v=20260810playlist-detail" defer></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810brand-title">
+  <script src="soft-aurora-react.js?v=20260810brand-title" defer></script>
+  <script src="player.js?v=20260810brand-title" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>
