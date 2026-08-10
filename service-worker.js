@@ -4,13 +4,13 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v33-first-paint-assets';
+const CACHE_NAME = 'ty-music-v34-mobile-scroll-final';
 const STATIC_ASSETS = [
-  '/index.html',
-  '/style.css',
-  '/player.js',
-  '/soft-aurora-react.js',
-  '/soft-aurora-react.css',
+  '/index.html?v=20260810mobile-scroll-final',
+  '/style.css?v=20260810mobile-scroll-final',
+  '/player.js?v=20260810mobile-scroll-final',
+  '/soft-aurora-react.js?v=20260810mobile-scroll-final',
+  '/soft-aurora-react.css?v=20260810mobile-scroll-final',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -20,7 +20,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v30...');
+  console.log('[SW] Installing v34...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] Precaching static assets');
@@ -31,7 +31,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v30');
+  console.log('[SW] Activated v34');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
