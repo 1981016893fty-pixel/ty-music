@@ -412,10 +412,11 @@ if (topDockBrandMount) createRoot(topDockBrandMount).render(<GlitchText classNam
 function ShinyHeading({ target }) {
   const [text, setText] = React.useState(target.dataset.shinyText || '');
   React.useEffect(() => {
+    target.classList.add('has-shiny-text');
     const update = () => setText(target.dataset.shinyText || '');
     const observer = new MutationObserver(update);
     observer.observe(target, { attributes: true, attributeFilter: ['data-shiny-text'] });
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); target.classList.remove('has-shiny-text'); };
   }, [target]);
   return <ShinyText text={text} speed={2.8} pauseOnHover />;
 }

@@ -983,12 +983,22 @@ html:has(.amp-fullscreen-player.show) .top-dock {
 }
 
 .hero-title {
+  position: relative;
   font-size: 38px; font-weight: 700;
   color: #fff;
   margin-bottom: 6px;
   letter-spacing: -0.6px;
   line-height: 1.15;
 }
+
+.hero-title::before {
+  content: attr(data-shiny-text);
+  position: absolute;
+  inset: 0 auto auto 0;
+  color: #fff;
+  pointer-events: none;
+}
+.hero-title.has-shiny-text::before { display: none; }
 
 /* Keep the original text colors while separating key copy from the animated hero. */
 .hero-title .shiny-text,
@@ -1062,6 +1072,19 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   max-width: 276px;
   max-height: 276px;
 }
+.hero-art-fallback {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: inherit;
+  opacity: .86;
+  filter: saturate(1.08) contrast(1.04);
+}
+.hero-art #heroElasticMeshMount { z-index: 1; }
 
 /* ============================================
    Section 标题
