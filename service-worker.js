@@ -4,13 +4,18 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v34-mobile-scroll-final';
+const CACHE_NAME = 'ty-music-v35-api-cache';
+const API_WARMUP = [
+  '/api/discover/featured?limit=6',
+  '/api/discover/hot?limit=6',
+  '/api/music/hot?source=netease&limit=6'
+];
 const STATIC_ASSETS = [
-  '/index.html?v=20260810mobile-scroll-final',
-  '/style.css?v=20260810mobile-scroll-final',
-  '/player.js?v=20260810mobile-scroll-final',
-  '/soft-aurora-react.js?v=20260810mobile-scroll-final',
-  '/soft-aurora-react.css?v=20260810mobile-scroll-final',
+  '/index.html?v=20260810api-cache',
+  '/style.css?v=20260810api-cache',
+  '/player.js?v=20260810api-cache',
+  '/soft-aurora-react.js?v=20260810api-cache',
+  '/soft-aurora-react.css?v=20260810api-cache',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -20,18 +25,21 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v34...');
+  console.log('[SW] Installing v35...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] Precaching static assets');
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).then(() => Promise.allSettled(API_WARMUP.map(async url => {
+        const response = await fetch(url, { credentials: 'same-origin' });
+        if (response.ok) await cache.put(url, response.clone());
+      })));
     }).then(() => self.skipWaiting())
   );
 });
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v34');
+  console.log('[SW] Activated v35');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
@@ -48,8 +56,36 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // API 请求不拦截
+  // Audio and lyric streams must remain network-only. Catalog JSON can use
+  // stale-while-revalidate so a page switch is instant after first load.
+  const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
+  if (url.pathname.startsWith('/api/') && !networkOnlyApi && event.request.method === 'GET') {
+    event.respondWith(caches.match(event.request).then(cached => {
+      const refresh = fetch(event.request).then(response => {
+        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+        return response;
+      }).catch(() => cached || Response.error());
+      return cached || refresh;
+    }));
+    return;
+  }
   if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Artwork and artist photos are immutable enough for a cache-first policy.
+  // This keeps already-seen covers visible when users switch pages or reopen
+  // the app, while failed requests still fall back to the network.
+  if (event.request.method === 'GET' && event.request.destination === 'image') {
+    event.respondWith(caches.match(event.request).then(cached => {
+      if (cached) return cached;
+      return fetch(event.request).then(response => {
+        if (response.ok || response.type === 'opaque') {
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+        }
+        return response;
+      });
+    }));
     return;
   }
 

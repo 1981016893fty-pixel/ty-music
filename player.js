@@ -11,6 +11,47 @@ const setSliderValue = (host, percentage) => {
   if (range) range.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
 };
 
+// Keep API results alive for the lifetime of the tab. Navigation only swaps
+// views, so returning to a page should reuse the already-rendered catalog
+// instead of waking the server and upstream source again.
+const apiMemoryCache = new Map();
+const apiInflight = new Map();
+const rawFetch = window.fetch.bind(window);
+window.fetch = function cachedApiFetch(input, init) {
+  const request = input instanceof Request ? input : new Request(input, init);
+  const url = new URL(request.url, window.location.href);
+  const method = (request.method || 'GET').toUpperCase();
+  const cacheable = method === 'GET' && url.origin === window.location.origin &&
+    url.pathname.startsWith('/api/') &&
+    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
+  if (!cacheable) return rawFetch(input, init);
+
+  const key = url.href;
+  const now = Date.now();
+  const hit = apiMemoryCache.get(key);
+  if (hit && hit.expires > now) {
+    return Promise.resolve(new Response(hit.body, {
+      status: hit.status,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'memory' }
+    }));
+  }
+  if (apiInflight.has(key)) return apiInflight.get(key).then(result => new Response(result.body, {
+    status: result.status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'inflight' }
+  }));
+
+  const promise = rawFetch(request).then(async response => {
+    const body = await response.text();
+    if (response.ok) apiMemoryCache.set(key, { body, status: response.status, expires: now + 5 * 60 * 1000 });
+    return { body, status: response.status };
+  }).finally(() => apiInflight.delete(key));
+  apiInflight.set(key, promise);
+  return promise.then(result => new Response(result.body, {
+    status: result.status,
+    headers: { 'Content-Type': 'application/json; charset=utf-8' }
+  }));
+};
+
 // ========== Singleton audio ==========
 const audio = $('#audioPlayer');
 
@@ -1580,8 +1621,10 @@ function scheduleHeroRotation(tracks) {
 }
 
 async function loadDiscover() {
-  // 不再使用 _discoverLoaded 短路，每次进入主页都重新加载数据
-  // PWA 桌面图标启动时如果首次加载失败，重新进入也能重试
+  // Render/API requests are expensive on a cold start. Keep the first
+  // rendered home state and its live result when navigating away and back.
+  if (state._discoverLoaded) return;
+  state._discoverLoaded = true;
 
   // Genre cards
   const genres = [
