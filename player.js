@@ -929,6 +929,8 @@ function playTrack(track, index, skipRecentUpdate) {
   $('#playerTitle').textContent = track.title;
   $('#playerArtist').textContent = track.artist;
   window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
+  // 全屏播放器订阅同一事件，确保浏览器端自动切歌也立即刷新标题、歌手和封面。
+  if (ampIsShowing) updateAmpFullscreenPlayer();
   syncNativeNowPlaying({ artwork: true });
   // 时长：先显示已有值，等音频加载后再从 audio.duration 更新
   $('#durationTime').textContent = track.duration > 0 ? formatTime(track.duration) : '0:00';
@@ -1093,6 +1095,10 @@ function togglePlay() {
 
 $('#playBtn').addEventListener('click', togglePlay);
 $('#miniPlayBtn').addEventListener('click', togglePlay);
+$('#nativeMiniBtn')?.addEventListener('click', () => {
+  if (!window.__TY_MUSIC_DESKTOP__) return;
+  nativeMediaInvoke('toggle_native_mini');
+});
 
 // HTML5 audio events
 audio.addEventListener('play', () => {

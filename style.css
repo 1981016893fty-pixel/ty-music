@@ -693,6 +693,90 @@ body:has(.amp-fullscreen-player.show) .bg-gradient {
   transition: transform 0.1s ease;
 }
 
+/* Native Tauri mini-player window. The window itself is resized by Rust;
+   this layer only turns the existing player bar into the complete surface. */
+.native-mini-btn { display: none; }
+.ty-desktop .native-mini-btn { display: flex; }
+
+body.native-mini-mode {
+  min-width: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #0b0b0d;
+}
+
+body.native-mini-mode .top-dock,
+body.native-mini-mode .sidebar,
+body.native-mini-mode .main-content,
+body.native-mini-mode .mobile-topbar,
+body.native-mini-mode .welcome-screen,
+body.native-mini-mode .amp-fullscreen-player,
+body.native-mini-mode .page-overlay { display: none !important; }
+
+body.native-mini-mode .player-bar {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 12px 16px;
+  gap: 14px;
+  border: 0;
+  border-radius: 0;
+  background: rgba(20, 20, 24, 0.92);
+  backdrop-filter: blur(24px) saturate(1.35);
+  -webkit-backdrop-filter: blur(24px) saturate(1.35);
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12);
+}
+
+body.native-mini-mode .player-bubble-mount,
+body.native-mini-mode #playerBubbleMount,
+body.native-mini-mode .player-collapse-btn,
+body.native-mini-mode .player-collapsed-label,
+body.native-mini-mode .player-like,
+body.native-mini-mode #playerDownload,
+body.native-mini-mode #playerMore,
+body.native-mini-mode #shuffleBtn,
+body.native-mini-mode #repeatBtn,
+body.native-mini-mode #volumeBtn,
+body.native-mini-mode #volumeBar,
+body.native-mini-mode #fullscreenBtn { display: none !important; }
+
+body.native-mini-mode .player-left {
+  flex: 1 1 220px;
+  min-width: 0;
+  gap: 10px;
+}
+
+body.native-mini-mode .player-nowplaying,
+body.native-mini-mode .player-cover { width: 54px; height: 54px; }
+body.native-mini-mode .player-cover { border-radius: 9px; }
+body.native-mini-mode .player-info { min-width: 0; }
+body.native-mini-mode .player-title { font-size: 13px; }
+body.native-mini-mode .player-artist { font-size: 11px; }
+body.native-mini-mode .player-center {
+  flex: 0 1 260px;
+  min-width: 220px;
+  gap: 7px;
+}
+body.native-mini-mode .player-controls { gap: 4px; }
+body.native-mini-mode .ctrl-btn { width: 30px; height: 30px; }
+body.native-mini-mode .ctrl-play { width: 38px; height: 38px; }
+body.native-mini-mode .progress-container { gap: 7px; }
+body.native-mini-mode .time { font-size: 10px; min-width: 28px; }
+body.native-mini-mode .player-right {
+  flex: 0 0 auto;
+  width: auto;
+  gap: 6px;
+}
+body.native-mini-mode #nativeMiniBtn { display: flex !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  body.native-mini-mode .player-bar { transition: none !important; }
+}
+
 /* ============================================
    主内容区
    ============================================ */
