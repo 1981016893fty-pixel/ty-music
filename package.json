@@ -6,6 +6,9 @@
   "scripts": {
     "start": "npm run build:aurora && node server-simple.js",
     "build:aurora": "node build.mjs",
+    "desktop:prepare": "node desktop/build.mjs",
+    "desktop:dev": "npm run desktop:prepare && tauri dev",
+    "desktop:build": "npm run desktop:prepare && tauri build",
     "test:data": "node scripts/verify-music-data.mjs",
     "test:electric-border": "node scripts/verify-electric-border.mjs",
     "test:grid": "node scripts/verify-grid-distortion.mjs"
@@ -31,6 +34,7 @@
     "three": "^0.185.1"
   },
   "devDependencies": {
-    "esbuild": "^0.28.1"
+    "esbuild": "^0.28.1",
+    "@tauri-apps/cli": "^2.8.4"
   }
 }

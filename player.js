@@ -18,13 +18,20 @@ const apiMemoryCache = new Map();
 const apiInflight = new Map();
 const rawFetch = window.fetch.bind(window);
 window.fetch = function cachedApiFetch(input, init) {
-  const request = input instanceof Request ? input : new Request(input, init);
+  let request = input instanceof Request ? input : new Request(input, init);
+  const apiBase = window.__TY_MUSIC_API_BASE__ || '';
+  const originalUrl = new URL(request.url, window.location.href);
+  if (apiBase && originalUrl.pathname.startsWith('/api/')) {
+    const rewrittenUrl = new URL(originalUrl.pathname + originalUrl.search, apiBase).href;
+    request = new Request(rewrittenUrl, request);
+  }
   const url = new URL(request.url, window.location.href);
   const method = (request.method || 'GET').toUpperCase();
-  const cacheable = method === 'GET' && url.origin === window.location.origin &&
+  const apiOrigin = apiBase ? new URL(apiBase).origin : window.location.origin;
+  const cacheable = method === 'GET' && (url.origin === window.location.origin || url.origin === apiOrigin) &&
     url.pathname.startsWith('/api/') &&
     !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
-  if (!cacheable) return rawFetch(input, init);
+  if (!cacheable) return rawFetch(request);
 
   const key = url.href;
   const now = Date.now();
