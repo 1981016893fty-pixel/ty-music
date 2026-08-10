@@ -4,11 +4,16 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v32-async-shell';
+const CACHE_NAME = 'ty-music-v33-first-paint-assets';
 const STATIC_ASSETS = [
   '/index.html',
   '/style.css',
   '/player.js',
+  '/soft-aurora-react.js',
+  '/soft-aurora-react.css',
+  '/assets/demo/cs1.webp',
+  '/assets/demo/cs2.webp',
+  '/assets/demo/cs3.webp',
   '/vendor/font-awesome/css/all.min.css',
   '/vendor/font-awesome/webfonts/fa-solid-900.woff2',
 ];
