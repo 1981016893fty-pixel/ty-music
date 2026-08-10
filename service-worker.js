@@ -4,18 +4,18 @@
  * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
  */
 
-const CACHE_NAME = 'ty-music-v36-hero-layer-fix';
+const CACHE_NAME = 'ty-music-v37-fullscreen-syncfix';
 const API_WARMUP = [
   '/api/discover/featured?limit=6',
   '/api/discover/hot?limit=6',
   '/api/music/hot?source=netease&limit=6'
 ];
 const STATIC_ASSETS = [
-  '/index.html?v=20260810hero-layer-fix',
-  '/style.css?v=20260810hero-layer-fix',
-  '/player.js?v=20260810hero-layer-fix',
-  '/soft-aurora-react.js?v=20260810hero-layer-fix',
-  '/soft-aurora-react.css?v=20260810hero-layer-fix',
+  '/index.html?v=20260810-fullscreen-syncfix',
+  '/style.css?v=20260810-fullscreen-syncfix',
+  '/player.js?v=20260810-fullscreen-syncfix',
+  '/soft-aurora-react.js?v=20260810-fullscreen-syncfix',
+  '/soft-aurora-react.css?v=20260810-fullscreen-syncfix',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -25,7 +25,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v36...');
+  console.log('[SW] Installing v37...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] Precaching static assets');
@@ -39,7 +39,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v36');
+  console.log('[SW] Activated v37');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
