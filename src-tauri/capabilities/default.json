@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "TY Music desktop permissions",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "global-shortcut:default"]
 }

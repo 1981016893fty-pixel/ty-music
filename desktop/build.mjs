@@ -49,6 +49,10 @@ window.__TY_MUSIC_API_BASE__ = 'https://ty-music.onrender.com';
   new MutationObserver(records => records.forEach(record => record.addedNodes.forEach(node => {
     if (node.nodeType === 1) rewrite(node);
   }))).observe(document, { childList: true, subtree: true });
+  window.addEventListener('DOMContentLoaded', () => {
+    const listen = window.__TAURI__?.event?.listen;
+    if (listen) listen('ty:media-toggle', () => document.querySelector('#playBtn')?.click());
+  });
 })();
 </script>`;
 const index = fs.readFileSync(path.join(out, 'index.html'), 'utf8');

@@ -1,5 +1,6 @@
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[derive(Debug, Serialize)]
 struct PlatformInfo {
@@ -33,11 +34,21 @@ fn close_window(window: tauri::Window) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, shortcut, event| {
+            if event.state() != ShortcutState::Pressed { return; }
+            if shortcut == &"CommandOrControl+Alt+Space".parse::<Shortcut>().expect("valid media shortcut") {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.emit("ty:media-toggle", ());
+                }
+            }
+        }).build())
         .invoke_handler(tauri::generate_handler![platform_info, set_window_title, minimize_window, close_window])
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("TY Music");
             }
+            let shortcut = "CommandOrControl+Alt+Space".parse::<Shortcut>().map_err(|error| error.to_string())?;
+            app.global_shortcut().register(shortcut).map_err(|error| error.to_string())?;
             Ok(())
         })
         .run(tauri::generate_context!())
