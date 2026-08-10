@@ -934,7 +934,9 @@ function playTrack(track, index, skipRecentUpdate) {
   $('#playerArtist').textContent = track.artist;
   window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
   // 全屏播放器订阅同一事件，确保浏览器端自动切歌也立即刷新标题、歌手和封面。
-  if (ampIsShowing) updateAmpFullscreenPlayer();
+  // Pass the just-selected track explicitly. Reading the queue again here can
+  // race with queue/index updates during automatic next-track playback.
+  if (ampIsShowing) updateAmpFullscreenPlayer(track);
   syncNativeNowPlaying({ artwork: true });
   // 时长：先显示已有值，等音频加载后再从 audio.duration 更新
   $('#durationTime').textContent = track.duration > 0 ? formatTime(track.duration) : '0:00';
@@ -1026,7 +1028,7 @@ function playTrack(track, index, skipRecentUpdate) {
       updateLikeUI();
       updatePlayBtn();
       updateQueueHighlight();
-      if (ampIsShowing) updateAmpFullscreenPlayer();
+      if (ampIsShowing) updateAmpFullscreenPlayer(track);
       state.lyrics = { lines: [], activeIndex: -1, expanded: false };
     });
     return;
@@ -1050,9 +1052,7 @@ function playTrack(track, index, skipRecentUpdate) {
   updateQueueHighlight();
 
   // 如果全屏播放器正在显示，同步更新
-  if (ampIsShowing) {
-    updateAmpFullscreenPlayer();
-  }
+  if (ampIsShowing) updateAmpFullscreenPlayer(track);
 
   // Auto-load lyrics if panel is open
   state.lyrics = { lines: [], activeIndex: -1, expanded: false };
@@ -3009,9 +3009,14 @@ function closeAmpFullscreenPlayer() {
   }, 400);
 }
 
-function updateAmpFullscreenPlayer() {
-  const track = getActiveTrack();
+function updateAmpFullscreenPlayer(trackOverride) {
+  const track = trackOverride || getActiveTrack();
   if (!track) return;
+
+  // Keep the canonical state aligned before any asynchronous artwork/lyrics
+  // work starts. This makes every caller (manual or automatic next) render the
+  // same track identity immediately.
+  if (state.currentTrack?.id !== track.id) state.currentTrack = track;
   
   // 封面 URL（全屏用大图 track.cover，小图用 coverSmall）
   const ampCoverUrl = track.cover || track.coverSmall || '';
@@ -3941,14 +3946,24 @@ function playLocalTrack(id) {
         // 将 ArrayBuffer 转换为 Blob
         const blob = new Blob([track.audioData], { type: track.fileType || 'audio/mpeg' });
         const url = URL.createObjectURL(blob);
+
+        // Local files use a Blob URL and cannot go through playTrack(), but
+        // they still need to publish the same track-change contract so the
+        // two-column fullscreen player never keeps the previous song.
+        state.currentTrack = track;
+        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+        ampLyricsRequestId += 1;
+        ampLyricsRenderedFor = null;
+        $('#playerTitle').textContent = track.title || '';
+        $('#playerArtist').textContent = track.artist || '';
+        window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
+        if (ampIsShowing) updateAmpFullscreenPlayer(track);
         
         audio.src = url;
         audio.load();
         audio.play().then(() => {
           state.isPlaying = true;
-          state.currentTrack = track;
           updatePlayBtn();
-          updatePlayerUI(track);
           showToast('正在播放: ' + track.title);
         }).catch((err) => {
           console.error('播放失败:', err);
