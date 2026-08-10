@@ -1,0 +1,2 @@
+.shiny-text { display: inline-block; }
+@media (prefers-reduced-motion: reduce) { .shiny-text { background-position: 50% center !important; } }

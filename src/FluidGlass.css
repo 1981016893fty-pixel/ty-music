@@ -1,0 +1,11 @@
+.fluid-glass-official { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.fluid-glass-official canvas { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; display: block; pointer-events: none; }
+.fluid-glass-official:not(.fluid-glass--fullscreen) canvas { visibility: hidden; }
+.fluid-glass--player-trigger,
+.fluid-glass--nav-trigger { z-index: 0; }
+.fluid-glass--player-panel,
+.fluid-glass--nav-panel { inset: -8px; border-radius: 24px; opacity: 1; }
+.player-bubble-menu:not(.is-open) .fluid-glass--player-panel,
+.bubble-menu:not(.is-open) .fluid-glass--nav-panel { opacity: 0; }
+.hero-card .hero-info,
+.hero-card .hero-art { z-index: 3; }

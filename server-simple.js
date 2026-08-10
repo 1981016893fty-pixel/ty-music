@@ -26,6 +26,8 @@ const STATIC_FILES = [
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
   ['/player.js', 'player.js'],
+  ['/soft-aurora-react.js', 'soft-aurora-react.js'],
+  ['/soft-aurora-react.css', 'soft-aurora-react.css'],
   ['/style.css', 'style.css'],
   ['/liquid-glass.js', 'liquid-glass.js'],
   ['/manifest.json', 'manifest.json'],
@@ -107,6 +109,21 @@ function serveStatic(req, res, urlPath) {
 const PORT = process.env.PORT || 8899;
 const GD_API = 'https://music-api.gdstudio.xyz/api.php';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+const HOT_CHART = Object.freeze({
+  provider: '网易云音乐',
+  playlistId: '3778678',
+  name: '云音乐热歌榜',
+});
+
+// Curated, canonical editions only. Do not replace these with fuzzy title searches.
+const FEATURED_THE_WEEKND = Object.freeze([
+  { id: '1406633327', name: 'Blinding Lights', artist: 'The Weeknd' },
+  { id: '32337668', name: 'The Hills', artist: 'The Weeknd' },
+  { id: '442867526', name: 'Die For You', artist: 'The Weeknd' },
+  { id: '32507839', name: "Can't Feel My Face", artist: 'The Weeknd' },
+  { id: '548785552', name: 'Call Out My Name', artist: 'The Weeknd' },
+  { id: '2670864154', name: 'Timeless', artist: 'The Weeknd' },
+]);
 
 // =========================== API 结果缓存 ===========================
 // 缓存搜索/热门结果，避免重复请求 GD API（公网访问延迟高，缓存很重要）
@@ -114,6 +131,7 @@ const apiCache = new Map(); // key → { data, expiry }
 const CACHE_TTL = {
   search: 5 * 60 * 1000,   // 搜索结果缓存 5 分钟
   hot: 10 * 60 * 1000,     // 热门缓存 10 分钟
+  featured: 60 * 60 * 1000, // 精选曲库缓存 1 小时
   album: 30 * 60 * 1000,    // 专辑曲目缓存 30 分钟
   cover: 30 * 60 * 1000,   // 封面 URL 缓存 30 分钟
   lyric: 60 * 60 * 1000,   // 歌词缓存 1 小时
@@ -163,7 +181,12 @@ function _httpsGetJSONOnce(url, timeout) {
       hostname: parsed.hostname,
       port: parsed.port || (isHttps ? 443 : 80),
       path: parsed.pathname + parsed.search,
-      headers: { 'User-Agent': UA, 'Connection': 'keep-alive' },
+      headers: {
+        'User-Agent': UA,
+        'Referer': 'https://music.163.com/',
+        'Accept': 'application/json',
+        'Connection': 'keep-alive',
+      },
       agent: isHttps ? httpsAgent : httpAgent,
     };
     const req = client.get(opts, (res) => {
@@ -285,23 +308,99 @@ async function getArtistPhotoUrl(artistName) {
   return null;
 }
 
-// 格式化 GD API 搜索结果为 player.js 格式
+function artistNames(artists) {
+  if (!Array.isArray(artists)) {
+    if (artists && typeof artists === 'object') return String(artists.name || '').trim();
+    return String(artists || '').trim();
+  }
+  return artists.map(artist => typeof artist === 'string' ? artist : artist?.name).filter(Boolean).join(', ');
+}
+
+function coverProxyUrl(picId, coverUrl, size) {
+  const query = new URLSearchParams({ size: String(size) });
+  if (coverUrl) query.set('url', coverUrl);
+  else if (picId) query.set('picId', String(picId));
+  else return '';
+  return `/api/cover?${query.toString()}`;
+}
+
+function isUsableTrack(track) {
+  return Boolean(
+    track.id && track.name && track.artist && track.album && track.albumId &&
+    track.picId && track.cover && track.coverSmall && Number(track.duration) > 0
+  );
+}
+
+function formatNeteaseCatalogSong(song) {
+  const album = song.al || song.album || {};
+  const artists = song.ar || song.artists || [];
+  return formatGDSong({
+    id: song.id,
+    name: song.name,
+    artist: artistNames(artists) || '未知歌手',
+    album: album.name || '',
+    albumId: String(album.id || ''),
+    albumTrackCount: Number(album.size || 0),
+    pic_id: String(album.picId || album.id || ''),
+    coverUrl: album.picUrl || '',
+    dt: song.dt || song.duration || 0,
+    source: 'netease'
+  });
+}
+
+// 格式化网易云 / GD Studio 搜索结果为 player.js 格式。
+// 优先保留网易云返回的原始 picUrl，避免 18 位 picId 被 JSON Number 舍入后取错封面。
 function formatGDSong(s) {
-  const artistStr = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '未知歌手');
-  const picId = s.pic_id || s.albumId || '';
+  const artistStr = artistNames(s.artist) || '未知歌手';
+  const picId = String(s.pic_id || s.picId || s.albumId || '');
+  const coverUrl = String(s.coverUrl || s.picUrl || s.pic_url || '');
+  const rawDuration = Number(s.duration || s.dt || 0);
+  const duration = rawDuration > 10000 ? Math.round(rawDuration / 1000) : Math.round(rawDuration);
 
   return {
     id: String(s.id || ''),
     name: s.name || '未知歌曲',
     artist: artistStr,
     album: s.album || '',
-    albumId: s.albumId || '',   // 优先用真实 albumId，GD API 不一定有
-    cover: picId ? `/api/cover?albumId=${picId}&size=300` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
-    coverSmall: picId ? `/api/cover?albumId=${picId}&size=200` : `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
+    albumId: String(s.albumId || ''),
+    albumTrackCount: Number(s.albumTrackCount || 0),
+    cover: coverProxyUrl(picId, coverUrl, 1000) || `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
+    coverSmall: coverProxyUrl(picId, coverUrl, 300) || `/api/artist-photo?name=${encodeURIComponent(artistStr)}`,
     picId: picId,
-    duration: 0,
+    duration,
     source: 'netease'
   };
+}
+
+async function hydrateNeteaseCoverUrls(songs) {
+  const missing = songs.filter(song => {
+    const album = song.al || song.album || {};
+    return !album.picUrl && song.id;
+  }).slice(0, 100);
+  if (!missing.length) return songs;
+
+  try {
+    const ids = missing.map(song => song.id);
+    const url = 'https://music.163.com/api/song/detail/?ids=' + encodeURIComponent(JSON.stringify(ids));
+    const data = await dedupedGetJSON(url, 15000);
+    const covers = new Map((data?.songs || []).map(song => {
+      const album = song.al || song.album || {};
+      return [String(song.id), { picId: album.picId, picUrl: album.picUrl }];
+    }));
+
+    songs.forEach(song => {
+      const cover = covers.get(String(song.id));
+      if (!cover?.picUrl) return;
+      const album = song.al || song.album || {};
+      album.picUrl = cover.picUrl;
+      if (!album.picId && cover.picId) album.picId = cover.picId;
+      if (song.al) song.al = album;
+      else song.album = album;
+    });
+  } catch (e) {
+    console.warn('[Cover hydration] Failed:', e.message);
+  }
+  return songs;
 }
 
 // =========================== API 逻辑 ===========================
@@ -318,15 +417,19 @@ async function fillMissingPicIdsRaw(songsRaw) {
     const data = await httpsGetJSON(url, 8000);
     if (data && Array.isArray(data.songs)) {
       const picMap = {};
+      const picUrlMap = {};
       data.songs.forEach(s => {
-        const picId = s.album && s.album.picId ? String(s.album.picId) : '';
+        const album = s.al || s.album || {};
+        const picId = album.picId ? String(album.picId) : '';
         if (picId) picMap[String(s.id)] = picId;
+        if (album.picUrl) picUrlMap[String(s.id)] = album.picUrl;
       });
-      // 直接修改原始 GD 数据的 pic_id 字段
+      // 直接修改原始数据；pic_url 是精确的字符串 URL，不受 picId 数值精度影响。
       songsRaw.forEach(s => {
         if (!s.pic_id && picMap[s.id]) {
           s.pic_id = picMap[s.id];
         }
+        if (!s.pic_url && picUrlMap[s.id]) s.pic_url = picUrlMap[s.id];
       });
       console.log(`[PicFill] Filled ${Object.keys(picMap).length}/${missing.length} missing pic_ids`);
     }
@@ -342,33 +445,86 @@ async function gdSearch(keywords, limit = 30) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
-  // 备用关键词：主关键词搜不到时自动换词
-  const fallbackKeywords = getSearchFallbacks(keywords);
-
-  for (const kw of fallbackKeywords) {
-    try {
-      const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(kw)}&count=${limit}`;
-      console.log(`[GD Search] Trying: "${kw}"`);
-      const data = await dedupedGetJSON(url, 15000);
-      if (Array.isArray(data) && data.length > 0) {
-        // 先批量补全 pic_id，再格式化
-        await fillMissingPicIdsRaw(data);
-        const result = data.map(formatGDSong);
-        // 只缓存原始关键词的结果
-        if (kw === keywords) {
-          cacheSet(cacheKey, result, CACHE_TTL.search);
-        }
-        console.log(`[GD Search] Got ${result.length} tracks for "${kw}"`);
-        return result;
-      }
-      console.log(`[GD Search] Empty result for "${kw}", trying fallback...`);
-    } catch (e) {
-      console.warn(`[GD Search] Error for "${kw}":`, e.message);
-      // 继续尝试下一个备用关键词
+  // 网易云官方搜索返回真实的 song / artist / album / picId 关联。
+  // 将它作为主路径，避免第三方搜索空响应时让流派展示错误的兜底歌曲。
+  try {
+    const official = await searchNeteaseCatalog(keywords, limit);
+    if (official.length > 0) {
+      cacheSet(cacheKey, official, CACHE_TTL.search);
+      return official;
     }
+  } catch (e) {
+    console.warn(`[Netease Search] Error for "${keywords}":`, e.message);
   }
-  console.log(`[GD Search] All fallbacks failed for "${keywords}"`);
+
+  // 搜索失败时保持为空，不能把第三方模糊搜索结果伪装成该流派的数据。
+  console.warn(`[Netease Search] No verified results for "${keywords}"`);
   return [];
+}
+
+async function searchNeteaseCatalogPage(keywords, limit, offset = 0) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 30, 100));
+  const safeOffset = Math.max(0, Number(offset) || 0);
+  const url = `https://music.163.com/api/search/get?s=${encodeURIComponent(keywords)}&type=1&limit=${safeLimit}&offset=${safeOffset}`;
+  const data = await dedupedGetJSON(url, 15000);
+  const songs = data && data.result && Array.isArray(data.result.songs) ? data.result.songs : [];
+  const total = Number(data?.result?.songCount || 0);
+  if (!songs.length) return { songs: [], total, hasMore: false, nextOffset: safeOffset };
+  await hydrateNeteaseCoverUrls(songs);
+
+  const result = songs.map(formatNeteaseCatalogSong).filter(isUsableTrack);
+  console.log(`[Netease Search] Got ${result.length}/${songs.length} tracks for "${keywords}" at offset=${safeOffset}`);
+  return {
+    songs: result,
+    total: Math.max(total, safeOffset + songs.length),
+    hasMore: safeOffset + songs.length < total,
+    nextOffset: safeOffset + songs.length,
+  };
+}
+
+async function searchNeteaseCatalog(keywords, limit) {
+  const page = await searchNeteaseCatalogPage(keywords, limit, 0);
+  return page.songs;
+}
+
+function normalizedFeaturedText(value) {
+  return String(value || '').replace(/\s+/g, '').toLowerCase();
+}
+
+function isExactFeaturedTrack(song, featured) {
+  if (String(song?.id || '') !== featured.id) return false;
+  if (normalizedFeaturedText(song.name) !== normalizedFeaturedText(featured.name)) return false;
+  const artists = song.ar || song.artists || [];
+  return artists.some(artist => normalizedFeaturedText(artist?.name || artist) === normalizedFeaturedText(featured.artist));
+}
+
+async function getFeaturedClassics(limit = 1) {
+  const safeLimit = Math.max(1, Math.min(Number(limit) || 1, FEATURED_THE_WEEKND.length));
+  const dayIndex = Math.floor(Date.now() / 86_400_000) % FEATURED_THE_WEEKND.length;
+  const ordered = FEATURED_THE_WEEKND.map((_, index) => FEATURED_THE_WEEKND[(dayIndex + index) % FEATURED_THE_WEEKND.length]);
+  const selected = ordered.slice(0, safeLimit);
+  const cacheKey = `featured:${selected.map(track => track.id).join(',')}`;
+  const cached = cacheGet(cacheKey);
+  if (cached) return cached;
+
+  const ids = selected.map(track => track.id);
+  const url = 'https://music.163.com/api/song/detail/?ids=' + encodeURIComponent(JSON.stringify(ids));
+  const data = await dedupedGetJSON(url, 15000);
+  const songs = Array.isArray(data?.songs) ? data.songs : [];
+  await hydrateNeteaseCoverUrls(songs);
+  const byId = new Map(songs.map(song => [String(song.id), song]));
+
+  const result = selected.map(featured => {
+    const song = byId.get(featured.id);
+    if (!song || !isExactFeaturedTrack(song, featured)) {
+      console.warn(`[Featured] Rejected unexpected catalog result for ${featured.artist} - ${featured.name}`);
+      return null;
+    }
+    return formatNeteaseCatalogSong(song);
+  }).filter(isUsableTrack);
+
+  cacheSet(cacheKey, result, CACHE_TTL.featured);
+  return result;
 }
 
 // 搜索备用关键词映射
@@ -413,7 +569,7 @@ async function gdSearchAlbum(albumName, limit = 50) {
     if (Array.isArray(data) && data.length > 0) {
       // 先批量补全 pic_id，再格式化
       await fillMissingPicIdsRaw(data);
-      const result = data.map(formatGDSong);
+      const result = data.map(formatGDSong).filter(isUsableTrack);
       cacheSet(cacheKey, result, CACHE_TTL.album);
       console.log(`[GD AlbumSearch] "${albumName}" returned ${result.length} tracks`);
       return result;
@@ -431,27 +587,38 @@ async function getHotSongs(limit = 20) {
   const cacheKey = `hot:${limit}`;
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
-  
-  const fallbackKeywords = ['热门', '热门歌曲', '华语', '流行', '经典', '2025', '抖音'];
-  
-  for (const kw of fallbackKeywords) {
-    try {
-      const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(kw)}&count=${limit}`;
-      const data = await httpsGetJSON(url, 15000);
-      if (Array.isArray(data) && data.length > 0) {
-        // 先批量补全 pic_id，再格式化
-        await fillMissingPicIdsRaw(data);
-        const result = data.map(formatGDSong);
-        cacheSet(cacheKey, result, CACHE_TTL.hot);
-        console.log(`[Hot] Got ${result.length} songs from keyword "${kw}"`);
-        return result;
-      }
-    } catch (e) {
-      console.log(`[Hot] Keyword "${kw}" failed:`, e.message);
+
+  // 网易云热歌榜（3778678）是可验证的排行榜数据，不能用“流行”搜索结果冒充榜单。
+  try {
+    const chart = await dedupedGetJSON('https://music.163.com/api/playlist/detail?id=3778678', 15000);
+    const chartTracks = chart && chart.result && Array.isArray(chart.result.tracks) ? chart.result.tracks : [];
+    if (chartTracks.length > 0) {
+      const result = chartTracks.slice(0, limit).map(track => {
+        const album = track.al || track.album || {};
+        const artists = track.ar || track.artists || [];
+        return formatGDSong({
+          id: track.id,
+          name: track.name,
+          artist: artistNames(artists) || '未知歌手',
+          album: album.name || '',
+          albumId: String(album.id || ''),
+          albumTrackCount: Number(album.size || 0),
+          pic_id: String(album.picId || album.id || ''),
+          coverUrl: album.picUrl || '',
+          dt: track.dt || track.duration || 0,
+          source: 'netease'
+        });
+      }).filter(isUsableTrack);
+      cacheSet(cacheKey, result, CACHE_TTL.hot);
+      console.log(`[Hot] Loaded ${result.length} tracks from 网易云热歌榜`);
+      return result;
     }
+  } catch (e) {
+    console.warn('[Hot] Netease chart request failed:', e.message);
   }
   
-  console.error('[Hot] All fallback keywords failed');
+  // 榜单不可用时不展示搜索结果，避免把“热门”关键词结果误标为排行榜。
+  console.error('[Hot] 网易云热歌榜 unavailable');
   return [];
 }
 
@@ -509,6 +676,15 @@ async function gdGetCoverUrl(picId) {
   return null;
 }
 
+function sizedNeteaseCoverUrl(rawUrl, size) {
+  const coverUrl = new URL(rawUrl);
+  const allowedHost = /^p\d+\.music\.126\.net$/.test(coverUrl.hostname) || coverUrl.hostname === 'music.163.com';
+  if (!allowedHost) throw new Error('Unsupported cover host');
+  coverUrl.protocol = 'https:';
+  coverUrl.searchParams.set('param', `${size}y${size}`);
+  return coverUrl.toString();
+}
+
 // 搜索歌词（通过 artist + title）
 async function searchLyric(artist, title) {
   try {
@@ -550,19 +726,21 @@ async function getAlbumSongs(albumName, artistName, limit = 30) {
             const albumDetail = await httpsGetJSON(albumDetailUrl, 10000);
             
             if (albumDetail && albumDetail.code === 200 && albumDetail.album && albumDetail.album.songs) {
-              const songs = albumDetail.album.songs.map(function(s) {
-                return {
-                  id: String(s.id),
+              const officialAlbum = albumDetail.album;
+              const songs = officialAlbum.songs.map(function(s) {
+                const songAlbum = s.al || s.album || officialAlbum;
+                return formatGDSong({
+                  id: s.id,
                   name: s.name,
-                  artist: s.artists ? s.artists.map(function(a) { return a.name; }).join(', ') : '未知歌手',
-                  album: s.album ? s.album.name : albumName,
-                  pic_id: s.album ? String(s.album.picId || '') : '',
-                  albumId: matched.id,
-                  picId: s.album ? String(s.album.picId || '') : '',
-                  duration: 0,
+                  artist: artistNames(s.ar || s.artists || []),
+                  album: officialAlbum.name || songAlbum.name || albumName,
+                  albumId: String(officialAlbum.id || matched.id),
+                  pic_id: String(officialAlbum.picId || songAlbum.picId || ''),
+                  coverUrl: officialAlbum.picUrl || songAlbum.picUrl || '',
+                  dt: s.dt || s.duration || 0,
                   source: 'netease'
-                };
-              });
+                });
+              }).filter(isUsableTrack);
               console.log(`[Album] Got ${songs.length} songs from albumId=${matched.id}`);
               return songs.slice(0, limit);
             }
@@ -581,68 +759,119 @@ async function getAlbumSongs(albumName, artistName, limit = 30) {
       return await gdSearch(albumName, limit);
     }
     
-    // 如果有歌手名，过滤出该歌手的歌
-    if (artistName) {
-      const artistFiltered = results.filter(function(s) {
-        const songArtist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '');
-        return songArtist.indexOf(artistName) !== -1 || artistName.indexOf(songArtist) !== -1;
+    // GD 的搜索结果可能混入同名专辑；只接受专辑名和歌手都能核对上的曲目。
+    const expectedAlbum = String(albumName).trim().toLowerCase();
+    const albumExact = results.filter(function(s) {
+      return String(s.album || '').trim().toLowerCase() === expectedAlbum;
+    });
+    const verified = artistName ? albumExact.filter(function(s) {
+      const songArtist = Array.isArray(s.artist) ? s.artist.join(', ') : (s.artist || '');
+      return songArtist.indexOf(artistName) !== -1 || artistName.indexOf(songArtist) !== -1;
+    }) : albumExact;
+    if (verified.length > 0) {
+      // A GD album search can still contain several catalog editions with the
+      // same title. Keep only the dominant album ID; never return a mixed list.
+      const idCounts = new Map();
+      verified.forEach(song => {
+        const songAlbumId = String(song.albumId || '');
+        if (songAlbumId) idCounts.set(songAlbumId, (idCounts.get(songAlbumId) || 0) + 1);
       });
-      if (artistFiltered.length > 0) {
-        console.log(`[Album] "${albumName}" by "${artistName}": ${artistFiltered.length} tracks (GD fallback)`);
-        return artistFiltered.slice(0, limit);
+      let canonicalId = '';
+      let canonicalCount = 0;
+      idCounts.forEach((count, songAlbumId) => {
+        if (count > canonicalCount) { canonicalId = songAlbumId; canonicalCount = count; }
+      });
+      const canonical = canonicalId ? verified.filter(song => String(song.albumId) === canonicalId) : [];
+      if (canonical.length && (verified.length === 1 || canonicalCount >= 2)) {
+        console.log(`[Album] "${albumName}" by "${artistName}": ${canonical.length} verified GD fallback tracks`);
+        return canonical.slice(0, limit);
       }
     }
-    
-    console.log(`[Album] "${albumName}": ${results.length} tracks (GD fallback, no artist filter)`);
-    return results.slice(0, limit);
+    console.warn(`[Album] Rejecting unverified search results for "${albumName}"`);
+    return [];
   } catch (e) {
     console.error('[Album] Error:', e.message);
     return [];
   }
 }
 
-// 获取艺人歌曲
-async function getArtistSongs(artistName, limit = 100, offset = 0) {
+async function getVerifiedAlbumBySearch(albumId, albumName, artistName) {
+  const id = String(albumId || '');
+  const name = String(albumName || '').trim();
+  const artist = String(artistName || '').trim();
+  if (!id || !name) return { album: null, songs: [] };
+
+  // Prefer the canonical album endpoint. It preserves all tracks and avoids
+  // losing compilation albums whose artist list differs from the clicked song.
   try {
-    // GD API 单次最多 99 条，用 pages 参数翻页
-    // 计算需要几页才能满足 limit + offset
-    const PAGE_SIZE = 99;
-    const totalNeeded = offset + limit;
-    const pagesNeeded = Math.ceil(totalNeeded / PAGE_SIZE);
-    
-    let allResults = [];
-    const pagePromises = [];
-    for (let p = 1; p <= pagesNeeded; p++) {
-      const url = `${GD_API}?types=search&source=netease&name=${encodeURIComponent(artistName)}&count=${PAGE_SIZE}&pages=${p}`;
-      pagePromises.push(dedupedGetJSON(url, 15000).catch(() => []));
+    const detail = await httpsGetJSON(`https://music.163.com/api/album/${encodeURIComponent(id)}`, 12000);
+    const officialAlbum = detail?.album;
+    const rawSongs = Array.isArray(officialAlbum?.songs) ? officialAlbum.songs : [];
+    if (detail?.code === 200 && officialAlbum && rawSongs.length) {
+      const songs = rawSongs.map(song => formatNeteaseCatalogSong({
+        ...song,
+        // The album endpoint can return stale per-song `al` metadata. The
+        // enclosing album response is authoritative for this detail page.
+        al: {
+          id: officialAlbum.id,
+          name: officialAlbum.name,
+          picId: officialAlbum.picId,
+          picUrl: officialAlbum.picUrl,
+          size: officialAlbum.size,
+        },
+      })).filter(isUsableTrack);
+      if (songs.length) {
+        return {
+          album: {
+            id,
+            name: officialAlbum.name || name,
+            artist: officialAlbum.artist?.name || artist,
+            picId: String(officialAlbum.picId || ''),
+            cover: officialAlbum.picUrl || songs[0].cover,
+            coverSmall: officialAlbum.picUrl || songs[0].coverSmall,
+            trackCount: Number(officialAlbum.size || songs.length),
+          },
+          songs,
+        };
+      }
     }
-    const pagesResults = await Promise.all(pagePromises);
-    pagesResults.forEach(page => {
-      if (Array.isArray(page)) allResults = allResults.concat(page);
-    });
-    
-    // 去重（按 id），然后批量补全 pic_id
-    const seen = new Set();
-    const unique = [];
-    allResults.forEach(s => {
-      const id = String(s.id || '');
-      if (id && !seen.has(id)) { seen.add(id); unique.push(s); }
-    });
-    
-    // 先批量补全 pic_id（在 formatGDSong 之前）
-    await fillMissingPicIdsRaw(unique);
-    
-    // 格式化为标准格式（包含 cover/coverSmall/picId 等字段）
-    const formatted = unique.map(formatGDSong);
-    
-    // 按 offset 切片
-    const sliced = formatted.slice(offset, offset + limit);
-    console.log(`[Artist] Fetched ${formatted.length} total, returning ${sliced.length} (offset=${offset}, limit=${limit})`);
-    
-    return sliced;
+  } catch (e) {
+    console.warn(`[Album] Direct lookup failed for id=${id}: ${e.message}`);
+  }
+
+  const query = [name, artist].filter(Boolean).join(' ');
+  const candidates = await searchNeteaseCatalog(query, 100);
+  const songs = candidates.filter(song => String(song.albumId) === id);
+  if (!songs.length) return { album: null, songs: [] };
+
+  const expectedCount = Number(songs[0].albumTrackCount || 0);
+  if (expectedCount > songs.length) console.warn(`[Album] id=${id}: using ${songs.length}/${expectedCount} verified fallback tracks`);
+
+  const first = songs[0];
+  return {
+    album: {
+      id,
+      name: first.album,
+      artist: artist || first.artist,
+      picId: first.picId,
+      cover: first.cover,
+      coverSmall: first.coverSmall,
+      trackCount: expectedCount || songs.length,
+    },
+    songs,
+  };
+}
+
+// 获取艺人歌曲。网易云目录搜索支持 offset，因而可以持续拉取而不受
+// GD Studio 单页结果和前端首屏条数的限制。
+async function getArtistSongs(artistName, limit = 60, offset = 0) {
+  try {
+    const page = await searchNeteaseCatalogPage(artistName, limit, offset);
+    console.log(`[Artist] Returning ${page.songs.length} tracks (offset=${offset}, next=${page.nextOffset}, hasMore=${page.hasMore})`);
+    return page;
   } catch (e) {
     console.error('[Artist] Error:', e.message);
-    return [];
+    return { songs: [], total: 0, hasMore: false, nextOffset: Math.max(0, Number(offset) || 0) };
   }
 }
 
@@ -666,8 +895,10 @@ async function getArtistInfo(artistName) {
         try {
           const detailUrl = `https://music.163.com/api/artist/${artistId}`;
           const detailData = await httpsGetJSON(detailUrl, 10000);
-          if (detailData && detailData.code === 200 && detailData.data && detailData.data.artist) {
-            const a = detailData.data.artist;
+          if (detailData && detailData.code === 200) {
+            // This endpoint returns artist at the top level. Older variants
+            // used data.artist, so support both response shapes.
+            const a = detailData.artist || detailData.data?.artist || {};
             // 网易云艺人背景大图
             background = a.picUrl || a.cover || a.img1v1Url || '';
             // 简介
@@ -675,6 +906,22 @@ async function getArtistInfo(artistName) {
           }
         } catch (e) {
           console.log('[Artist Detail] Failed to get detail for', artistName, ':', e.message);
+        }
+      }
+
+      // The detailed introduction endpoint carries the long-form biography;
+      // /api/artist/:id often has only an empty briefDesc.
+      if (artistId) {
+        try {
+          const introduction = await httpsGetJSON(`https://music.163.com/api/artist/introduction?id=${encodeURIComponent(artistId)}`, 12000);
+          const sections = Array.isArray(introduction?.introduction) ? introduction.introduction : [];
+          const longDesc = [introduction?.briefDesc, ...sections.map(section => section?.txt || section?.text || '')]
+            .filter(Boolean)
+            .join('\n\n')
+            .trim();
+          if (longDesc) desc = longDesc;
+        } catch (e) {
+          console.log('[Artist Introduction] Failed for', artistName, ':', e.message);
         }
       }
       
@@ -773,16 +1020,37 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // React Bits FluidGlass assets (official GLB/WebP files).
+  if (pathname.startsWith('/assets/')) {
+    const filePath = path.join(__dirname, pathname);
+    if (!filePath.startsWith(__dirname + '/assets/')) {
+      res.statusCode = 403; res.end('Forbidden'); return;
+    }
+    try {
+      const data = fs.readFileSync(filePath);
+      const ext = path.extname(filePath).slice(1);
+      const contentType = { glb: 'model/gltf-binary', webp: 'image/webp' }[ext] || 'application/octet-stream';
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=2592000');
+      res.setHeader('Content-Length', data.length);
+      res.end(data);
+    } catch (e) {
+      res.statusCode = 404; res.end('Not found');
+    }
+    return;
+  }
+
   // ========== API 端点 ==========
 
   // 1. 搜索（基本）
   if (pathname === '/api/search') {
     const keywords = params.get('keywords');
     const limit = parseInt(params.get('limit') || '30');
+    const offset = parseInt(params.get('offset') || '0');
     if (!keywords) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing keywords' })); return; }
-    const songs = await gdSearch(keywords, limit);
+    const page = await searchNeteaseCatalogPage(keywords, limit, offset);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs, total: songs.length }));
+    res.end(JSON.stringify(page));
     return;
   }
 
@@ -790,19 +1058,38 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/music/search') {
     const keywords = params.get('keywords');
     const limit = parseInt(params.get('limit') || '30');
+    const offset = parseInt(params.get('offset') || '0');
     if (!keywords) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing keywords' })); return; }
-    const songs = await gdSearch(keywords, limit);
+    const page = await searchNeteaseCatalogPage(keywords, limit, offset);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs, total: songs.length }));
+    res.end(JSON.stringify(page));
     return;
   }
 
   // 3. 热门推荐（发现页）
+  if (pathname === '/api/discover/featured') {
+    const limit = parseInt(params.get('limit') || '1');
+    try {
+      const songs = await getFeaturedClassics(limit);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({
+        songs,
+        collection: { name: 'The Weeknd', type: 'curated' }
+      }));
+    } catch (e) {
+      console.error('[Featured] Failed:', e.message);
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'Featured collection unavailable', songs: [] }));
+    }
+    return;
+  }
+
   if (pathname === '/api/discover/hot') {
     const limit = parseInt(params.get('limit') || '30');
     const songs = await getHotSongs(limit);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs }));
+    res.end(JSON.stringify({ songs, chart: HOT_CHART }));
     return;
   }
 
@@ -811,7 +1098,7 @@ const server = http.createServer(async (req, res) => {
     const limit = parseInt(params.get('limit') || '30');
     const songs = await getHotSongs(limit);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs }));
+    res.end(JSON.stringify({ songs, chart: HOT_CHART }));
     return;
   }
 
@@ -820,7 +1107,7 @@ const server = http.createServer(async (req, res) => {
     const limit = parseInt(params.get('limit') || '30');
     const songs = await getHotSongs(limit);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs }));
+    res.end(JSON.stringify({ songs, chart: HOT_CHART }));
     return;
   }
 
@@ -980,8 +1267,18 @@ const server = http.createServer(async (req, res) => {
     const album = params.get('album') || '';
     const artist = params.get('artist') || '';
     const limit = parseInt(params.get('limit') || '100');
+    const cacheKey = `album-songs:${album}:${artist}:${limit}`;
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+      res.end(JSON.stringify({ songs: cached }));
+      return;
+    }
     const songs = await getAlbumSongs(album, artist, limit);
+    cacheSet(cacheKey, songs, CACHE_TTL.album);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
     res.end(JSON.stringify({ songs }));
     return;
   }
@@ -989,13 +1286,13 @@ const server = http.createServer(async (req, res) => {
   // 12. 艺人歌曲
   if (pathname === '/api/music/artist') {
     const name = params.get('name') || '';
-    const limit = parseInt(params.get('limit') || '100');
+    const limit = parseInt(params.get('limit') || '60');
     const offset = parseInt(params.get('offset') || '0');
     console.log(`[Artist] Fetching songs for: ${name}, limit=${limit}, offset=${offset}`);
-    const songs = await getArtistSongs(name, limit, offset);
-    console.log(`[Artist] Found ${songs.length} songs`);
+    const page = await getArtistSongs(name, limit, offset);
+    console.log(`[Artist] Found ${page.songs.length} songs`);
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ songs, hasMore: songs.length >= limit }));
+    res.end(JSON.stringify(page));
     return;
   }
 
@@ -1011,18 +1308,26 @@ const server = http.createServer(async (req, res) => {
   // 14. 封面代理（通过 picId / albumId）
   if (pathname === '/api/cover' || pathname === '/api/music/cover') {
     const picId = params.get('albumId') || params.get('picId') || '';
-    const size = parseInt(params.get('size') || '500');
-    if (!picId) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing albumId' })); return; }
+    const sourceUrl = params.get('url') || '';
+    const requestedSize = parseInt(params.get('size') || '500');
+    const size = Number.isFinite(requestedSize) ? Math.max(50, Math.min(2000, requestedSize)) : 500;
+    if (!picId && !sourceUrl) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing cover source' })); return; }
     try {
-      let coverUrl = await gdGetCoverUrl(picId);
+      let coverUrl = sourceUrl ? sizedNeteaseCoverUrl(sourceUrl, size) : await gdGetCoverUrl(picId);
       if (!coverUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Cover not found' })); return; }
-      // 调整封面尺寸
-      coverUrl = coverUrl.replace(/\?param=\d+y\d+/, '') + `?param=${size}y${size}`;
-      // 302 重定向到网易云 CDN 直链，不经过服务器中转
-      res.statusCode = 302;
-      res.setHeader('Location', coverUrl);
+      if (!sourceUrl) coverUrl = sizedNeteaseCoverUrl(coverUrl, size);
+      // 中转图片内容，不能 302 到 CDN：页面截图会因此变成跨域污染，
+      // FluidGlass 无法把精选卡片上传到 WebGL 纹理。
+      const upstream = await smartGet(coverUrl, { 'User-Agent': UA, Referer: 'https://music.163.com/' }, 15000);
+      const chunks = [];
+      for await (const chunk of upstream) chunks.push(chunk);
+      const image = Buffer.concat(chunks);
+      if (!image.length) throw new Error('Empty cover response');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', upstream.headers['content-type'] || 'image/jpeg');
       res.setHeader('Cache-Control', 'public, max-age=604800');
-      res.end();
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.end(image);
     } catch (e) {
       console.error('[Cover] Exception:', e.message);
       if (!res.headersSent) {
@@ -1098,81 +1403,83 @@ const server = http.createServer(async (req, res) => {
   }
 
   // ============================================
-  // 专辑详情 — 直接调用网易云音乐 API /api/album
-  // 参数: id=专辑ID → 返回该专辑全部歌曲（最完整）
+  // 专辑详情 — 按官方搜索结果的真实 albumId 精确筛选
+  // 参数: id, name, artist。网易云公开专辑详情端点会间歇性返回 404/-462，
+  // 因此不接受无法完整核实的部分列表。
   // ============================================
   if (pathname === '/api/album') {
     const id = params.get('id') || '';
+    const name = params.get('name') || '';
+    const artist = params.get('artist') || '';
     if (!id) {
       res.statusCode = 400;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify({ error: 'Missing id' }));
       return;
     }
+    if (!name) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'Missing album name for verification' }));
+      return;
+    }
     try {
-      // 直接调用网易云音乐官方专辑接口
-      const albumUrl = 'https://music.163.com/api/album?id=' + id;
-      const urlObj = new URL(albumUrl);
-      
-      const options = {
-        hostname: urlObj.hostname,
-        path: urlObj.pathname + urlObj.search,
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Referer': 'https://music.163.com/',
-          'Accept': 'application/json'
-        }
-      };
-      
-      const req = https.request(options, (apiRes) => {
-        let data = '';
-        apiRes.on('data', chunk => data += chunk);
-        apiRes.on('end', () => {
-          try {
-            const albumData = JSON.parse(data);
-            if (!albumData || !albumData.songs || !albumData.songs.length) {
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ songs: [] }));
-              return;
-            }
-            // 格式化歌曲列表
-            const songs = albumData.songs.map(s => {
-              const artist = s.ar ? s.ar.map(a => a.name).join(', ') : '未知艺人';
-              const albumName = albumData.album ? albumData.album.name : (s.al ? s.al.name : '');
-              const picId = albumData.album ? String(albumData.album.picId || albumData.album.id || '') : '';
-              return {
-                id:      String(s.id),
-                name:    s.name || '未知歌曲',
-                artist:  artist,
-                album:   albumName,
-                albumId: String(s.al?.id || id),
-                picId:   picId,
-                cover:   picId ? `/api/cover?picId=${picId}` : '/static/default-cover.png',
-                url:     '',
-              };
-            });
-            console.log(`[Album] id=${id}: loaded ${songs.length} songs`);
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ songs }));
-          } catch (e) {
-            console.error('[Album] Parse error:', e.message);
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: e.message }));
-          }
-        });
-      });
-      
-      req.on('error', (e) => {
-        console.error('[Album] Request error:', e.message);
-        res.statusCode = 500;
+      const cacheKey = `album-detail:${id}:${name}:${artist}`;
+      const cached = cacheGet(cacheKey);
+      if (cached) {
         res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.end(JSON.stringify({ error: e.message }));
-      });
-      
-      req.end();
-      
+        res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+        res.end(JSON.stringify(cached));
+        return;
+      }
+      const result = await getVerifiedAlbumBySearch(id, name, artist);
+      const primaryArtist = artist.split(/[,，、/&]/)[0].trim();
+      const fallbackSongs = await getAlbumSongs(name, primaryArtist, 100);
+      const normalizeAlbumName = value => String(value || '').trim().toLowerCase().replace(/[\s·•]/g, '');
+      // A stale/reassigned catalog ID can return a different album. Never
+      // render that response under the clicked album's title.
+      if (result.album && normalizeAlbumName(result.album.name) !== normalizeAlbumName(name)) {
+        console.warn(`[Album] Rejecting mismatched canonical album "${result.album.name}" for "${name}"`);
+        result.album = null;
+        result.songs = [];
+      }
+      const verifiedFallback = fallbackSongs.filter(song =>
+        String(song.albumId || '') === id
+      );
+
+      // The catalog lookup can contain only the clicked single from a larger
+      // compilation. Prefer the larger exact-album set, never a fuzzy mix.
+      if (verifiedFallback.length > result.songs.length) {
+        result.album = {
+          id,
+          name,
+          artist: primaryArtist || artist,
+          picId: verifiedFallback[0].picId || '',
+          cover: verifiedFallback[0].cover || '',
+          coverSmall: verifiedFallback[0].coverSmall || '',
+          trackCount: verifiedFallback.length,
+        };
+        result.songs = verifiedFallback;
+      } else if (!result.songs.length && fallbackSongs.length) {
+        // The ID may be stale, but getAlbumSongs only returns exact
+        // name/artist matches, so this remains a verified recovery path.
+        const fallbackAlbumId = String(fallbackSongs[0].albumId || id);
+        result.album = {
+          id: fallbackAlbumId,
+          name,
+          artist: primaryArtist || artist,
+          picId: fallbackSongs[0].picId || '',
+          cover: fallbackSongs[0].cover || '',
+          coverSmall: fallbackSongs[0].coverSmall || '',
+          trackCount: fallbackSongs.length,
+        };
+        result.songs = fallbackSongs;
+      }
+      console.log(`[Album] id=${id}: verified ${result.songs.length} tracks`);
+      cacheSet(cacheKey, result, CACHE_TTL.album);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=60');
+      res.end(JSON.stringify(result));
     } catch (e) {
       console.error('[Album] Error:', e.message);
       res.statusCode = 500;

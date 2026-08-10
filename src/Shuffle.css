@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+.shuffle-parent {
+  display: inline-block;
+  white-space: normal;
+  word-wrap: break-word;
+  will-change: transform;
+  line-height: 1;
+  font-family: 'Press Start 2P', monospace;
+  font-weight: 400;
+  letter-spacing: 0;
+  background: none;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: currentColor;
+  color: #d7b3ff;
+  visibility: visible;
+}
+
+.shuffle-parent.is-ready { visibility: visible; }
+
+.shuffle-char {
+  display: inline-block;
+  line-height: 1;
+  text-align: center;
+}

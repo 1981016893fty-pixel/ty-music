@@ -5,10 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TY Music - 免费听遍全网音乐</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23b44dff'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
-  <link rel="preload" href="style.css?v=20260621a" as="style">
-  <link rel="preload" href="player.js?v=20260621a" as="script">
+  <link rel="preload" href="style.css?v=20260810playlist-detail" as="style">
+  <link rel="preload" href="player.js?v=20260810playlist-detail" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260621a">
+  <link rel="stylesheet" href="style.css?v=20260810playlist-detail">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -33,6 +33,27 @@
   </script>
 </head>
 <body>
+  <!-- 首次进入欢迎页；点击开始使用后进入播放器主页 -->
+  <section class="welcome-screen" id="welcomeScreen" aria-labelledby="welcomeTitle">
+    <div class="welcome-liquid-ether-mount" id="welcomeLiquidEtherMount" aria-hidden="true"></div>
+    <div class="welcome-vignette" aria-hidden="true"></div>
+    <div class="welcome-content">
+      <div class="welcome-kicker">欢迎来到 TY MUSIC</div>
+      <h1 id="welcomeTitle">聆听，<span>正在发生。</span></h1>
+      <p>让喜欢的声音回到当下。每一次播放，都自然抵达你。</p>
+      <div class="welcome-actions">
+        <span id="welcomeStartMount"></span>
+        <span id="welcomeLearnMoreMount"></span>
+      </div>
+      <div class="welcome-features" id="welcomeFeatures" aria-hidden="true">
+        <div class="welcome-feature"><strong>精选推荐</strong><span>从可靠音源发现下一首想听的歌。</span></div>
+        <div class="welcome-feature"><strong>沉浸播放</strong><span>专辑取色玻璃界面与全屏歌词陪你专注聆听。</span></div>
+        <div class="welcome-feature"><strong>你的资料库</strong><span>收藏歌曲、专辑与播放列表，随时回到喜欢的声音。</span></div>
+        <div class="welcome-feature"><strong>Cover Flow</strong><span>用 iPod Classic 风格浏览你收藏的专辑。</span></div>
+      </div>
+    </div>
+  </section>
+
   <!-- 苹果液态玻璃 SVG 滤镜 -->
   <svg style="position:absolute;width:0;height:0;overflow:hidden">
     <defs>
@@ -65,8 +86,19 @@
     </defs>
   </svg>
 
-  <!-- 动态渐变背景 -->
+  <!-- 首页动态渐变底色；全屏播放时由 GridDistortion 独占背景 -->
   <div class="bg-gradient" id="bgGradient"></div>
+  <div id="homeFloatingLinesMount" aria-hidden="true"></div>
+  <div id="libraryGradientWavesMount" aria-hidden="true"></div>
+
+  <!-- React Bits SoftAurora 背景 -->
+  <div id="softAuroraHost" aria-hidden="true"></div>
+  <div id="browseSplashCursorMount" aria-hidden="true"></div>
+  <div id="browsePrismMount" aria-hidden="true"></div>
+
+  <header class="top-dock" id="topDock" aria-label="TY Music 顶部栏">
+    <div class="top-dock__brand" id="topDockBrandMount"></div>
+  </header>
 
   <!-- 移动端顶部栏 -->
   <div class="mobile-topbar" id="mobileTopbar">
@@ -78,6 +110,10 @@
 
   <!-- 侧边栏 -->
   <aside class="sidebar" id="sidebar">
+    <div id="bubbleMenuMount" aria-label="导航菜单"></div>
+    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="收起侧边栏" aria-label="收起侧边栏">
+      <i class="fa-solid fa-chevron-left"></i>
+    </button>
     <div class="logo">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="url(#logoGrad)">
         <defs><linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -128,9 +164,6 @@
       <button class="settings-gear" id="settingsGear" title="设置">
         <i class="fa-solid fa-gear"></i>
       </button>
-      <button class="theme-toggle-btn" id="themeToggleBtn" title="切换主题">
-        <i class="fa-solid fa-moon"></i>
-      </button>
       <div class="sidebar-divider"></div>
       <div class="now-playing-mini" id="nowPlayingMini" style="display:none">
         <div class="mini-art-bg" id="miniArtBg"></div>
@@ -151,17 +184,16 @@
     <section class="page active" id="page-discover">
       <div class="hero-section">
         <div class="hero-card" id="heroCard" onclick="playHeroTrack()">
+          <div id="heroElectricBorderMount" aria-hidden="true"></div>
           <div class="hero-info">
             <div class="hero-badge">精选推荐</div>
-            <h1 class="hero-title" id="heroTitle">启动中...</h1>
+            <h1 class="hero-title" id="heroTitle" data-shiny-text=""></h1>
             <p class="hero-artist" id="heroArtist"></p>
             <p class="hero-album" id="heroAlbum"></p>
-            <button class="hero-play-btn" onclick="event.stopPropagation(); playHeroTrack()">
-              <i class="fa-solid fa-play"></i> 播放
-            </button>
+            <span id="heroPlaySpecularMount" onclick="event.stopPropagation()"></span>
           </div>
           <div class="hero-art">
-            <img id="heroCover" src="" alt="">
+            <div id="heroElasticMeshMount" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -169,90 +201,112 @@
 
       <div class="section">
         <div class="section-header">
-          <h2 class="section-title">热门排行榜</h2>
+          <h2 class="section-title"><span id="hotShuffleTitleMount" aria-label="热门排行榜"></span></h2>
           <span class="section-link" onclick="showHotList()">显示全部 <i class="fa-solid fa-chevron-right"></i></span>
         </div>
         <div class="scroll-row" id="hotTracks">
-          <div class="scroll-loading">获取中...</div>
+          <div class="scroll-loading" aria-label="内容加载中"></div>
         </div>
+      </div>
+
+      <div class="section recent-section" id="recentSection" style="display:none">
+        <div class="section-header">
+          <h2 class="section-title"><span id="recentShuffleTitleMount" aria-label="RECENTLY PLAYED"></span></h2>
+        </div>
+        <div class="scroll-row" id="recentTracks"></div>
       </div>
 
       <div class="section">
         <div class="section-header">
-          <h2 class="section-title">按流派浏览</h2>
+          <h2 class="section-title"><span id="genreShuffleTitleMount" aria-label="按流派浏览"></span></h2>
         </div>
         <div class="scroll-row" id="genreCards">
-          <div class="scroll-loading">获取中...</div>
+          <div class="scroll-loading" aria-label="内容加载中"></div>
         </div>
+        <div id="chromaGridMount"></div>
       </div>
 
 
       <div class="section" id="genreSection" style="display:none">
         <div class="section-header">
-          <h2 class="section-title" id="genreTitle"></h2>
+          <h2 class="section-title"><span id="genreTitleMount" aria-label="流派详情"></span></h2>
           <span class="section-link" id="genreBack" onclick="hideGenreDetail()">
             <i class="fa-solid fa-chevron-left"></i> 返回
           </span>
         </div>
         <div class="scroll-row" id="genreTracks">
-          <div class="scroll-loading">获取中...</div>
+          <div class="scroll-loading" aria-label="内容加载中"></div>
         </div>
       </div>
     </section>
 
-    <!-- 搜索页 -->
-    <section class="page" id="page-search">
-      <div class="search-hero">
-        <h1>浏览</h1>
-        <div class="search-box">
-          <i class="fa-solid fa-magnifying-glass"></i>
-          <input type="text" id="searchInput" placeholder="搜索任何歌曲、艺人、专辑...">
-          <button id="searchBtn" class="search-clear" style="display:none"><i class="fa-solid fa-xmark"></i></button>
-          <div class="search-autocomplete" id="searchAutocomplete" style="display:none"></div>
-        </div>
-      </div>
+    <!-- 浏览页：发现、搜索与流派入口 -->
+    <section class="page browse-page" id="page-search">
+      <div class="browse-shell">
+        <header class="browse-header">
+          <div class="browse-heading">
+            <span class="browse-eyebrow">探索音乐</span>
+            <h1 data-shiny-text="浏览"></h1>
+            <p>从热门榜单、新歌和流派开始，找到下一首想听的歌。</p>
+          </div>
+          <div class="search-box browse-search-box">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="text" id="searchInput" placeholder="搜索歌曲、艺人或专辑" aria-label="搜索歌曲、艺人或专辑">
+            <button id="searchBtn" class="search-clear" style="display:none" title="清除搜索" aria-label="清除搜索"><i class="fa-solid fa-xmark"></i></button>
+            <div class="search-autocomplete" id="searchAutocomplete" style="display:none"></div>
+          </div>
+        </header>
 
-      <div class="source-tabs" id="sourceTabs">
-        <button class="source-tab active" data-source="netease"><i class="fa-solid fa-music"></i> 全网搜索</button>
-        <button class="source-tab" data-source="netease-hot"><i class="fa-solid fa-fire"></i> 热门推荐</button>
-        <button class="source-tab" data-source="netease-new"><i class="fa-solid fa-star"></i> 新歌速递</button>
-      </div>
+        <section class="browse-section browse-quick-section" aria-labelledby="browseQuickTitle">
+          <div class="browse-section-head">
+            <div><span class="browse-kicker">快速开始</span><h2 id="browseQuickTitle" data-shiny-text="今天想听什么"></h2></div>
+            <span class="browse-section-meta">精选入口</span>
+          </div>
+          <div id="browseScrollExpandMount" aria-label="音乐探索视觉区"></div>
+          <div class="browse-quick-grid" id="browseQuickGrid" aria-label="快速音乐入口"></div>
+        </section>
 
-      <div class="section" id="searchSuggestions">
-        <div class="section-header">
-          <h2 class="section-title">热门搜索</h2>
-        </div>
-        <div class="suggestion-chips" id="suggestionChips"></div>
-      </div>
-
-      <div class="section" id="searchResultsSection" style="display:none">
-        <div class="section-header">
-          <h2 class="section-title" id="searchResultTitle">搜索结果</h2>
-          <span class="section-link" id="searchSourceLabel">音源：全网搜索</span>
-        </div>
-        <div class="track-list-container" id="searchResults"></div>
+        <section class="section browse-results-section" id="searchResultsSection" style="display:none" aria-labelledby="searchResultTitle">
+          <div class="section-header">
+            <h2 class="section-title" id="searchResultTitle">搜索结果</h2>
+            <span class="section-link" id="searchSourceLabel">音源：全网搜索</span>
+          </div>
+          <div class="track-list-container" id="searchResults"></div>
+        </section>
       </div>
     </section>
 
     <!-- 收藏页 -->
-    <section class="page" id="page-favorites">
-      <div class="page-hero">
-        <div class="fav-icon"><i class="fa-solid fa-heart"></i></div>
-        <h1>喜爱</h1>
-        <p>你收藏的所有歌曲</p>
-      </div>
-      <div class="track-list-container" id="favoritesList">
-        <p class="empty-state">还没有收藏歌曲哦～去发现页找找吧</p>
+    <section class="page library-page" id="page-favorites">
+      <header class="library-header">
+        <div class="library-heading">
+          <div class="library-icon library-icon--pink" aria-hidden="true"><span id="libraryFavoritesIconMount"></span></div>
+          <div><h1 data-shiny-text="喜爱"></h1><p>你收藏的所有歌曲</p></div>
+        </div>
+        <div class="library-header-actions">
+          <span class="library-count" id="favoritesCount">0 首歌曲</span>
+          <button class="library-primary-btn" id="playFavoritesBtn" type="button"><i class="fa-solid fa-play"></i> 播放全部</button>
+        </div>
+      </header>
+      <div class="library-workspace library-workspace--list">
+        <div class="library-list-head"><span>歌曲</span><span>时长</span><span aria-hidden="true"></span></div>
+        <div class="track-list-container" id="favoritesList">
+          <p class="empty-state">还没有收藏歌曲哦～去发现页找找吧</p>
+        </div>
       </div>
     </section>
 
     <!-- 本地音乐页 -->
-    <section class="page" id="page-local">
-      <div class="page-hero">
-        <div class="fav-icon"><i class="fa-solid fa-folder-open"></i></div>
-        <h1>本地音乐</h1>
-        <p>上传你下载好的音乐文件，在本地播放</p>
-      </div>
+    <section class="page library-page" id="page-local">
+      <header class="library-header">
+        <div class="library-heading">
+          <div class="library-icon library-icon--cyan" aria-hidden="true"><span id="libraryLocalIconMount"></span></div>
+          <div><h1 data-shiny-text="本地音乐"></h1><p>只保存在这台设备上的音乐</p></div>
+        </div>
+        <div class="library-header-actions"><span class="library-count" id="localTracksCount">0 首歌曲</span></div>
+      </header>
+      <div class="local-workspace">
+        <div class="local-intro"><h2>把你的音乐带进来</h2><p>拖放音频文件，或从设备中选择。文件不会上传到服务器。</p></div>
       
       <!-- 存储使用情况 -->
       <div class="storage-info" id="storageInfo" style="display: none;">
@@ -272,52 +326,68 @@
       <p>拖拽音乐文件到这里，或 <span class="upload-link" id="uploadLink">点击选择文件</span></p>
       <p class="upload-hint">支持 MP3、FLAC、WAV、M4A 等格式，可多选</p>
     </div>
-    <input type="file" id="localFileInput" multiple accept="audio/*" style="display:none">
-    <div class="track-list-container" id="localTracksList">
-      <p class="empty-state">还没有上传本地音乐，点击上方区域或拖拽文件添加</p>
-    </div>
+        <input type="file" id="localFileInput" multiple accept="audio/*" style="display:none">
+      </div>
+      <div class="library-workspace library-workspace--list local-tracks-workspace">
+        <div class="library-list-head"><span>本地歌曲</span><span>时长</span><span aria-hidden="true"></span></div>
+        <div class="track-list-container" id="localTracksList">
+          <p class="empty-state">还没有上传本地音乐，点击上方区域或拖拽文件添加</p>
+        </div>
+      </div>
   </section>
 
   <!-- 歌单页 -->
-    <section class="page" id="page-playlists">
-      <div class="page-hero">
-        <div class="fav-icon"><i class="fa-solid fa-list-ul"></i></div>
-        <h1>播放列表</h1>
-        <p>创建和管理你的专属歌单</p>
-      </div>
-      <button class="btn-create" id="createPlaylistBtn">
-        <i class="fa-solid fa-plus"></i> 新建播放列表
-      </button>
-      <div class="playlist-grid" id="playlistGrid">
-        <p class="empty-state">还没有歌单，点击上方按钮创建一个吧</p>
+    <section class="page library-page" id="page-playlists">
+      <header class="library-header">
+        <div class="library-heading">
+          <div class="library-icon library-icon--violet" aria-hidden="true"><span id="libraryPlaylistsIconMount"></span></div>
+          <div><h1 data-shiny-text="播放列表"></h1><p>创建和管理你的专属歌单</p></div>
+        </div>
+        <button class="library-primary-btn" id="createPlaylistBtn" type="button"><i class="fa-solid fa-plus"></i> 新建歌单</button>
+      </header>
+      <div class="library-workspace library-workspace--grid">
+        <div class="workspace-title-row"><h2>你的歌单</h2><span id="playlistCount" class="library-count">0 个歌单</span></div>
+        <div class="playlist-grid" id="playlistGrid">
+          <p class="empty-state">还没有歌单，点击上方按钮创建一个吧</p>
+        </div>
       </div>
     </section>
 
     <!-- 歌单详情页 -->
-    <section class="page" id="page-playlist-detail">
-      <div class="page-hero">
-        <button class="back-btn" id="backToPlaylists"><i class="fa-solid fa-chevron-left"></i> 返回</button>
-        <div class="fav-icon"><i class="fa-solid fa-music"></i></div>
-        <h1 id="playlistDetailTitle">歌单名称</h1>
+    <section class="page playlist-detail-page" id="page-playlist-detail">
+      <div class="playlist-detail-shell">
+        <button class="back-btn playlist-detail-back" id="backToPlaylists"><i class="fa-solid fa-chevron-left"></i> 返回歌单</button>
+        <header class="playlist-detail-header">
+          <div class="playlist-detail-icon" aria-hidden="true"><span id="playlistDetailIconMount"></span></div>
+          <div class="playlist-detail-copy">
+            <span class="playlist-detail-eyebrow">PLAYLIST</span>
+            <h1 id="playlistDetailTitle" data-shiny-text="歌单名称"></h1>
+            <p id="playlistDetailMeta">0 首歌曲 · 你的个人歌单</p>
+          </div>
+          <div class="playlist-detail-actions">
+            <button class="library-primary-btn" id="playlistPlayAllBtn" type="button"><i class="fa-solid fa-play"></i> 播放全部</button>
+          </div>
+        </header>
+        <section class="playlist-detail-list" aria-labelledby="playlistDetailTitle">
+          <div class="playlist-detail-list-head"><span>歌曲</span><span>时长</span><span aria-hidden="true"></span></div>
+          <div class="track-list-container" id="playlistTracks"></div>
+        </section>
       </div>
-      <div class="track-list-container" id="playlistTracks"></div>
     </section>
 
     <!-- 专辑详情页 -->
-    <section class="page page-slide" id="page-album-detail">
+    <section class="page page-slide am-album-page-surface" id="page-album-detail">
       <div class="album-detail-header">
         <button class="back-btn" id="backFromAlbum"><i class="fa-solid fa-chevron-left"></i> 返回</button>
         <div class="album-detail-info">
           <img class="album-detail-cover" id="albumDetailCover" src="" alt="">
           <div class="album-detail-meta">
             <span class="album-detail-type">专辑</span>
-            <h1 id="albumDetailTitle">专辑名称</h1>
+            <h1 id="albumDetailTitle" data-shiny-text="专辑名称"></h1>
             <p id="albumDetailArtist">歌手</p>
             <p id="albumDetailMeta">发行时间 · 歌曲数</p>
             <div class="album-detail-actions">
-              <button class="hero-play-btn" id="albumPlayAllBtn">
-                <i class="fa-solid fa-play"></i> 播放全部
-              </button>
+              <span class="album-play-all-mount" id="albumPlayAllBtn" aria-label="播放全部"></span>
               <button class="album-fav-btn" id="albumFavBtn" title="收藏专辑">
                 <i class="fa-regular fa-heart"></i>
               </button>
@@ -329,22 +399,28 @@
     </section>
 
     <!-- 专辑收藏页 -->
-    <section class="page" id="page-album-favorites">
-      <div class="page-hero">
-        <div class="fav-icon"><i class="fa-solid fa-record-vinyl"></i></div>
-        <h1>专辑</h1>
-        <p>你收藏的所有专辑</p>
+    <section class="page library-page" id="page-album-favorites">
+      <div id="albumDriftWallMount" aria-hidden="true"></div>
+      <header class="library-header">
+        <div class="library-heading">
+          <div class="library-icon library-icon--orange" aria-hidden="true"><span id="libraryAlbumsIconMount"></span></div>
+          <div><h1 data-shiny-text="专辑"></h1><p>你收藏的所有专辑</p></div>
+        </div>
         <div class="view-toggle">
           <button class="view-btn active" id="gridViewBtn" title="网格视图">
-            <i class="fa-solid fa-grid-2"></i>
+            <i class="fa-solid fa-table-cells-large"></i>
           </button>
           <button class="view-btn" id="coverFlowViewBtn" title="Cover Flow">
             <i class="fa-solid fa-layer-group"></i>
           </button>
         </div>
+      </header>
+      <div class="library-workspace library-workspace--grid album-library-workspace">
+        <div class="workspace-title-row"><h2>已收藏专辑</h2><span id="albumCount" class="library-count">0 张专辑</span></div>
+        <div class="album-grid" id="albumGrid"></div>
       </div>
-      <div class="album-grid" id="albumGrid"></div>
       <div class="cover-flow-container" id="coverFlowContainer" style="display: none;">
+        <div id="coverFlowGridScanMount" aria-hidden="true"></div>
         <div class="cover-flow-stage" id="coverFlowStage"></div>
         <div class="cover-flow-reflection" id="coverFlowReflection"></div>
         <div class="cover-flow-info" id="coverFlowInfo"></div>
@@ -355,7 +431,7 @@
     </section>
 
     <!-- 艺人详情页（Apple Music 风格） -->
-    <section class="page page-slide" id="page-artist-detail">
+    <section class="page page-slide am-artist-page-surface" id="page-artist-detail">
       <div class="am-artist-hero" id="artistHero">
         <div class="am-artist-bg" id="artistBg"></div>
         <div class="am-artist-overlay"></div>
@@ -367,24 +443,75 @@
               <i class="fa-solid fa-user"></i>
             </div>
           </div>
-          <h1 class="am-artist-name" id="artistDetailName">歌手名称</h1>
-          <p class="am-artist-meta" id="artistDetailMeta">加载中...</p>
+          <div class="am-artist-copy">
+            <h1 class="am-artist-name" id="artistDetailName" data-shiny-text="歌手名称"></h1>
+            <p class="am-artist-meta" id="artistDetailMeta"></p>
+          </div>
           <div class="am-artist-actions">
             <button class="am-artist-play-btn" id="artistPlayAllBtn"><i class="fa-solid fa-play"></i> 播放</button>
           </div>
         </div>
       </div>
+      <section class="am-artist-section am-artist-about-section am-artist-bio-section" aria-labelledby="artistAboutHeading">
+        <div class="am-artist-section-header">
+          <div>
+            <span class="am-artist-kicker">艺术家档案</span>
+            <h2 class="am-artist-section-title" id="artistAboutHeading">简介</h2>
+          </div>
+          <span class="am-artist-section-note">了解更多</span>
+        </div>
+        <div class="am-artist-bio" id="artistBio">
+          <p class="am-artist-bio-summary" id="artistBioSummary"></p>
+          <details class="am-artist-bio-details" id="artistBioDetails">
+            <summary>展开完整简介</summary>
+            <div class="am-artist-bio-content" id="artistBioContent"></div>
+          </details>
+        </div>
+      </section>
       <div class="am-artist-body" id="artistBody">
-        <div class="section-header"><h2 class="section-title">热门歌曲</h2></div>
-        <div class="track-list-container" id="artistTrackList"></div>
-        <div class="section-header" style="margin-top:24px"><h2 class="section-title">关于</h2></div>
-        <div class="am-artist-bio" id="artistBio"><p style="color:var(--text-tertiary);font-size:13px">加载中...</p></div>
+        <section class="am-artist-section am-artist-featured-section" aria-labelledby="artistFeaturedHeading">
+          <div class="am-artist-section-header">
+            <div>
+              <span class="am-artist-kicker">精选曲目</span>
+              <h2 class="am-artist-section-title" id="artistFeaturedHeading">代表作</h2>
+            </div>
+            <span class="am-artist-section-note">最值得先听的歌曲</span>
+          </div>
+          <div class="am-artist-featured-grid" id="artistFeaturedList"></div>
+        </section>
+
+        <section class="am-artist-section" aria-labelledby="artistLatestHeading">
+          <div class="am-artist-section-header">
+            <div>
+              <span class="am-artist-kicker">按音源顺序</span>
+              <h2 class="am-artist-section-title" id="artistLatestHeading">最新歌曲</h2>
+            </div>
+            <span class="am-artist-section-note">持续更新</span>
+          </div>
+          <div class="am-artist-list" id="artistLatestList"></div>
+        </section>
+
+        <section class="am-artist-section" aria-labelledby="artistOtherHeading">
+          <div class="am-artist-section-header">
+            <div>
+              <span class="am-artist-kicker">完整曲目</span>
+              <h2 class="am-artist-section-title" id="artistOtherHeading">其他歌曲</h2>
+            </div>
+          </div>
+          <div class="am-artist-list" id="artistOtherList"></div>
+        </section>
+
       </div>
     </section>
   </main>
 
   <!-- 播放列表弹窗 -->
   <div class="player-bar" id="playerBar">
+    <div id="playerBubbleMount" aria-label="播放菜单"></div>
+    <button class="player-collapse-btn" id="playerCollapseBtn" title="收起播放栏" aria-label="收起播放栏">
+      <i class="fa-solid fa-chevron-down"></i>
+    </button>
+    <span class="player-collapsed-label">播放栏</span>
     <div class="player-left">
       <div class="player-nowplaying">
         <img class="player-cover" id="playerCover" src="" alt="">
@@ -427,9 +554,8 @@
 
       <div class="progress-container">
         <span class="time" id="currentTime">0:00</span>
-        <div class="progress-bar" id="progressBar">
-          <div class="progress-fill" id="progressFill"></div>
-          <div class="progress-thumb" id="progressThumb"></div>
+        <div class="progress-bar elastic-slider-host" id="progressBar">
+          <div id="progressSliderMount"></div>
         </div>
         <span class="time" id="durationTime">0:00</span>
       </div>
@@ -439,9 +565,8 @@
       <button class="ctrl-btn" id="volumeBtn" title="静音">
         <i class="fa-solid fa-volume-high"></i>
       </button>
-      <div class="volume-bar" id="volumeBar">
-        <div class="volume-fill" id="volumeFill"></div>
-        <div class="volume-thumb" id="volumeThumb"></div>
+      <div class="volume-bar elastic-slider-host" id="volumeBar">
+        <div id="volumeSliderMount"></div>
       </div>
       <button class="ctrl-btn" id="fullscreenBtn" title="播放列表">
         <i class="fa-solid fa-list-ul"></i>
@@ -451,8 +576,7 @@
 
   <!-- Apple Music 风格全屏播放器 -->
   <div class="amp-fullscreen-player" id="ampFullscreenPlayer">
-    <div class="amp-bg-blur" id="ampBgBlur"></div>
-    <div class="amp-overlay"></div>
+    <div id="ampGridDistortionMount" aria-hidden="true"></div>
     
     <div class="amp-header">
       <button class="amp-header-btn" id="ampCloseBtn">
@@ -467,43 +591,32 @@
     </div>
 
     <div class="amp-content" id="ampContent">
-      <!-- 专辑封面 -->
-      <div class="amp-artwork-wrapper" id="ampArtworkWrapper">
-        <div class="amp-artwork" id="ampArtwork"></div>
-      </div>
-
-      <!-- 歌词视图 (默认隐藏) -->
-      <div class="amp-lyrics-view hidden" id="ampLyricsView">
-        <div class="amp-lyrics-stage" id="ampLyricsStage">
-          <p class="amp-lyrics-empty">暂无歌词</p>
+      <section class="amp-player-column" aria-label="歌曲信息">
+        <div class="amp-artwork-wrapper" id="ampArtworkWrapper">
+          <div class="amp-artwork" id="ampArtwork"><div id="ampTiltedCardMount" aria-hidden="true"></div></div>
         </div>
-      </div>
 
-      <!-- 歌曲信息和控件 -->
-      <div class="amp-info-section">
-        <div class="amp-song-info">
-          <div class="amp-title-row">
-            <h2 class="amp-title" id="ampTitle"></h2>
-            <button class="amp-like-btn" id="ampLikeBtn">
-              <i class="fa-regular fa-heart"></i>
-            </button>
+        <div class="amp-info-section">
+          <div class="amp-song-info">
+            <div class="amp-title-row">
+              <h2 class="amp-title" id="ampTitle"></h2>
+              <button class="amp-like-btn" id="ampLikeBtn">
+                <i class="fa-regular fa-heart"></i>
+              </button>
+            </div>
+            <p class="amp-artist" id="ampArtist"></p>
+            <p class="amp-album" id="ampAlbum" style="display:none; font-size: 14px; color: var(--text-secondary); cursor: pointer; margin-top: 4px;"></p>
           </div>
-          <p class="amp-artist" id="ampArtist"></p>
-          <p class="amp-album" id="ampAlbum" style="display:none; font-size: 14px; color: var(--text-secondary); cursor: pointer; margin-top: 4px;"></p>
-        </div>
 
-        <!-- 进度条 -->
-        <div class="amp-progress">
-          <span class="amp-time" id="ampCurrentTime">0:00</span>
-          <div class="amp-progress-bar" id="ampProgressBar">
-            <div class="amp-progress-fill" id="ampProgressFill"></div>
-            <div class="amp-progress-thumb" id="ampProgressThumb"></div>
+          <div class="amp-progress">
+            <span class="amp-time" id="ampCurrentTime">0:00</span>
+            <div class="amp-progress-bar elastic-slider-host" id="ampProgressBar">
+              <div id="ampProgressSliderMount"></div>
+            </div>
+            <span class="amp-time" id="ampDuration">0:00</span>
           </div>
-          <span class="amp-time" id="ampDuration">0:00</span>
-        </div>
 
-        <!-- 播放控制 -->
-        <div class="amp-controls">
+          <div class="amp-controls">
           <button class="amp-ctrl-btn" id="ampShuffleBtn" title="随机">
             <i class="fa-solid fa-shuffle"></i>
           </button>
@@ -535,8 +648,17 @@
           <button class="amp-action-btn" id="ampShareBtn" title="分享">
             <i class="fa-solid fa-share"></i>
           </button>
+          </div>
         </div>
-      </div>
+      </section>
+
+      <section class="amp-lyrics-column" aria-label="歌词">
+        <div class="amp-lyrics-view" id="ampLyricsView">
+          <div class="amp-lyrics-stage" id="ampLyricsStage">
+            <p class="amp-lyrics-empty">暂无歌词</p>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -612,7 +734,9 @@
       }
     }, 32000);
   </script>
-  <script src="player.js?v=20260621a" defer></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810playlist-detail">
+  <script src="soft-aurora-react.js?v=20260810playlist-detail" defer></script>
+  <script src="player.js?v=20260810playlist-detail" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>

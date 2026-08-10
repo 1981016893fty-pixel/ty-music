@@ -1,0 +1,11 @@
+.tilted-card-mount{position:absolute;inset:0;z-index:1;overflow:visible}.tilted-card-figure{position:relative;width:100%;height:100%;perspective:800px;display:flex;align-items:center;justify-content:center;margin:0;overflow:visible}.tilted-card-inner{position:relative;transform-style:preserve-3d}.tilted-card-img{position:absolute;top:0;left:0;object-fit:cover;border-radius:15px;will-change:transform;transform:translateZ(0)}.tilted-card-caption{pointer-events:none;position:absolute;left:0;top:0;border-radius:4px;background:#fff;padding:4px 10px;font-size:10px;color:#2d2d2d;opacity:0;z-index:3;white-space:nowrap}.tilted-card-mobile-alert{display:none}
+.am-card .am-artwork .am-play-overlay{pointer-events:none}
+
+/* Remove the legacy cover treatment; TiltedCard owns the artwork surface. */
+.am-card .am-artwork{overflow:visible;background:transparent;box-shadow:none;border-radius:0;}
+.am-card .am-artwork::after,.am-card .am-artwork .am-play-overlay{display:none!important;}
+.am-card:hover,.am-card:hover .am-artwork{transform:none;box-shadow:none;}
+
+/* Leave room for the official hover scale inside horizontal scrollers. */
+.scroll-row{padding-top:28px;padding-bottom:28px;margin-top:-28px}
+.am-card{overflow:visible}

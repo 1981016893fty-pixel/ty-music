@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-labelledby="title desc">
+  <title id="title">Colorful music listener</title>
+  <desc id="desc">An energetic person wearing headphones surrounded by vivid sound waves.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1027a8"/><stop offset=".34" stop-color="#7b1fc9"/><stop offset=".7" stop-color="#ef3d8f"/><stop offset="1" stop-color="#ff9f1c"/>
+    </linearGradient>
+    <radialGradient id="glowC" cx=".2" cy=".3" r=".7"><stop stop-color="#00f0ff" stop-opacity=".9"/><stop offset="1" stop-color="#00f0ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glowY" cx=".8" cy=".7" r=".75"><stop stop-color="#ffe600" stop-opacity=".8"/><stop offset="1" stop-color="#ffe600" stop-opacity="0"/></radialGradient>
+    <linearGradient id="shirt" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#00e5ff"/><stop offset=".5" stop-color="#62ff78"/><stop offset="1" stop-color="#ffe600"/></linearGradient>
+    <linearGradient id="skin" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffcb9a"/><stop offset="1" stop-color="#f47c72"/></linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="34"/></filter>
+    <filter id="shadow"><feDropShadow dx="0" dy="20" stdDeviation="22" flood-color="#09002c" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="220" cy="160" r="360" fill="url(#glowC)" filter="url(#blur)"/>
+  <circle cx="1370" cy="760" r="380" fill="url(#glowY)" filter="url(#blur)"/>
+  <g fill="none" stroke-linecap="round" opacity=".8">
+    <path d="M80 580 C280 370 420 790 620 570 S960 340 1130 535" stroke="#00f0ff" stroke-width="18"/>
+    <path d="M40 680 C260 450 380 820 600 640 S930 460 1210 630" stroke="#ffea00" stroke-width="10"/>
+    <path d="M970 80 C1140 260 1250 40 1450 250 S1570 410 1620 470" stroke="#ff4bd8" stroke-width="22"/>
+    <path d="M1080 40 C1190 190 1320 80 1450 190" stroke="#55ff79" stroke-width="9"/>
+  </g>
+  <g opacity=".9">
+    <circle cx="140" cy="760" r="26" fill="#ffea00"/><circle cx="260" cy="770" r="12" fill="#00f0ff"/><circle cx="1340" cy="120" r="20" fill="#55ff79"/>
+    <rect x="1160" y="700" width="160" height="24" rx="12" fill="#00f0ff" transform="rotate(-18 1160 700)"/>
+    <rect x="350" y="90" width="110" height="18" rx="9" fill="#ffea00" transform="rotate(28 350 90)"/>
+  </g>
+  <g filter="url(#shadow)">
+    <path d="M735 900 C742 705 780 610 905 598 C1035 586 1135 705 1180 900Z" fill="url(#shirt)"/>
+    <path d="M865 475 C842 385 888 275 1007 269 C1112 264 1182 350 1153 465 C1136 535 1082 596 1007 600 C932 602 884 552 865 475Z" fill="url(#skin)"/>
+    <path d="M866 411 C846 315 914 228 1020 244 C1103 256 1155 312 1156 391 C1113 361 1085 329 1050 297 C1009 354 950 391 866 411Z" fill="#16105d"/>
+    <path d="M858 391 C828 280 895 198 1008 202 C1124 205 1190 287 1162 409" fill="none" stroke="#00f0ff" stroke-width="28"/>
+    <circle cx="868" cy="410" r="45" fill="#ff4bd8" stroke="#00f0ff" stroke-width="14"/><circle cx="1154" cy="410" r="45" fill="#ff4bd8" stroke="#00f0ff" stroke-width="14"/>
+    <path d="M930 454 Q1005 500 1080 454" fill="none" stroke="#7b1fc9" stroke-width="13" stroke-linecap="round"/>
+    <circle cx="952" cy="416" r="9" fill="#16105d"/><circle cx="1061" cy="416" r="9" fill="#16105d"/>
+    <path d="M902 620 Q1004 675 1102 620 L1146 900 H838Z" fill="url(#shirt)" opacity=".95"/>
+  </g>
+  <g fill="#fff" opacity=".72"><circle cx="600" cy="190" r="5"/><circle cx="680" cy="140" r="9"/><circle cx="1270" cy="560" r="7"/><circle cx="1430" cy="460" r="5"/></g>
+</svg>

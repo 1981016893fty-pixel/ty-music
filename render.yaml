@@ -3,7 +3,7 @@ services:
     name: ty-music
     runtime: node
     plan: free
-    buildCommand: npm install
+    buildCommand: npm install && npm run build:aurora
     startCommand: node server-simple.js
     healthCheckPath: /api/health
     autoDeploy: true
