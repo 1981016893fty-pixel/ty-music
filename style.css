@@ -5053,7 +5053,8 @@ body:has(.am-album-page-surface.active) .main-content {
   color: var(--artist-muted-color, rgba(255,255,255,.72)) !important;
 }
 
-/* Shared expandable song-row surface for every list in the app. */
+/* Song rows stay compact after selection; playback never inserts a second
+   disclosure row beneath the selected item. */
 .song-row {
   position: relative;
   isolation: isolate;
@@ -5068,39 +5069,14 @@ body:has(.am-album-page-surface.active) .main-content {
 }
 .track-row.song-row,
 .album-track-row.song-row {
-  flex-wrap: wrap;
+  flex-wrap: nowrap !important;
 }
 .fav-track-row.song-row,
 .local-track-row.song-row {
-  grid-template-rows: auto 0fr;
-  transition: grid-template-rows 220ms ease, background-color 160ms ease, transform 160ms ease;
+  grid-template-rows: auto !important;
 }
 .song-row-expand {
-  flex: 0 0 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  max-height: 0;
-  overflow: hidden;
-  opacity: 0;
-  padding: 0 14px;
-  color: rgba(255,255,255,.62);
-  font-size: 11px;
-  line-height: 1.4;
-  transition: max-height 220ms ease, opacity 180ms ease, padding 220ms ease;
-}
-.fav-track-row.song-row .song-row-expand,
-.local-track-row.song-row .song-row-expand {
-  grid-column: 1 / -1;
-  width: auto;
-}
-.song-row.is-expanded .song-row-expand {
-  max-height: 48px;
-  opacity: 1;
-  padding: 9px 14px 3px;
-}
-.song-row.is-expanded {
-  row-gap: 2px;
+  display: none !important;
 }
 .song-row-expand span {
   min-width: 0;

@@ -11,6 +11,12 @@ const setSliderValue = (host, percentage) => {
   if (range) range.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
 };
 
+function resolveMusicResource(value) {
+  if (typeof value !== 'string' || !value.startsWith('/api/')) return value || '';
+  const base = window.__TY_MUSIC_API_BASE__ || '';
+  return base ? base + value : value;
+}
+
 // Keep API results alive for the lifetime of the tab. Navigation only swaps
 // views, so returning to a page should reuse the already-rendered catalog
 // instead of waking the server and upstream source again.
@@ -359,8 +365,8 @@ function normalizeTrack(song) {
     title: song.name || '未知歌曲',
     artist: song.artist || '未知歌手',
     album: song.album || '',
-    cover: coverUrl || song.cover || (pid ? '/api/music/cover?picId=' + encodeURIComponent(pid) + '&source=' + src + '&size=1000' : ''),
-    coverSmall: coverSmallUrl || song.coverSmall || '',
+    cover: resolveMusicResource(coverUrl || song.cover || (pid ? '/api/music/cover?picId=' + encodeURIComponent(pid) + '&source=' + src + '&size=1000' : '')),
+    coverSmall: resolveMusicResource(coverSmallUrl || song.coverSmall || ''),
     picId: pid,
     albumId: String(albumId || ''),
     duration: song.duration || 0,
@@ -513,8 +519,8 @@ function normalizeNeteaseTrack(song) {
     title: song.name || '未知歌曲',
     artist: song.artist || '未知歌手',
     album: song.album || '',
-    cover: cover,
-    coverSmall: coverSmall,
+    cover: resolveMusicResource(cover),
+    coverSmall: resolveMusicResource(coverSmall),
     albumId: song.albumId || song.album_id || '',
     picId: picId,
     duration: song.duration || 0,
@@ -2274,10 +2280,8 @@ function toggleSongRowDetails(row) {
 document.addEventListener('click', function(event) {
   var row = event.target.closest && event.target.closest('.track-row, .album-track-row, .fav-track-row, .local-track-row');
   if (!row || event.target.closest('button, a, input, .song-row-expand')) return;
-  // Browse search results are intentionally single-line rows; selecting one
-  // must not push the list downward with the shared detail disclosure.
-  if (row.closest('#searchResultsSection')) return;
-  toggleSongRowDetails(row);
+  // Selecting a song must remain a compact, single-row action everywhere.
+  // Playback owns the click; no secondary disclosure is attached here.
 }, { passive: true });
 
 function toggleFavById(id) {
