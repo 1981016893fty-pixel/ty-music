@@ -17,6 +17,25 @@ const setSliderValue = (host, percentage) => {
 const apiMemoryCache = new Map();
 const apiInflight = new Map();
 const rawFetch = window.fetch.bind(window);
+const desktopCacheEnabled = Boolean(window.__TY_MUSIC_DESKTOP__);
+const desktopCachePrefix = 'ty-music-api-cache:';
+function readDesktopApiCache(key) {
+  if (!desktopCacheEnabled) return null;
+  try {
+    const raw = localStorage.getItem(desktopCachePrefix + key);
+    if (!raw) return null;
+    const item = JSON.parse(raw);
+    if (!item || item.expires <= Date.now()) {
+      localStorage.removeItem(desktopCachePrefix + key);
+      return null;
+    }
+    return item;
+  } catch (_) { return null; }
+}
+function writeDesktopApiCache(key, item) {
+  if (!desktopCacheEnabled || item.body.length > 700000) return;
+  try { localStorage.setItem(desktopCachePrefix + key, JSON.stringify(item)); } catch (_) {}
+}
 window.fetch = function cachedApiFetch(input, init) {
   let request = input instanceof Request ? input : new Request(input, init);
   const apiBase = window.__TY_MUSIC_API_BASE__ || '';
@@ -42,6 +61,14 @@ window.fetch = function cachedApiFetch(input, init) {
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'memory' }
     }));
   }
+  const persisted = readDesktopApiCache(key);
+  if (persisted) {
+    apiMemoryCache.set(key, persisted);
+    return Promise.resolve(new Response(persisted.body, {
+      status: persisted.status,
+      headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'disk' }
+    }));
+  }
   if (apiInflight.has(key)) return apiInflight.get(key).then(result => new Response(result.body, {
     status: result.status,
     headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'inflight' }
@@ -49,7 +76,11 @@ window.fetch = function cachedApiFetch(input, init) {
 
   const promise = rawFetch(request).then(async response => {
     const body = await response.text();
-    if (response.ok) apiMemoryCache.set(key, { body, status: response.status, expires: now + 5 * 60 * 1000 });
+    if (response.ok) {
+      const cached = { body, status: response.status, expires: now + (desktopCacheEnabled ? 30 * 60 * 1000 : 5 * 60 * 1000) };
+      apiMemoryCache.set(key, cached);
+      writeDesktopApiCache(key, cached);
+    }
     return { body, status: response.status };
   }).finally(() => apiInflight.delete(key));
   apiInflight.set(key, promise);
