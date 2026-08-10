@@ -1084,6 +1084,9 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   opacity: .86;
   filter: saturate(1.08) contrast(1.04);
 }
+.hero-art.has-elastic-mesh .hero-art-fallback {
+  display: none;
+}
 .hero-art #heroElasticMeshMount { z-index: 1; }
 
 /* ============================================

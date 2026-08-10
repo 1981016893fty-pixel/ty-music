@@ -114,6 +114,12 @@ if (libraryGradientHost) {
 function HeroElasticMesh() {
   const [image, setImage] = React.useState(() => window.heroMeshCover || '');
   React.useEffect(() => {
+    const art = document.querySelector('.hero-art');
+    if (!art) return undefined;
+    art.classList.add('has-elastic-mesh');
+    return () => art.classList.remove('has-elastic-mesh');
+  }, []);
+  React.useEffect(() => {
     const update = event => setImage(event.detail?.cover || '');
     window.addEventListener('ty:herochange', update);
     if (window.heroMeshCover) setImage(window.heroMeshCover);
