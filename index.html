@@ -4,11 +4,22 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>TY Music - 免费听遍全网音乐</title>
+  <style id="critical-shell">
+    html, body { min-height: 100%; margin: 0; background: #05050f; }
+    body { color: #fff; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; }
+    .welcome-screen { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; overflow: hidden; background: #080611; color: #fff; }
+    .welcome-content { position: relative; z-index: 2; width: min(720px, calc(100% - 40px)); text-align: center; }
+    .welcome-kicker { color: rgba(255,255,255,.62); font-size: 12px; letter-spacing: .16em; }
+    .welcome-content h1 { margin: 14px 0 10px; font-size: clamp(34px, 7vw, 74px); line-height: 1.04; }
+    .welcome-content p { margin: 0; color: rgba(255,255,255,.68); font-size: 15px; }
+    .welcome-actions { display: flex; justify-content: center; gap: 12px; margin-top: 28px; }
+    .welcome-screen.is-dismissed { opacity: 0; visibility: hidden; pointer-events: none; }
+  </style>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23b44dff'><path d='M12 3v10.55c-.59-.34-1.27-.55-2-.55C7.79 13 6 14.79 6 17s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'/></svg>">
-  <link rel="preload" href="style.css?v=20260810brand-title" as="style">
-  <link rel="preload" href="player.js?v=20260810brand-title" as="script">
+  <link rel="preload" href="style.css?v=20260810async-shell" as="style">
+  <link rel="preload" href="player.js?v=20260810async-shell" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260810brand-title">
+  <link rel="stylesheet" href="style.css?v=20260810async-shell">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -734,9 +745,9 @@
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810brand-title">
-  <script src="soft-aurora-react.js?v=20260810brand-title" defer></script>
-  <script src="player.js?v=20260810brand-title" defer></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810async-shell">
+  <script src="soft-aurora-react.js?v=20260810async-shell" async fetchpriority="low"></script>
+  <script src="player.js?v=20260810async-shell" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>
