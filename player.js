@@ -883,6 +883,10 @@ function playTrack(track, index, skipRecentUpdate) {
 
   // 当前播放项始终要切换；skipRecentUpdate 只控制是否写入最近播放记录。
   state.currentTrack = track;
+  // 切歌立即废弃上一首的歌词请求和渲染快照，避免异步回调串歌。
+  state.lyrics = { lines: [], activeIndex: -1, expanded: false };
+  ampLyricsRequestId += 1;
+  ampLyricsRenderedFor = null;
   
   // 只有 skipRecentUpdate 为 true 时（切歌），才跳过 recentPlays 更新
   if (!skipRecentUpdate) {
@@ -1501,7 +1505,6 @@ function parsePlainLyrics(text, duration) {
 
 // Load lyrics for a track
 async function loadLyrics(track, callback) {
-  state.lyrics = { lines: [], activeIndex: -1, expanded: false };
   let lrcText = null;
   let tlyricText = null;
 
@@ -1560,8 +1563,7 @@ async function loadLyrics(track, callback) {
   if (lrcText) {
     const lines = parseBilingualLRC(lrcText, tlyricText);
     if (lines.length) {
-      state.lyrics.lines = lines;
-      if (callback) callback();
+      if (callback) callback(lines);
       return;
     }
   }
@@ -1575,15 +1577,13 @@ async function loadLyrics(track, callback) {
     const dur = track.duration || audio.duration || 240;
     const lines = parsePlainLyrics(ovhData.lyrics, dur);
     if (lines.length) {
-      state.lyrics.lines = lines;
-      if (callback) callback();
+      if (callback) callback(lines);
       return;
     }
   }
 
   // No lyrics found
-  state.lyrics.lines = [];
-  if (callback) callback();
+  if (callback) callback([]);
 }
 
 // Render lyrics lines into the panel
@@ -2728,13 +2728,14 @@ function resetThemeToAuto() {
 let ampIsShowing = false;
 
 // ========== 全屏封面预加载 + 错误回退 ==========
-function applyAmpArtwork(artwork, urls, idx) {
+function applyAmpArtwork(artwork, urls, idx, trackId) {
   if (idx >= urls.length) {
     artwork.style.backgroundImage = '';
     return;
   }
   const img = new Image();
   img.onload = function() {
+    if (trackId && getActiveTrack()?.id !== trackId) return;
     artwork.style.backgroundImage = `url(${urls[idx]})`;
     artwork.style.backgroundSize = 'cover';
     artwork.style.backgroundPosition = 'center';
@@ -2742,7 +2743,7 @@ function applyAmpArtwork(artwork, urls, idx) {
     window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: urls[idx] } }));
   };
   img.onerror = function() {
-    applyAmpArtwork(artwork, urls, idx + 1);
+    applyAmpArtwork(artwork, urls, idx + 1, trackId);
   };
   img.src = urls[idx];
 }
@@ -2962,6 +2963,7 @@ function syncAlbumDetailColorsFromCover(image) {
 function openAmpFullscreenPlayer() {
   const player = $('#ampFullscreenPlayer');
   if (!player) return;
+  ampIsShowing = true;
   
   // 双栏全屏默认同时呈现封面与歌词
   const artworkWrapper = $('#ampArtworkWrapper');
@@ -2983,7 +2985,6 @@ function openAmpFullscreenPlayer() {
     player.classList.add('show');
   });
   
-  ampIsShowing = true;
   document.body.style.overflow = 'hidden';
 
   // 启动音波动效（如果是电子乐且正在播放）
@@ -3037,7 +3038,7 @@ function updateAmpFullscreenPlayer() {
     if (artistPhotoUrl) coverCandidates.push(artistPhotoUrl);
     
     if (coverCandidates.length > 0) {
-      applyAmpArtwork(artwork, coverCandidates, 0);
+      applyAmpArtwork(artwork, coverCandidates, 0, track.id);
     } else {
       artwork.style.backgroundImage = '';
     }
@@ -3140,6 +3141,7 @@ function updateAmpProgress() {
 
 // 切换全屏播放器的歌词视图
 let ampLyricsShowing = false;
+let ampLyricsRequestId = 0;
 
 function toggleAmpLyricsView() {
   const artworkWrapper = $('#ampArtworkWrapper');
@@ -3181,6 +3183,8 @@ function toggleAmpLyricsView() {
 function loadAmpLyrics() {
   const track = getActiveTrack();
   if (!track) return;
+  const requestId = ++ampLyricsRequestId;
+  const trackId = track.id;
   
   const stage = $('#ampLyricsStage');
   if (!stage) return;
@@ -3198,8 +3202,10 @@ function loadAmpLyrics() {
     stage.innerHTML = '<p class="amp-lyrics-empty"></p>';
   }
   
-  loadLyrics(track, () => {
-    if (state.lyrics.lines && state.lyrics.lines.length > 0) {
+  loadLyrics(track, lines => {
+    if (requestId !== ampLyricsRequestId || getActiveTrack()?.id !== trackId) return;
+    state.lyrics.lines = Array.isArray(lines) ? lines : [];
+    if (state.lyrics.lines.length > 0) {
       renderAmpLyrics();
     } else {
       stage.innerHTML = '<p class="amp-lyrics-empty">暂无歌词</p>';
