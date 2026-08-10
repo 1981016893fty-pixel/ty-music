@@ -1540,8 +1540,12 @@ const FIRST_PAINT_TRACKS = Object.freeze([
   { id: '548785552', title: 'Call Out My Name', artist: 'The Weeknd', album: 'My Dear Melancholy,', picId: '548785552', source: 'netease' },
   { id: '2670864154', title: 'Timeless', artist: 'The Weeknd', album: 'Hurry Up Tomorrow', picId: '2670864154', source: 'netease' }
 ].map(function(track) {
-  track.cover = '/api/music/cover?picId=' + encodeURIComponent(track.picId) + '&source=netease&size=1000';
-  track.coverSmall = '/api/music/cover?picId=' + encodeURIComponent(track.picId) + '&source=netease&size=300';
+  // Use local artwork for the first paint; live cover URLs replace these as
+  // soon as the catalog responds, without leaving an empty image state.
+  const localCover = '/assets/demo/cs' + ((Number(track.id) % 3) + 1) + '.webp';
+  track.cover = localCover;
+  track.coverSmall = localCover;
+  track.liveCover = '/api/music/cover?picId=' + encodeURIComponent(track.picId) + '&source=netease&size=1000';
   return track;
 }));
 
