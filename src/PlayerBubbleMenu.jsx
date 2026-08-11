@@ -7,6 +7,7 @@ const CONTROLS = [
   { id: 'playBtn', label: '播放 / 暂停', icon: 'fa-play' },
   { id: 'nextBtn', label: '下一首', icon: 'fa-forward' },
   { id: 'volumeBtn', label: '音量', icon: 'fa-volume-low' },
+  { id: 'nativeMiniBtn', label: '迷你播放器', icon: 'fa-up-right-and-down-left-from-center', desktopOnly: true },
   { id: 'fullscreenBtn', label: '待播清单', icon: 'fa-list-ul' }
 ];
 
@@ -85,6 +86,8 @@ export default function PlayerBubbleMenu() {
     if (isPlaying) setPlayerVisible(true);
   };
 
+  const controls = CONTROLS.filter(control => !control.desktopOnly || window.__TY_MUSIC_DESKTOP__);
+
   return (
     <div className={`player-bubble-menu ${playerVisible ? 'is-player-visible' : ''} ${open ? 'is-open' : ''}`} onClick={event => event.stopPropagation()}>
       <button
@@ -104,7 +107,7 @@ export default function PlayerBubbleMenu() {
         </div>
       </div>
       <div className="player-bubble-menu__items" aria-hidden={!open}>
-        {CONTROLS.map((control, index) => control.id === 'volumeBtn' ? (
+        {controls.map((control, index) => control.id === 'volumeBtn' ? (
           <div className="player-bubble-menu__volume" key={control.id} style={{ '--bubble-index': index }}>
             <button type="button" className="player-bubble-menu__volume-toggle" aria-label="静音或恢复音量" title="静音或恢复音量" onClick={() => invoke(control.id)}>
               <span className="player-bubble-menu__control-icon"><i className={`fa-solid ${control.icon}`} aria-hidden="true" /></span>
