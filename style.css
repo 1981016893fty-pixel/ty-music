@@ -183,11 +183,13 @@
 }
 
 .welcome-disclaimer {
-  max-width: 560px;
-  margin: 16px auto 0 !important;
-  color: rgba(255,255,255,.48) !important;
-  font-size: 11px !important;
+  width: min(520px, 100%);
+  max-width: 100%;
+  margin: 14px auto 0 !important;
+  color: rgba(255,255,255,.42) !important;
+  font-size: 10px !important;
   line-height: 1.7 !important;
+  text-align: center !important;
 }
 
 .welcome-learn-more {
@@ -850,18 +852,19 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  min-height: 26px;
+  min-height: 28px;
   margin-left: auto;
-  padding: 0 11px;
-  border: 1px solid rgba(255,255,255,.2);
+  padding: 0 13px;
+  border: 1px solid rgba(184,255,101,.5);
   border-radius: 999px;
   color: rgba(255,255,255,.82);
-  background: rgba(10,10,22,.38);
+  background: rgba(16,26,14,.72);
   box-shadow: inset 0 1px rgba(255,255,255,.08);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   text-decoration: none;
   pointer-events: auto;
+  white-space: nowrap;
   transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
 }
 .top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); transform: translateY(-1px); }
