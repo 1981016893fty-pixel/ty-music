@@ -182,6 +182,14 @@
   flex-wrap: wrap;
 }
 
+.welcome-disclaimer {
+  max-width: 560px;
+  margin: 16px auto 0 !important;
+  color: rgba(255,255,255,.48) !important;
+  font-size: 11px !important;
+  line-height: 1.7 !important;
+}
+
 .welcome-learn-more {
   cursor: pointer;
 }
@@ -836,6 +844,29 @@ html:has(.amp-fullscreen-player.show) .top-dock {
 }
 .browse-search-box > .glass-surface-mount { border-radius: inherit; }
 .top-dock__brand { position: relative; z-index: 1; display: flex; align-items: center; min-width: 0; }
+.top-dock__client-entry {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 26px;
+  margin-left: auto;
+  padding: 0 11px;
+  border: 1px solid rgba(255,255,255,.2);
+  border-radius: 999px;
+  color: rgba(255,255,255,.82);
+  background: rgba(10,10,22,.38);
+  box-shadow: inset 0 1px rgba(255,255,255,.08);
+  font-size: 11px;
+  font-weight: 650;
+  text-decoration: none;
+  pointer-events: auto;
+  transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
+}
+.top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); transform: translateY(-1px); }
+.top-dock__client-entry > i:first-child { color: #b8ff65; }
+.top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
 .top-dock__glitch {
   margin: 0;
   color: #fff;
@@ -862,6 +893,8 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   .mobile-topbar { display: none !important; }
   .top-dock { top: 0; left: 0; width: 100vw; height: 32px; padding: 0 12px; }
   .top-dock__glitch { font-size: 11px; }
+  .top-dock__client-entry { min-height: 24px; padding: 0 9px; font-size: 10px; }
+  .top-dock__client-arrow { display: none; }
 }
 
 /* Playlist detail: a compact, scan-first workspace with the official

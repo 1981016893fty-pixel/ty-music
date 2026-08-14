@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
 const files = [
   'index.html', 'style.css', 'player.js', 'soft-aurora-react.js',
   'soft-aurora-react.css', 'liquid-glass.js', 'manifest.json',
-  'icon-192.png', 'icon-512.png', 'service-worker.js'
+  'icon-192.png', 'icon-512.png', 'service-worker.js', 'desktop.html'
 ];
 for (const file of files) {
   const source = path.join(root, file);
