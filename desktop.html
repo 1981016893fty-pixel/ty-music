@@ -34,6 +34,9 @@
     .desktop-card p { min-height: 54px; margin: 16px 0 24px; color: rgba(255,255,255,.68); line-height: 1.6; }
     .desktop-card .btn { display: inline-flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 18px; border: 1px solid rgba(255,255,255,.34); border-radius: 999px; color: #061006; background: #b8ff65; font: inherit; font-weight: 750; text-decoration: none; }
     .desktop-card .btn:hover { background: #d4ff9e; }
+    .desktop-card-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .desktop-card .btn-secondary { color: #f8f8ff; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.38); }
+    .desktop-card .btn-secondary:hover { color: #061006; background: #d4ff9e; }
     .desktop-meta { margin-top: 16px; color: rgba(255,255,255,.48); font-size: 12px; }
     .desktop-note { max-width: 700px; margin: 26px 0 0; color: rgba(255,255,255,.56); font-size: 13px; line-height: 1.7; }
     @media (max-width: 680px) {
@@ -59,14 +62,17 @@
       <article class="desktop-card card card-border">
         <h2><i class="fa-brands fa-apple" aria-hidden="true"></i> macOS</h2>
         <p>适用于 Apple Silicon 与 Intel Mac。下载后打开 DMG，并将 TY Music 拖入应用程序文件夹。</p>
-        <a class="btn" href="https://github.com/1981016893fty-pixel/ty-music/releases" target="_blank" rel="noreferrer"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> 查看 macOS 发布</a>
-        <div class="desktop-meta">macOS DMG 发布后会出现在这里</div>
+        <a class="btn" href="https://github.com/1981016893fty-pixel/ty-music/releases/download/v1.0.2/TY%20Music_1.0.0_aarch64.dmg" target="_blank" rel="noreferrer"><i class="fa-solid fa-download" aria-hidden="true"></i> 下载 macOS DMG</a>
+        <div class="desktop-meta">Apple Silicon · macOS 12 或更高版本</div>
       </article>
       <article class="desktop-card card card-border">
         <h2><i class="fa-brands fa-windows" aria-hidden="true"></i> Windows</h2>
         <p>提供 EXE 与 MSI 两种安装方式。推荐使用 EXE，MSI 适合集中部署与系统管理。</p>
-        <a class="btn" href="https://github.com/1981016893fty-pixel/ty-music/releases/tag/v1.0.1" target="_blank" rel="noreferrer"><i class="fa-solid fa-download" aria-hidden="true"></i> 获取 Windows 版本</a>
-        <div class="desktop-meta">当前稳定版：v1.0.1</div>
+        <div class="desktop-card-actions">
+          <a class="btn" href="https://github.com/1981016893fty-pixel/ty-music/releases/download/v1.0.2/TY.Music_1.0.0_x64-setup.exe" target="_blank" rel="noreferrer"><i class="fa-solid fa-download" aria-hidden="true"></i> 下载 EXE</a>
+          <a class="btn btn-secondary" href="https://github.com/1981016893fty-pixel/ty-music/releases/download/v1.0.2/TY.Music_1.0.0_x64_en-US.msi" target="_blank" rel="noreferrer"><i class="fa-solid fa-download" aria-hidden="true"></i> 下载 MSI</a>
+        </div>
+        <div class="desktop-meta">Windows 10 或更高版本 · v1.0.2</div>
       </article>
     </section>
     <p class="desktop-note">桌面客户端与网页播放器均仅供个人学习和非商业使用。安装或使用前，请确认你所在地区允许相关内容与服务，并自行承担版权合规责任。</p>
