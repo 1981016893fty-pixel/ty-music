@@ -858,10 +858,9 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   border: 1px solid rgba(255,255,255,.72);
   border-radius: 999px;
   color: rgba(255,255,255,.82);
-  background: rgba(255,255,255,.02);
-  box-shadow: inset 0 1px rgba(255,255,255,.1), 0 8px 20px rgba(0,0,0,.22);
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  background: transparent;
+  box-shadow: none;
+  overflow: hidden;
   font-size: 12px;
   font-weight: 650;
   text-decoration: none;
@@ -870,6 +869,10 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
 }
 .top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.9); box-shadow: inset 0 1px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.3); transform: translateY(-1px); }
+.top-dock__client-entry:hover { background: transparent; box-shadow: none; }
+.top-dock__client-surface { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.top-dock__client-entry > i,
+.top-dock__client-entry > span:not(.top-dock__client-surface) { position: relative; z-index: 1; }
 .top-dock__client-entry > i:first-child { color: #c49aff; text-shadow: 0 0 10px rgba(196,154,255,.45); }
 .top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
 html.ty-desktop .top-dock__client-entry { display: none; }

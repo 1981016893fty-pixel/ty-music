@@ -426,6 +426,21 @@ if (topDock && topDock.parentElement !== document.documentElement) document.docu
 const topDockBrandMount = document.getElementById('topDockBrandMount');
 if (topDockBrandMount) createRoot(topDockBrandMount).render(<GlitchText className="top-dock__glitch" speed={0.85} enableOnHover={false}>TY MUSIC</GlitchText>);
 
+const topDockClientSurfaceMount = document.getElementById('topDockClientSurfaceMount');
+if (topDockClientSurfaceMount) {
+  createRoot(topDockClientSurfaceMount).render(
+    <GlassSurface
+      className="glass-surface--capsule"
+      borderRadius={999}
+      brightness={72}
+      opacity={0.9}
+      blur={18}
+      backgroundOpacity={0.025}
+      saturation={1.25}
+    />
+  );
+}
+
 function ShinyHeading({ target }) {
   const [text, setText] = React.useState(target.dataset.shinyText || '');
   React.useEffect(() => {
