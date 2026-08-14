@@ -35,6 +35,7 @@ const STATIC_FILES = [
   ['/service-worker.js', 'service-worker.js'],
   ['/icon-192.png', 'icon-192.png'],
   ['/icon-512.png', 'icon-512.png'],
+  ['/icon.svg', 'icon.svg'],
 ];
 
 // 内存缓存：{ raw: Buffer, gzip: Buffer, etag: string, contentType: string }
@@ -58,6 +59,7 @@ function preloadStaticFiles() {
       'html': 'text/html; charset=utf-8', 
       'js': 'application/javascript; charset=utf-8', 
       'css': 'text/css; charset=utf-8',
+      'svg': 'image/svg+xml',
       'json': 'application/json; charset=utf-8',
       'png': 'image/png'
     }[ext] || 'application/octet-stream';
