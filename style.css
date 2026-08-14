@@ -870,7 +870,7 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
 }
 .top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.9); box-shadow: inset 0 1px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.3); transform: translateY(-1px); }
-.top-dock__client-entry > i:first-child { color: rgba(255,255,255,.96); }
+.top-dock__client-entry > i:first-child { color: #c49aff; text-shadow: 0 0 10px rgba(196,154,255,.45); }
 .top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
 html.ty-desktop .top-dock__client-entry { display: none; }
 .top-dock__glitch {
