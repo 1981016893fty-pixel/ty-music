@@ -824,14 +824,6 @@ body.native-mini-mode #nativeMiniBtn { display: flex !important; }
   will-change: transform;
   contain: layout paint;
 }
-.top-dock,
-.top-dock::before,
-.top-dock::after {
-  border: 0 !important;
-  outline: 0 !important;
-  box-shadow: none !important;
-}
-.top-dock > .glass-surface-mount { display: none !important; }
 .top-dock.glass-surface-host { position: fixed !important; }
 html:has(.amp-fullscreen-player.show) .top-dock {
   opacity: 0;
