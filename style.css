@@ -853,6 +853,10 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   align-items: center;
   gap: 7px;
   min-height: 28px;
+  width: 132px;
+  min-width: 132px;
+  height: 28px;
+  padding: 0;
   margin-left: auto;
   padding: 0 13px;
   border: 1px solid rgba(255,255,255,.72);
@@ -3048,6 +3052,7 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   transition: var(--transition-fast);
   white-space: nowrap;
 }
+.top-dock__client-entry .specular-button__label { font-size: 11px; }
 
 .show-all-btn:hover {
   background: rgba(255,255,255,0.08);
