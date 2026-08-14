@@ -25,6 +25,7 @@ const pendingRequests = new Map(); // url → Promise
 const STATIC_FILES = [
   ['/', 'index.html'],
   ['/index.html', 'index.html'],
+  ['/desktop.html', 'desktop.html'],
   ['/player.js', 'player.js'],
   ['/soft-aurora-react.js', 'soft-aurora-react.js'],
   ['/soft-aurora-react.css', 'soft-aurora-react.css'],
