@@ -164,3 +164,57 @@
 .player-bubble-menu.is-open .player-bubble-menu__items { pointer-events: auto; }
 .player-bubble-menu.is-open .player-bubble-menu__item,
 .player-bubble-menu.is-open .player-bubble-menu__volume { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+
+@media (max-width: 768px) {
+  .player-bubble-menu {
+    left: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    width: 136px;
+  }
+  .player-bubble-menu__trigger {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    font-size: 13px;
+  }
+  .player-bubble-menu__now-playing {
+    left: 42px;
+    bottom: 2px;
+    width: 122px;
+    min-height: 30px;
+    padding: 2px 7px 2px 3px;
+    gap: 5px;
+  }
+  .player-bubble-menu__now-playing img,
+  .player-bubble-menu__now-playing > i {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+  }
+  .player-bubble-menu__now-playing strong { font-size: 9px; }
+  .player-bubble-menu__now-playing span { font-size: 8px; }
+  .player-bubble-menu__items {
+    bottom: 41px;
+    gap: 5px;
+  }
+  .player-bubble-menu__item {
+    min-width: 116px;
+    min-height: 31px;
+    padding-inline: 8px !important;
+    gap: 6px;
+  }
+  .player-bubble-menu__item span { font-size: 10px; }
+  .player-bubble-menu__control-icon {
+    width: 18px;
+    height: 18px;
+    flex-basis: 18px;
+    font-size: 8px;
+  }
+  .player-bubble-menu__volume {
+    width: 120px;
+    min-width: 120px;
+    min-height: 29px;
+  }
+  .player-bubble-menu__volume .slider-container { width: 82px; }
+}

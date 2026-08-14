@@ -281,14 +281,17 @@ const browseQuickGridHost = document.getElementById('browseQuickGrid');
 if (browseQuickGridHost) createRoot(browseQuickGridHost).render(<MagicBento />);
 
 const splashCursorHost = document.getElementById('browseSplashCursorMount');
-if (splashCursorHost) createRoot(splashCursorHost).render(<SplashCursor />);
+const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+const compactViewport = window.matchMedia('(max-width: 768px)').matches;
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (splashCursorHost) createRoot(splashCursorHost).render(<SplashCursor active={!coarsePointer && !reducedMotion} />);
 
 const browsePrismHost = document.getElementById('browsePrismMount');
 if (browsePrismHost) {
   createRoot(browsePrismHost).render(
     <Prism
       animationType="rotate"
-      timeScale={0.22}
+      timeScale={compactViewport || reducedMotion ? 0 : 0.22}
       scale={3}
       hueShift={0.58}
       colorFrequency={1.25}
@@ -307,7 +310,15 @@ const homeFloatingLinesHost = document.getElementById('homeFloatingLinesMount');
 if (homeFloatingLinesHost) {
   // Keep the official React Bits defaults so the homepage retains the
   // recognizable pink/blue flowing-line composition.
-  createRoot(homeFloatingLinesHost).render(<FloatingLines />);
+  createRoot(homeFloatingLinesHost).render(
+    <FloatingLines
+      interactive={!coarsePointer && !reducedMotion}
+      parallax={!coarsePointer && !reducedMotion}
+      lineCount={compactViewport ? [4] : [6]}
+      animationSpeed={reducedMotion ? 0 : compactViewport ? 0.55 : 1}
+      maxFps={compactViewport ? 30 : 60}
+    />
+  );
 }
 
 [
@@ -440,10 +451,13 @@ const updateButtonSpecular = event => {
     button.style.setProperty('--sb-my', `${event.clientY - rect.top}px`);
   });
 };
-window.addEventListener('pointermove', updateButtonSpecular, { passive: true });
+if (!coarsePointer && !reducedMotion) {
+  window.addEventListener('pointermove', updateButtonSpecular, { passive: true });
+}
 
 const tiltedRoots = new Map();
 function mountTiltedCards() {
+  if (coarsePointer || reducedMotion) return;
   document.querySelectorAll('.am-artwork').forEach(artwork => {
     if (tiltedRoots.has(artwork)) return;
     const image = artwork.querySelector(':scope > img');

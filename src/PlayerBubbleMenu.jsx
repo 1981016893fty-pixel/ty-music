@@ -7,7 +7,6 @@ const CONTROLS = [
   { id: 'playBtn', label: '播放 / 暂停', icon: 'fa-play' },
   { id: 'nextBtn', label: '下一首', icon: 'fa-forward' },
   { id: 'volumeBtn', label: '音量', icon: 'fa-volume-low' },
-  { id: 'nativeMiniBtn', label: '迷你播放器', icon: 'fa-up-right-and-down-left-from-center', desktopOnly: true },
   { id: 'fullscreenBtn', label: '待播清单', icon: 'fa-list-ul' }
 ];
 
@@ -86,7 +85,7 @@ export default function PlayerBubbleMenu() {
     if (isPlaying) setPlayerVisible(true);
   };
 
-  const controls = CONTROLS.filter(control => !control.desktopOnly || window.__TY_MUSIC_DESKTOP__);
+  const controls = CONTROLS;
 
   return (
     <div className={`player-bubble-menu ${playerVisible ? 'is-player-visible' : ''} ${open ? 'is-open' : ''}`} onClick={event => event.stopPropagation()}>

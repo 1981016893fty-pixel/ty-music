@@ -244,6 +244,7 @@ export default function FloatingLines({
   mouseDamping = 0.05,
   parallax = true,
   parallaxStrength = 0.2,
+  maxFps = 60,
   mixBlendMode = 'screen'
 }) {
   const containerRef = useRef(null);
@@ -290,7 +291,8 @@ export default function FloatingLines({
     const renderer = new WebGLRenderer({ antialias: true, alpha: false });
     // Keep the fluid background crisp while avoiding excessive fragment work
     // on Retina displays. The visual size remains unchanged via CSS sizing.
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarsePointer ? 1 : 1.5));
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     container.appendChild(renderer.domElement);
@@ -432,6 +434,8 @@ export default function FloatingLines({
     let raf = 0;
     let isVisible = true;
     let pageObserver = null;
+    let lastRenderedAt = 0;
+    const frameInterval = 1000 / Math.max(1, maxFps);
 
     const updateVisibility = () => {
       let node = container;
@@ -460,8 +464,14 @@ export default function FloatingLines({
       pageObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
     }
 
-    const renderLoop = () => {
+    const renderLoop = now => {
       if (!active || !isVisible) return;
+
+      if (now - lastRenderedAt < frameInterval) {
+        raf = requestAnimationFrame(renderLoop);
+        return;
+      }
+      lastRenderedAt = now;
 
       uniforms.iTime.value = clock.getElapsedTime();
 
@@ -481,7 +491,7 @@ export default function FloatingLines({
       renderer.render(scene, camera);
       raf = requestAnimationFrame(renderLoop);
     };
-    renderLoop();
+    raf = requestAnimationFrame(renderLoop);
 
     return () => {
       active = false;
@@ -520,7 +530,8 @@ export default function FloatingLines({
     bendStrength,
     mouseDamping,
     parallax,
-    parallaxStrength
+    parallaxStrength,
+    maxFps
   ]);
 
   return (

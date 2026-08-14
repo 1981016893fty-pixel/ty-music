@@ -521,7 +521,7 @@
   </main>
 
   <!-- 播放列表弹窗 -->
-  <div class="player-bar" id="playerBar">
+  <div class="player-bar" id="playerBar" data-tauri-drag-region>
     <div id="playerBubbleMount" aria-label="播放菜单"></div>
     <button class="player-collapse-btn" id="playerCollapseBtn" title="收起播放栏" aria-label="收起播放栏">
       <i class="fa-solid fa-chevron-down"></i>
@@ -583,9 +583,6 @@
       <div class="volume-bar elastic-slider-host" id="volumeBar">
         <div id="volumeSliderMount"></div>
       </div>
-      <button class="ctrl-btn native-mini-btn" id="nativeMiniBtn" title="迷你播放器" aria-label="切换迷你播放器">
-        <i class="fa-solid fa-up-right-and-down-left-from-center"></i>
-      </button>
       <button class="ctrl-btn" id="fullscreenBtn" title="播放列表">
         <i class="fa-solid fa-list-ul"></i>
       </button>

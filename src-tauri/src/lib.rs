@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager, PhysicalPosition, PhysicalSize, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 use std::sync::Mutex;
@@ -12,12 +12,6 @@ use mediaplayer::{Artwork, CommandToken, HandlerStatus, NowPlayingInfo, NowPlayi
 struct NativeMediaState {
     _tokens: Mutex<Vec<CommandToken>>,
     artwork: Mutex<Option<Artwork>>,
-}
-
-struct MiniWindowState {
-    active: Mutex<bool>,
-    normal_size: Mutex<Option<PhysicalSize<u32>>>,
-    normal_position: Mutex<Option<PhysicalPosition<i32>>>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,40 +53,6 @@ fn minimize_window(window: tauri::Window) -> Result<(), String> {
 #[tauri::command]
 fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn toggle_native_mini(window: tauri::Window, state: State<'_, MiniWindowState>) -> Result<bool, String> {
-    let mut active = state.active.lock().map_err(|_| "mini window state unavailable".to_string())?;
-    if !*active {
-        let size = window.outer_size().map_err(|error| error.to_string())?;
-        let position = window.outer_position().map_err(|error| error.to_string())?;
-        *state.normal_size.lock().map_err(|_| "mini window state unavailable".to_string())? = Some(size);
-        *state.normal_position.lock().map_err(|_| "mini window state unavailable".to_string())? = Some(position);
-
-        window.set_min_size(Some(PhysicalSize::new(560, 80))).map_err(|error| error.to_string())?;
-        window.set_max_size(Some(PhysicalSize::new(900, 140))).map_err(|error| error.to_string())?;
-        window.set_resizable(false).map_err(|error| error.to_string())?;
-        let mini_size = PhysicalSize::new(680, 108);
-        window.set_size(mini_size).map_err(|error| error.to_string())?;
-        let centered_x = position.x + ((size.width as i32 - mini_size.width as i32) / 2).max(0);
-        let anchored_y = position.y + (size.height as i32 - mini_size.height as i32).max(0);
-        window.set_position(PhysicalPosition::new(centered_x, anchored_y)).map_err(|error| error.to_string())?;
-        *active = true;
-    } else {
-        if let Some(size) = *state.normal_size.lock().map_err(|_| "mini window state unavailable".to_string())? {
-            window.set_min_size(Some(PhysicalSize::new(960, 640))).map_err(|error| error.to_string())?;
-            window.set_max_size::<PhysicalSize<u32>>(None).map_err(|error| error.to_string())?;
-            window.set_size(size).map_err(|error| error.to_string())?;
-        }
-        if let Some(position) = *state.normal_position.lock().map_err(|_| "mini window state unavailable".to_string())? {
-            window.set_position(position).map_err(|error| error.to_string())?;
-        }
-        window.set_resizable(true).map_err(|error| error.to_string())?;
-        *active = false;
-    }
-    let _ = window.emit("ty:native-mini-mode", *active);
-    Ok(*active)
 }
 
 #[tauri::command]
@@ -188,11 +148,6 @@ pub fn run() {
             }
         }).build())
         .setup(|app| {
-            app.manage(MiniWindowState {
-                active: Mutex::new(false),
-                normal_size: Mutex::new(None),
-                normal_position: Mutex::new(None),
-            });
             #[cfg(target_os = "macos")]
             app.manage(setup_native_media(app.handle()));
             if let Some(window) = app.get_webview_window("main") {
@@ -203,7 +158,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            platform_info, set_window_title, minimize_window, close_window, toggle_native_mini,
+            platform_info, set_window_title, minimize_window, close_window,
             now_playing_update, now_playing_clear
         ])
         .run(tauri::generate_context!())

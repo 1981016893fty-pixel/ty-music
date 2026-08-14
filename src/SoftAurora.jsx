@@ -140,7 +140,12 @@ export default function SoftAurora({
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    const renderer = new Renderer({ alpha: true, premultipliedAlpha: false });
+    const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+    const renderer = new Renderer({
+      alpha: true,
+      premultipliedAlpha: false,
+      dpr: Math.min(window.devicePixelRatio || 1, coarsePointer ? 1 : 1.5)
+    });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
     let program;
@@ -181,8 +186,12 @@ export default function SoftAurora({
       window.addEventListener('mouseleave', handleMouseLeave);
     }
     let animationFrameId;
+    let lastRenderedAt = 0;
+    const frameInterval = 1000 / (coarsePointer ? 24 : 60);
     function update(time) {
       animationFrameId = requestAnimationFrame(update);
+      if (document.hidden || time - lastRenderedAt < frameInterval) return;
+      lastRenderedAt = time;
       program.uniforms.uTime.value = time * 0.001;
       if (enableMouseInteraction) {
         currentMouse[0] += 0.05 * (targetMouse[0] - currentMouse[0]);

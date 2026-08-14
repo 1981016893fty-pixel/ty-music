@@ -55,17 +55,6 @@ document.documentElement.classList.add('ty-desktop');
     const listen = window.__TAURI__?.event?.listen;
     const click = selector => document.querySelector(selector)?.click();
     if (!listen) return;
-    listen('ty:native-mini-mode', event => {
-      document.body.classList.toggle('native-mini-mode', Boolean(event?.payload));
-      const button = document.querySelector('#nativeMiniBtn');
-      if (button) {
-        button.title = event?.payload ? '恢复完整窗口' : '迷你播放器';
-        button.setAttribute('aria-label', button.title);
-        button.innerHTML = event?.payload
-          ? '<i class="fa-solid fa-down-left-and-up-right-to-center"></i>'
-          : '<i class="fa-solid fa-up-right-and-down-left-from-center"></i>';
-      }
-    });
     listen('ty:media-toggle', () => click('#playBtn'));
     listen('ty:media-play', () => {
       if (window.__TY_MUSIC_STATE__?.isPlaying === false) click('#playBtn');

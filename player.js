@@ -671,6 +671,11 @@ function updateDynamicGradient(track) {
     }
     const shadowEl = $('#playerCoverShadow');
     if (shadowEl) shadowEl.style.background = `rgba(${r},${g},${b},0.6)`;
+    const nativePlayer = $('#playerBar');
+    if (nativePlayer) {
+      nativePlayer.style.setProperty('--mini-progress-rgb', `${r}, ${g}, ${b}`);
+      nativePlayer.style.setProperty('--mini-progress-light-rgb', `${lift(r)}, ${lift(g)}, ${lift(b)}`);
+    }
     const miniBg = $('#miniArtBg');
     if (miniBg) miniBg.style.background = `rgba(${r},${g},${b},0.8)`;
   };
@@ -931,7 +936,9 @@ function playTrack(track, index, skipRecentUpdate) {
     fallbackCover(playerCoverImg);
   }
   $('#playerTitle').textContent = track.title;
-  $('#playerArtist').textContent = track.artist;
+  const playerArtistEl = $('#playerArtist');
+  playerArtistEl.textContent = track.artist;
+  playerArtistEl.dataset.album = track.album || '';
   window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
   // 全屏播放器订阅同一事件，确保浏览器端自动切歌也立即刷新标题、歌手和封面。
   // Pass the just-selected track explicitly. Reading the queue again here can
@@ -999,6 +1006,19 @@ function playTrack(track, index, skipRecentUpdate) {
   fetchAndDisplayAlbumInfo(track);
 
   updateDynamicGradient(track);
+  // The native mini player follows the album palette too. Use the existing
+  // multi-sample extractor rather than a generic neutral playback color.
+  if (coverSrc) {
+    extractAlbumColors(coverSrc, function(colors) {
+      if (getActiveTrack()?.id !== track.id) return;
+      const playerBar = $('#playerBar');
+      if (!playerBar || !colors?.primary) return;
+      const primary = colors.primary;
+      const secondary = colors.secondary || primary;
+      playerBar.style.setProperty('--mini-progress-rgb', `${primary.r}, ${primary.g}, ${primary.b}`);
+      playerBar.style.setProperty('--mini-progress-light-rgb', `${secondary.r}, ${secondary.g}, ${secondary.b}`);
+    });
+  }
 
   // Reset progress
   setSliderValue('#progressBar', 0);
@@ -1099,10 +1119,6 @@ function togglePlay() {
 
 $('#playBtn').addEventListener('click', togglePlay);
 $('#miniPlayBtn').addEventListener('click', togglePlay);
-$('#nativeMiniBtn')?.addEventListener('click', () => {
-  if (!window.__TY_MUSIC_DESKTOP__) return;
-  nativeMediaInvoke('toggle_native_mini');
-});
 
 // HTML5 audio events
 audio.addEventListener('play', () => {
@@ -1335,7 +1351,11 @@ function playNext() {
   if (!q.length || q.length <= 1) return;
   var newIdx = (state.queueIndex + 1) % q.length;
   state.queueIndex = newIdx;
-  playTrack(q[newIdx], newIdx, true);
+  const nextTrack = q[newIdx];
+  playTrack(nextTrack, newIdx, true);
+  if (ampIsShowing) {
+    requestAnimationFrame(() => updateAmpFullscreenPlayer(nextTrack));
+  }
 }
 
 function playPrev() {
@@ -1343,7 +1363,11 @@ function playPrev() {
   if (!q.length || q.length <= 1) return;
   var newIdx = (state.queueIndex - 1 + q.length) % q.length;
   state.queueIndex = newIdx;
-  playTrack(q[newIdx], newIdx, true);
+  const prevTrack = q[newIdx];
+  playTrack(prevTrack, newIdx, true);
+  if (ampIsShowing) {
+    requestAnimationFrame(() => updateAmpFullscreenPlayer(prevTrack));
+  }
 }
 
 $('#nextBtn').addEventListener('click', playNext);
@@ -3364,6 +3388,13 @@ function updateAmpLyricsHighlight() {
 
 // 初始化全屏播放器事件
 function initAmpFullscreenPlayer() {
+  window.addEventListener('ty:trackchange', event => {
+    const track = event.detail || getActiveTrack();
+    if (!track || !ampIsShowing) return;
+    updateAmpFullscreenPlayer(track);
+    requestAnimationFrame(() => loadAmpLyrics());
+  });
+
   // 关闭按钮
   const closeBtn = $('#ampCloseBtn');
   if (closeBtn) {

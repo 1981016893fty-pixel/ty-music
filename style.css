@@ -1013,6 +1013,482 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   }
 }
 
+/* ========================================================================
+   Native macOS mini player
+   This must live after the BubbleMenu migration rules above.  Those rules
+   intentionally hide the legacy player bar on the website, while this is a
+   separate, native-sized Tauri window that reuses its reliable media controls.
+   ======================================================================== */
+body.native-mini-mode {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent !important;
+}
+
+html.native-mini-mode {
+  background: transparent !important;
+}
+
+html.native-mini-mode,
+html.native-mini-mode body {
+  background-color: transparent !important;
+}
+
+/* Hide every web-only root layer. Keep the audio element alive so playback
+   continues while the native player is the only visible surface. */
+body.native-mini-mode > :not(#playerBar):not(#audioPlayer):not(script):not(link) {
+  display: none !important;
+}
+
+body.native-mini-mode::after {
+  display: none;
+}
+
+/* The web app owns several full-window ambient backgrounds. The native
+   mini player must be genuinely isolated, with only macOS behind its glass. */
+body.native-mini-mode #softAuroraHost,
+body.native-mini-mode #bgGradient,
+body.native-mini-mode #libraryGradientWavesMount,
+body.native-mini-mode #browsePrismMount,
+body.native-mini-mode #page-album-favorites,
+body.native-mini-mode #albumDriftWallMount {
+  display: none !important;
+}
+
+body.native-mini-mode .player-bar {
+  position: fixed !important;
+  inset: 0 !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 16px 22px 14px !important;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  border-radius: 28px !important;
+  color: #20242b !important;
+  background:
+    linear-gradient(126deg, rgba(239, 246, 255, 0.92) 0%, rgba(209, 222, 239, 0.83) 47%, rgba(189, 204, 223, 0.88) 100%) !important;
+  box-shadow:
+    0 18px 42px rgba(10, 18, 31, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -1px 0 rgba(70, 86, 108, 0.08) !important;
+  backdrop-filter: blur(38px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(38px) saturate(1.35) !important;
+  pointer-events: auto !important;
+  isolation: isolate;
+  animation: native-mini-material-in 220ms cubic-bezier(.2, .8, .2, 1) both;
+}
+
+body.native-mini-mode .native-mini-drag-region {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: block !important;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+body.native-mini-mode #playerBar > .native-mini-drag-region {
+  display: block !important;
+}
+
+body.native-mini-mode .native-mini-drag-region:active {
+  cursor: grabbing;
+}
+
+body.native-mini-mode .player-bar::before {
+  display: none;
+}
+
+body.native-mini-mode .player-bar::after {
+  display: none;
+}
+
+/* Restore only the player nodes the mini player actually uses. */
+body.native-mini-mode #playerBar > .player-left,
+body.native-mini-mode #playerBar > .player-center,
+body.native-mini-mode #playerBar > .player-right {
+  position: relative;
+  z-index: 2;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+body.native-mini-mode #playerBar > .player-left {
+  position: absolute;
+  top: 19px;
+  left: 91px;
+  right: 166px;
+  display: flex !important;
+  width: auto !important;
+  height: 62px;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+
+/* Custom traffic lights replace the hidden native title bar in mini mode. */
+.native-mini-traffic-lights {
+  display: none;
+}
+
+body.native-mini-mode .native-mini-traffic-lights.is-visible {
+  position: fixed;
+  z-index: 20;
+  top: 25px;
+  left: 25px;
+  display: flex;
+  z-index: 4;
+  align-items: center;
+  gap: 8px;
+}
+
+body.native-mini-mode #playerBar > #nativeMiniTrafficLights.is-visible {
+  display: flex !important;
+}
+
+body.native-mini-mode .native-mini-traffic-light {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.42), 0 1px 2px rgba(19, 30, 45, 0.22);
+  transition: transform 120ms ease, filter 120ms ease;
+}
+
+body.native-mini-mode .native-mini-traffic-light:hover {
+  filter: brightness(0.94);
+  transform: scale(1.12);
+}
+
+body.native-mini-mode .native-mini-traffic-light:active {
+  transform: scale(0.9);
+}
+
+body.native-mini-mode .native-mini-traffic-light.is-disabled {
+  cursor: default;
+  pointer-events: none;
+  filter: saturate(0.36) brightness(1.04);
+  opacity: 0.44;
+}
+
+body.native-mini-mode .native-mini-traffic-light.is-close { background: #ff5f57; }
+body.native-mini-mode .native-mini-traffic-light.is-minimize { background: #febc2e; }
+body.native-mini-mode .native-mini-traffic-light.is-restore { background: #28c840; }
+
+body.native-mini-mode .player-nowplaying,
+body.native-mini-mode .player-cover {
+  width: 62px !important;
+  height: 62px !important;
+}
+
+body.native-mini-mode .player-cover {
+  display: block !important;
+  border-radius: 12px !important;
+  background: rgba(87, 104, 125, 0.22);
+  box-shadow: 0 7px 18px rgba(39, 53, 70, 0.22) !important;
+}
+
+body.native-mini-mode .player-cover-shadow,
+body.native-mini-mode .player-preview-badge,
+body.native-mini-mode #playerMore,
+body.native-mini-mode #playerBubbleMount,
+body.native-mini-mode .player-collapse-btn,
+body.native-mini-mode .player-collapsed-label,
+body.native-mini-mode #volumeBtn,
+body.native-mini-mode #volumeBar,
+body.native-mini-mode #fullscreenBtn {
+  display: none !important;
+}
+
+body.native-mini-mode .player-info {
+  display: block !important;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Song actions stay accessible without adding a second toolbar. */
+body.native-mini-mode #playerLike,
+body.native-mini-mode #fullscreenBtn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  width: 32px !important;
+  height: 32px !important;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.38) !important;
+  border-radius: 50% !important;
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(42, 49, 59, 0.68) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.52), 0 4px 10px rgba(58, 73, 96, 0.1) !important;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  font-size: 13px !important;
+}
+
+body.native-mini-mode #playerLike {
+  position: fixed;
+  top: 24px;
+  right: 124px;
+}
+
+body.native-mini-mode #playerLike.active {
+  color: #c34b68 !important;
+  text-shadow: none !important;
+}
+
+body.native-mini-mode #playerLike:hover,
+body.native-mini-mode #fullscreenBtn:hover {
+  color: #20242a !important;
+  background: rgba(255, 255, 255, 0.34) !important;
+  transform: scale(1.06);
+}
+
+body.native-mini-mode .player-title {
+  color: #20242a !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+  font-size: 19px !important;
+  font-weight: 680;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  text-shadow: none !important;
+}
+
+body.native-mini-mode .player-artist {
+  margin-top: 4px;
+  color: rgba(49, 56, 66, 0.67) !important;
+  font-size: 14px !important;
+  font-weight: 520;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+body.native-mini-mode .player-artist::after {
+  content: attr(data-album);
+}
+
+body.native-mini-mode .player-artist[data-album]:not([data-album=""])::before {
+  content: ' · ';
+}
+
+body.native-mini-mode #playerBar > .player-center {
+  position: absolute;
+  top: 91px;
+  right: 22px;
+  bottom: 13px;
+  left: 22px;
+  display: grid !important;
+  width: auto !important;
+  min-width: 0;
+  max-width: none !important;
+  grid-template-rows: 30px 1fr;
+  gap: 7px;
+}
+
+body.native-mini-mode .progress-container {
+  grid-row: 1;
+  display: grid !important;
+  width: 100% !important;
+  max-width: none !important;
+  grid-template-columns: 38px minmax(0, 1fr) 42px;
+  align-items: start;
+  gap: 8px;
+}
+
+body.native-mini-mode .time {
+  display: block !important;
+  min-width: 0 !important;
+  padding-top: 11px;
+  color: rgba(41, 48, 58, 0.68) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  font-size: 12px !important;
+  font-weight: 520;
+  line-height: 1;
+  text-align: left;
+}
+
+body.native-mini-mode #durationTime { text-align: right; }
+
+body.native-mini-mode .progress-bar {
+  display: flex !important;
+  width: 100%;
+  height: 20px !important;
+  min-height: 20px !important;
+  align-items: center;
+  background: transparent !important;
+  overflow: visible;
+}
+
+body.native-mini-mode .progress-bar .slider-root {
+  padding: 7px 0 !important;
+}
+
+body.native-mini-mode .progress-bar .slider-track {
+  height: 7px !important;
+  border-radius: 999px !important;
+  background: rgba(66, 78, 95, 0.12) !important;
+  box-shadow: inset 0 1px 1px rgba(40, 54, 72, 0.05) !important;
+}
+
+body.native-mini-mode .progress-bar .slider-range {
+  border-radius: inherit !important;
+  background: linear-gradient(90deg, rgb(var(--mini-progress-rgb, 54, 83, 116)), rgb(var(--mini-progress-light-rgb, 104, 142, 178))) !important;
+  box-shadow: 0 1px 3px rgba(var(--mini-progress-rgb, 54, 83, 116), 0.28) !important;
+}
+
+body.native-mini-mode .player-controls {
+  grid-row: 2;
+  display: flex !important;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(28px, 5vw, 52px) !important;
+  min-height: 39px;
+}
+
+body.native-mini-mode #shuffleBtn,
+body.native-mini-mode #prevBtn,
+body.native-mini-mode #playBtn,
+body.native-mini-mode #nextBtn,
+body.native-mini-mode #repeatBtn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  flex: 0 0 auto;
+  border: 0 !important;
+  background: transparent !important;
+  color: #24282f !important;
+  text-shadow: none !important;
+  box-shadow: none !important;
+}
+
+body.native-mini-mode .ctrl-btn {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 50% !important;
+  font-size: 17px !important;
+}
+
+body.native-mini-mode .ctrl-play {
+  width: 42px !important;
+  height: 42px !important;
+  font-size: 20px !important;
+}
+
+body.native-mini-mode .ctrl-btn:hover,
+body.native-mini-mode .ctrl-play:hover {
+  color: #171a1f !important;
+  background: rgba(45, 59, 77, 0.1) !important;
+  box-shadow: none !important;
+  transform: scale(1.06);
+}
+
+body.native-mini-mode .ctrl-btn:active,
+body.native-mini-mode .ctrl-play:active {
+  transform: scale(0.93);
+}
+
+body.native-mini-mode #playerBar > .player-right {
+  position: absolute;
+  top: 17px;
+  right: 18px;
+  display: flex !important;
+  width: 68px !important;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+body.native-mini-mode #fullscreenBtn { order: -1; }
+
+/* The one small top-right control returns to the normal app window. */
+body.native-mini-mode #nativeMiniBtn {
+  display: inline-flex !important;
+  width: 32px !important;
+  height: 32px !important;
+  color: rgba(42, 49, 59, 0.56) !important;
+  font-size: 13px !important;
+}
+
+body.native-mini-mode #nativeMiniBtn:hover {
+  color: #20242a !important;
+  background: rgba(45, 59, 77, 0.1) !important;
+}
+
+/* The queue becomes a contained glass sheet inside the mini window. */
+body.native-mini-mode > #queuePanel {
+  display: none !important;
+}
+
+body.native-mini-mode > #queuePanel.show {
+  position: fixed !important;
+  inset: 7px !important;
+  z-index: 1200;
+  display: flex !important;
+  width: auto !important;
+  height: auto !important;
+  padding: 18px 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.62) !important;
+  border-radius: 30px !important;
+  color: #20242b !important;
+  background: rgba(227, 237, 249, 0.92) !important;
+  box-shadow: 0 18px 42px rgba(10, 18, 31, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(38px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(38px) saturate(1.35) !important;
+  transform: none !important;
+}
+
+body.native-mini-mode #queuePanel .queue-header {
+  flex: 0 0 auto;
+  color: #20242b;
+}
+
+body.native-mini-mode #queuePanel .queue-header h3,
+body.native-mini-mode #queuePanel .queue-count,
+body.native-mini-mode #queuePanel .row-title,
+body.native-mini-mode #queuePanel .row-duration {
+  color: #20242b !important;
+}
+
+body.native-mini-mode #queuePanel .row-artist,
+body.native-mini-mode #queuePanel .empty-state {
+  color: rgba(42, 49, 59, 0.62) !important;
+}
+
+body.native-mini-mode #queuePanel .queue-list {
+  overflow-y: auto;
+}
+
+body.native-mini-mode #queuePanel .track-row:hover,
+body.native-mini-mode #queuePanel .track-row.playing {
+  background: rgba(255, 255, 255, 0.46) !important;
+}
+
+body.native-mini-mode .player-bar.is-collapsed .player-left,
+body.native-mini-mode .player-bar.is-collapsed .player-center,
+body.native-mini-mode .player-bar.is-collapsed .player-right {
+  display: flex !important;
+}
+
+body.native-mini-mode .player-bar.is-collapsed .player-center {
+  display: grid !important;
+}
+
+@keyframes native-mini-material-in {
+  from { opacity: 0; transform: scale(0.975); filter: blur(4px); }
+  to { opacity: 1; transform: scale(1); filter: blur(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.native-mini-mode .player-bar { animation: none; }
+}
+
 .hero-card:hover {
   transform: scale(1.012);
   border-color: rgba(255, 255, 255, 0.12);
@@ -1073,6 +1549,10 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   margin-bottom: 6px;
   letter-spacing: -0.6px;
   line-height: 1.15;
+}
+
+.hero-title:not(.has-shiny-text) {
+  color: transparent;
 }
 
 .hero-title::before {
@@ -5911,6 +6391,135 @@ body.player-is-collapsed { --player-height: 0px; }
 .player-bar > .glass-surface-mount { display: none !important; }
 #playerBubbleMount { display: block; pointer-events: auto; }
 
+/* Final native mini-player contract. Keep this after the BubbleMenu migration
+   rules so legacy hidden-player styles cannot leak into the native window. */
+html.native-mini-mode,
+html.native-mini-mode body {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+body.native-mini-mode > #playerBar {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 17px 28px 15px !important;
+  overflow: hidden !important;
+  isolation: isolate;
+  border: 0 !important;
+  border-radius: 30px !important;
+  background: linear-gradient(112deg, rgba(201, 213, 228, .82), rgba(219, 222, 205, .76)) !important;
+  background-image: none !important;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18) !important;
+  backdrop-filter: blur(34px) saturate(1.35) !important;
+  -webkit-backdrop-filter: blur(34px) saturate(1.35) !important;
+  pointer-events: auto !important;
+}
+
+body.native-mini-mode #playerBar::before,
+body.native-mini-mode #playerBar::after {
+  display: none !important;
+  content: none !important;
+}
+
+body.native-mini-mode #playerBar > .native-mini-drag-region {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+  background: transparent !important;
+  border: 0 !important;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+body.native-mini-mode #playerBar > .player-left,
+body.native-mini-mode #playerBar > .player-center,
+body.native-mini-mode #playerBar > .player-right {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 3 !important;
+}
+
+body.native-mini-mode #playerBar > .player-center { display: grid !important; }
+
+body.native-mini-mode #playerBar > #nativeMiniTrafficLights,
+body.native-mini-mode #playerBar > #nativeMiniTrafficLights.is-visible {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  position: absolute !important;
+  top: 14px !important;
+  left: 20px !important;
+  z-index: 8 !important;
+}
+
+body.native-mini-mode .native-mini-traffic-light {
+  flex: 0 0 12px !important;
+  width: 12px !important;
+  height: 12px !important;
+  min-width: 12px !important;
+  min-height: 12px !important;
+}
+
+body.native-mini-mode .native-mini-traffic-light.is-disabled {
+  pointer-events: none !important;
+}
+
+body.native-mini-mode #playerBar > .player-left {
+  top: 17px !important;
+  left: 70px !important;
+  right: 142px !important;
+  height: 60px !important;
+  z-index: 3 !important;
+}
+
+body.native-mini-mode #playerBar > .player-center {
+  top: 86px !important;
+  right: 20px !important;
+  bottom: 12px !important;
+  left: 20px !important;
+  z-index: 3 !important;
+}
+
+body.native-mini-mode #playerBar > .player-right {
+  top: 10px !important;
+  right: 14px !important;
+  z-index: 8 !important;
+}
+
+body.native-mini-mode #playerBar .ctrl-btn,
+body.native-mini-mode #playerBar .ctrl-play,
+body.native-mini-mode #playerBar #playerLike,
+body.native-mini-mode #playerBar #fullscreenBtn,
+body.native-mini-mode #playerBar #nativeMiniBtn {
+  position: relative;
+  z-index: 4;
+}
+
+body.native-mini-mode #playerDownload,
+body.native-mini-mode #playerMore,
+body.native-mini-mode #volumeBtn,
+body.native-mini-mode #volumeBar {
+  display: none !important;
+}
+
 /* 进度条只保留 ElasticSlider 的真实轨道，外层仅作为 GlassSurface 容器。 */
 .amp-progress-bar,
 .progress-bar,
@@ -7300,5 +7909,378 @@ body:has(.am-album-page-surface.active) .main-content {
     overflow-x: auto;
     touch-action: pan-x;
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Native mini-player wins over responsive and legacy player rules. */
+html.native-mini-mode,
+html.native-mini-mode body {
+  background: transparent !important;
+  background-color: transparent !important;
+  background-image: none !important;
+  overflow: hidden !important;
+}
+body.native-mini-mode > #playerBar {
+  display: block !important;
+  position: fixed !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 14px 20px 13px !important;
+  border: 0 !important;
+  outline: 0 !important;
+  border-radius: 26px !important;
+  background: linear-gradient(112deg, rgba(222, 231, 241, .88), rgba(231, 232, 216, .82)) !important;
+  background-image: none !important;
+  box-shadow: 0 22px 46px rgba(22, 30, 40, .22) !important;
+  backdrop-filter: blur(30px) saturate(1.18) !important;
+  -webkit-backdrop-filter: blur(30px) saturate(1.18) !important;
+  pointer-events: auto !important;
+}
+body.native-mini-mode #playerBar::before,
+body.native-mini-mode #playerBar::after { display: none !important; content: none !important; }
+body.native-mini-mode #playerBar > .glass-surface-mount,
+body.native-mini-mode #playerBar .glass-surface-mount,
+body.native-mini-mode #playerBar .glass-surface { display: none !important; }
+body.native-mini-mode #playerBar > .native-mini-drag-region {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 1 !important;
+  pointer-events: auto !important;
+  background: transparent !important;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+body.native-mini-mode #playerBar > .player-left,
+body.native-mini-mode #playerBar > .player-center,
+body.native-mini-mode #playerBar > .player-right {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  z-index: 3 !important;
+}
+body.native-mini-mode #playerBar > .player-center { display: grid !important; }
+body.native-mini-mode #playerBar > #nativeMiniTrafficLights,
+body.native-mini-mode #playerBar > #nativeMiniTrafficLights.is-visible {
+  display: flex !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+  position: absolute !important;
+  top: 17px !important;
+  left: 28px !important;
+  z-index: 8 !important;
+}
+body.native-mini-mode #playerBar > .player-left { top: 21px !important; left: 84px !important; right: 154px !important; height: 78px !important; }
+body.native-mini-mode #playerBar > .player-center { top: 108px !important; right: 30px !important; bottom: 14px !important; left: 30px !important; }
+body.native-mini-mode #playerBar > .player-right { top: 18px !important; right: 22px !important; z-index: 8 !important; width: 166px !important; justify-content: flex-end !important; gap: 7px !important; }
+body.native-mini-mode .player-nowplaying,
+body.native-mini-mode .player-cover { width: 82px !important; height: 82px !important; }
+body.native-mini-mode .player-cover { border-radius: 12px !important; box-shadow: 0 7px 18px rgba(36, 46, 60, .2) !important; }
+body.native-mini-mode .player-title { color: #16191e !important; font-size: 22px !important; font-weight: 700 !important; line-height: 1.1 !important; }
+body.native-mini-mode .player-artist { color: rgba(45, 51, 59, .72) !important; font-size: 17px !important; margin-top: 6px !important; }
+body.native-mini-mode .progress-container { grid-template-columns: 38px minmax(0, 1fr) 48px !important; gap: 10px !important; }
+body.native-mini-mode .progress-bar .slider-track { height: 7px !important; background: rgba(80, 91, 105, .22) !important; }
+body.native-mini-mode .player-controls { gap: clamp(42px, 8vw, 116px) !important; min-height: 50px !important; }
+body.native-mini-mode .ctrl-btn { width: 40px !important; height: 40px !important; color: #262a2f !important; font-size: 22px !important; }
+body.native-mini-mode .ctrl-play { width: 50px !important; height: 50px !important; font-size: 28px !important; }
+body.native-mini-mode #playerBar .ctrl-btn,
+body.native-mini-mode #playerBar .ctrl-play,
+body.native-mini-mode #playerBar #playerLike,
+body.native-mini-mode #playerBar #fullscreenBtn,
+body.native-mini-mode #playerBar #nativeMiniBtn { position: relative; z-index: 4; }
+body.native-mini-mode #playerDownload,
+body.native-mini-mode #volumeBar { display: none !important; }
+body.native-mini-mode #playerMore,
+body.native-mini-mode #volumeBtn {
+  display: inline-flex !important;
+  visibility: visible !important;
+  position: relative !important;
+  z-index: 4 !important;
+  width: 38px !important;
+  height: 38px !important;
+  border-radius: 50% !important;
+  color: #353a3e !important;
+  background: rgba(255,255,255,.52) !important;
+  border: 1px solid rgba(255,255,255,.44) !important;
+  box-shadow: inset 0 1px rgba(255,255,255,.64), 0 4px 10px rgba(56,64,74,.08) !important;
+}
+
+/* Mobile web contract: one vertical scroller, compact content geometry and
+   touch-first rendering. Kept last so older desktop-era media rules cannot
+   reintroduce side-rail or fixed-height behavior on iOS/Android. */
+@media (max-width: 768px) {
+  :root {
+    --mobile-top-space: calc(82px + env(safe-area-inset-top));
+    --mobile-bottom-space: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  html,
+  body {
+    width: 100%;
+    min-width: 0;
+    height: 100%;
+    min-height: 100%;
+    overflow: hidden !important;
+    overscroll-behavior-x: none;
+  }
+
+  body {
+    display: block !important;
+    touch-action: manipulation;
+  }
+
+  .main-content {
+    box-sizing: border-box;
+    width: 100vw !important;
+    min-width: 0 !important;
+    height: 100dvh !important;
+    min-height: 100dvh !important;
+    margin: 0 !important;
+    padding: var(--mobile-top-space) 0 var(--mobile-bottom-space) !important;
+    overflow-x: clip !important;
+    overflow-y: auto !important;
+    scroll-behavior: auto;
+    scroll-padding: var(--mobile-top-space) 0 var(--mobile-bottom-space);
+    overscroll-behavior-y: contain;
+    touch-action: pan-y !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page,
+  .page.active {
+    box-sizing: border-box;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: calc(100dvh - var(--mobile-top-space));
+    margin: 0 !important;
+    padding-bottom: 120px;
+  }
+
+  .top-dock {
+    height: calc(30px + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+    padding-inline: 12px;
+    background: rgba(7, 7, 17, .82);
+    backdrop-filter: blur(18px) saturate(1.2);
+    -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  }
+
+  .mobile-topbar {
+    inset: calc(32px + env(safe-area-inset-top)) auto auto 10px;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  .mobile-menu-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    pointer-events: auto;
+    touch-action: manipulation;
+  }
+
+  .mobile-page-title,
+  .mobile-topbar-spacer { display: none !important; }
+
+  .hero-section { padding: 12px 12px 4px !important; }
+  .hero-card {
+    min-height: 0;
+    padding: 18px 16px 16px !important;
+    gap: 9px !important;
+    border-radius: 18px;
+  }
+  .hero-art {
+    width: min(42vw, 164px) !important;
+    height: min(42vw, 164px) !important;
+  }
+  .hero-title {
+    max-width: 100%;
+    margin-top: 5px;
+    font-size: clamp(21px, 6.5vw, 26px) !important;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+  .hero-artist { margin-top: 7px; font-size: 15px; }
+  .hero-album { margin-top: 4px; font-size: 12px; }
+  #heroPlaySpecularMount { margin-top: 11px; }
+  .hero-play-cyan { min-height: 44px; padding-inline: 22px; }
+
+  .section { padding: 15px 16px 10px !important; }
+  .section-header { margin-bottom: 12px; gap: 10px; }
+  .section-title { min-width: 0; font-size: 20px; }
+  .section-link { flex: 0 0 auto; color: rgba(255,255,255,.92); }
+
+  .scroll-row {
+    width: 100%;
+    gap: 12px;
+    padding-bottom: 4px;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x proximity;
+    overscroll-behavior-x: contain;
+    touch-action: pan-x !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  .scroll-row > * { scroll-snap-align: start; }
+  .am-card,
+  .am-card .am-artwork {
+    width: 112px !important;
+    min-width: 112px !important;
+  }
+  .am-card .am-artwork { height: 112px !important; }
+
+  .browse-shell {
+    box-sizing: border-box;
+    width: 100% !important;
+    padding: 18px 16px 28px !important;
+  }
+  .browse-header { gap: 16px; }
+  .browse-heading h1 { font-size: 30px; }
+  .browse-heading p { max-width: 34rem; font-size: 13px; line-height: 1.55; }
+  .browse-search-box { min-height: 48px; }
+  .browse-section { margin-top: 26px; }
+  .browse-section-head { gap: 10px; }
+  .browse-section-head h2 { font-size: 21px; }
+  .browse-section-meta { max-width: 34%; font-size: 11px; }
+  .browse-quick-grid { gap: 10px; }
+  .browse-quick-grid .card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    padding-block: 8px;
+  }
+  .browse-quick-grid .magic-bento-card {
+    min-height: 142px;
+    padding: 13px;
+    border-radius: 16px;
+  }
+  .browse-quick-grid .magic-bento-card__description {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .browse-results-list,
+  .track-list-container { width: 100%; min-width: 0; }
+
+  .library-page { padding-inline: 16px !important; }
+  .library-header {
+    min-height: 86px;
+    padding: 14px 0 16px !important;
+    gap: 12px;
+  }
+  .library-heading { min-width: 0; gap: 12px; }
+  .library-heading h1 { font-size: 27px; line-height: 1.1; }
+  .library-heading p { margin-top: 5px; font-size: 12px; }
+  .library-icon { width: 52px; height: 52px; flex: 0 0 52px; }
+  .library-header-actions { flex: 0 0 auto; }
+  .library-primary-btn { min-height: 42px; padding-inline: 14px; }
+  .library-workspace,
+  .local-workspace { width: 100%; min-width: 0; padding-top: 14px !important; }
+
+  .track-row,
+  .album-track-row,
+  .fav-track-row,
+  .local-track-row,
+  .browse-result-row {
+    max-width: 100%;
+    contain: layout paint;
+  }
+  .row-title,
+  .row-artist,
+  .album-track-title,
+  .album-track-artist { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .am-artist-page-surface .am-artist-hero { height: 280px; min-height: 280px; }
+  .am-artist-page-surface .am-artist-content { padding-top: 18px; }
+  .am-artist-page-surface .am-artist-featured-grid { gap: 10px; }
+  .am-album-page-surface .album-detail-header,
+  .am-album-page-surface #albumTrackList { width: calc(100% - 32px); }
+  .am-album-page-surface .album-detail-cover {
+    width: min(62vw, 230px);
+    height: min(62vw, 230px);
+  }
+  .am-album-page-surface .album-detail-meta h1 { font-size: 27px; }
+
+  .amp-fullscreen-player {
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .amp-fullscreen-player .amp-content {
+    width: calc(100vw - 28px) !important;
+    height: calc(100dvh - 52px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) !important;
+    padding: 4px 0 18px !important;
+    gap: 14px !important;
+    overscroll-behavior-y: contain;
+  }
+  .amp-fullscreen-player .amp-artwork-wrapper {
+    width: min(52vw, 206px) !important;
+    height: min(52vw, 206px) !important;
+    margin-bottom: 9px !important;
+  }
+  .amp-fullscreen-player .amp-song-title { font-size: 20px; }
+  .amp-fullscreen-player .amp-song-info { margin-bottom: 9px; }
+  .amp-fullscreen-player .amp-lyrics-column {
+    height: 42dvh !important;
+    min-height: 240px !important;
+  }
+  .amp-fullscreen-player .amp-lyrics-line { font-size: 19px; line-height: 1.28; }
+  .amp-fullscreen-player .amp-lyrics-line.active { font-size: 21px; }
+
+  #homeFloatingLinesMount canvas,
+  #browsePrismMount canvas,
+  #softAuroraHost canvas { image-rendering: auto; }
+  #browseSplashCursorMount { display: none !important; }
+}
+
+@media (max-width: 374px) {
+  :root { --mobile-top-space: calc(78px + env(safe-area-inset-top)); }
+  .hero-section { padding-inline: 10px !important; }
+  .hero-card { padding: 15px 13px 14px !important; }
+  .hero-art { width: 142px !important; height: 142px !important; }
+  .section { padding-inline: 14px !important; }
+  .library-page { padding-inline: 12px !important; }
+  .library-heading p { display: none; }
+  .library-primary-btn { padding-inline: 11px; font-size: 12px; }
+  .amp-fullscreen-player .amp-artwork-wrapper {
+    width: 174px !important;
+    height: 174px !important;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .hero-card:hover,
+  .am-card:hover,
+  .track-row:hover,
+  .album-track-row:hover,
+  .magic-bento-card:hover,
+  .icon-btn:hover { transform: none !important; }
+
+  .hero-card,
+  .am-card,
+  .track-row,
+  .album-track-row,
+  button { -webkit-tap-highlight-color: transparent; }
+
+  .tilted-card-inner { transform: none !important; transition: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
   }
 }
