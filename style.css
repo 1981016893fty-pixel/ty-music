@@ -817,7 +817,7 @@ body.native-mini-mode #nativeMiniBtn { display: flex !important; }
   padding: 0 16px;
   border: 0;
   border-radius: 0;
-  z-index: 340;
+  z-index: 10010;
   overflow: hidden;
   pointer-events: none;
   transform: none;
