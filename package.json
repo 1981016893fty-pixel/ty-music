@@ -9,6 +9,7 @@
     "desktop:prepare": "node desktop/build.mjs",
     "desktop:dev": "npm run desktop:prepare && tauri dev",
     "desktop:build": "npm run desktop:prepare && tauri build",
+    "desktop:build:windows": "npm run desktop:prepare && tauri build --ci",
     "test:data": "node scripts/verify-music-data.mjs",
     "test:electric-border": "node scripts/verify-electric-border.mjs",
     "test:grid": "node scripts/verify-grid-distortion.mjs"
