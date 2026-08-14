@@ -867,6 +867,7 @@ html:has(.amp-fullscreen-player.show) .top-dock {
 .top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); transform: translateY(-1px); }
 .top-dock__client-entry > i:first-child { color: #b8ff65; }
 .top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
+html.ty-desktop .top-dock__client-entry { display: none; }
 .top-dock__glitch {
   margin: 0;
   color: #fff;
