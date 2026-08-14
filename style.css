@@ -3063,6 +3063,8 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
+.top-dock__client-content { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.top-dock__client-icon { color: inherit; font-size: 11px; }
 #topDockClientMount { display: flex; align-items: center; margin-left: auto; }
 button.top-dock__client-entry {
   width: 132px !important;
