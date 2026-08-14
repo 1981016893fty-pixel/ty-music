@@ -855,11 +855,13 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   min-height: 28px;
   margin-left: auto;
   padding: 0 13px;
-  border: 1px solid rgba(184,255,101,.5);
+  border: 1px solid rgba(255,255,255,.72);
   border-radius: 999px;
   color: rgba(255,255,255,.82);
-  background: rgba(16,26,14,.72);
-  box-shadow: inset 0 1px rgba(255,255,255,.08);
+  background: rgba(255,255,255,.02);
+  box-shadow: inset 0 1px rgba(255,255,255,.1), 0 8px 20px rgba(0,0,0,.22);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   font-size: 12px;
   font-weight: 650;
   text-decoration: none;
@@ -867,8 +869,8 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   white-space: nowrap;
   transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
 }
-.top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); transform: translateY(-1px); }
-.top-dock__client-entry > i:first-child { color: #b8ff65; }
+.top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.9); box-shadow: inset 0 1px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.3); transform: translateY(-1px); }
+.top-dock__client-entry > i:first-child { color: rgba(255,255,255,.96); }
 .top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
 html.ty-desktop .top-dock__client-entry { display: none; }
 .top-dock__glitch {
