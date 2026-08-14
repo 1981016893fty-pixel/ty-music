@@ -440,7 +440,7 @@ if (topDockClientMount) {
       onClick={() => { window.location.href = 'desktop.html'; }}
     >
       <span className="top-dock__client-content">
-        <i className="fa-solid fa-desktop top-dock__client-icon" aria-hidden="true" />
+        <img className="top-dock__client-icon" src="/icon-192.png" alt="" aria-hidden="true" />
         <ShinyText text="桌面客户端" speed={2.1} color="#FFFFFF" shineColor="#FFFFFF" />
       </span>
     </SpecularButton>
