@@ -523,7 +523,7 @@ function mountGlassSurfaces() {
       glassRoots.delete(target);
     }
   });
-  document.querySelectorAll('.top-dock,.browse-search-box,.hero-card,.recent-section .am-card.wide,.nav-item,.bubble-menu__trigger,.bubble-menu__item,.player-bubble-menu__trigger,.player-bubble-menu__now-playing,.player-bubble-menu__item,.player-bubble-menu__volume,.progress-bar,.volume-bar,.amp-progress-bar,.modal-content,.queue-panel,.album-detail-panel,.track-options-menu,.am-artist-page-surface,.am-album-page-surface,.am-artist-bio,.local-upload-area,.track-row.playing,.album-track-row.playing,.fav-track-row.playing,.local-track-row.playing').forEach(target => {
+  document.querySelectorAll('.browse-search-box,.hero-card,.recent-section .am-card.wide,.nav-item,.bubble-menu__trigger,.bubble-menu__item,.player-bubble-menu__trigger,.player-bubble-menu__now-playing,.player-bubble-menu__item,.player-bubble-menu__volume,.progress-bar,.volume-bar,.amp-progress-bar,.modal-content,.queue-panel,.album-detail-panel,.track-options-menu,.am-artist-page-surface,.am-album-page-surface,.am-artist-bio,.local-upload-area,.track-row.playing,.album-track-row.playing,.fav-track-row.playing,.local-track-row.playing').forEach(target => {
     if (glassRoots.has(target)) return;
     target.classList.add('glass-surface-host');
     const mount = document.createElement('div');
