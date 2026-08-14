@@ -426,18 +426,21 @@ if (topDock && topDock.parentElement !== document.documentElement) document.docu
 const topDockBrandMount = document.getElementById('topDockBrandMount');
 if (topDockBrandMount) createRoot(topDockBrandMount).render(<GlitchText className="top-dock__glitch" speed={0.85} enableOnHover={false}>TY MUSIC</GlitchText>);
 
-const topDockClientSurfaceMount = document.getElementById('topDockClientSurfaceMount');
-if (topDockClientSurfaceMount) {
-  createRoot(topDockClientSurfaceMount).render(
-    <GlassSurface
-      className="glass-surface--capsule"
-      borderRadius={999}
-      brightness={72}
-      opacity={0.9}
+const topDockClientMount = document.getElementById('topDockClientMount');
+if (topDockClientMount) {
+  createRoot(topDockClientMount).render(
+    <SpecularButton
+      className="top-dock__client-entry"
+      tint="rgba(255, 255, 255, 0.02)"
       blur={18}
-      backgroundOpacity={0.025}
-      saturation={1.25}
-    />
+      lineColor="rgba(255,255,255,0.72)"
+      baseColor="rgba(255,255,255,0.94)"
+      intensity={0.62}
+      autoAnimate
+      onClick={() => { window.location.href = 'desktop.html'; }}
+    >
+      <ShinyText text="桌面客户端" speed={2.1} color="#FFFFFF" shineColor="#FFFFFF" />
+    </SpecularButton>
   );
 }
 
