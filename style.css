@@ -3052,7 +3052,17 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   transition: var(--transition-fast);
   white-space: nowrap;
 }
-.top-dock__client-entry .specular-button__label { font-size: 11px; }
+.top-dock__client-entry .specular-button__label {
+  position: absolute !important;
+  top: 50%;
+  left: 50%;
+  z-index: 2;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
 #topDockClientMount { display: flex; align-items: center; margin-left: auto; }
 button.top-dock__client-entry {
   width: 132px !important;
