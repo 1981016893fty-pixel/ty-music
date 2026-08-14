@@ -1,12 +1,16 @@
 use serde::{Deserialize, Serialize};
-use tauri::{Emitter, Manager, State};
+use tauri::{Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-use std::sync::Mutex;
-
 #[cfg(target_os = "macos")]
-use mediaplayer::{Artwork, CommandToken, HandlerStatus, NowPlayingInfo, NowPlayingInfoCenter,
-    NowPlayingMediaType, PlaybackState, RemoteCommandCenter};
+use mediaplayer::{
+    Artwork, CommandToken, HandlerStatus, NowPlayingInfo, NowPlayingInfoCenter,
+    NowPlayingMediaType, PlaybackState, RemoteCommandCenter,
+};
+#[cfg(target_os = "macos")]
+use std::sync::Mutex;
+#[cfg(target_os = "macos")]
+use tauri::State;
 
 #[cfg(target_os = "macos")]
 struct NativeMediaState {
@@ -35,7 +39,7 @@ struct PlatformInfo {
 #[tauri::command]
 fn platform_info() -> PlatformInfo {
     PlatformInfo {
-        platform: "macOS".to_string(),
+        platform: std::env::consts::OS.to_string(),
         version: std::env::consts::OS.to_string(),
     }
 }
@@ -55,60 +59,76 @@ fn close_window(window: tauri::Window) -> Result<(), String> {
     window.close().map_err(|error| error.to_string())
 }
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn now_playing_update(
     payload: NowPlayingPayload,
-    #[cfg(target_os = "macos")] state: State<'_, NativeMediaState>,
+    state: State<'_, NativeMediaState>,
 ) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        if let Some(encoded) = payload.artwork_data.as_deref() {
-            let artwork = (|| {
-                use base64::{engine::general_purpose::STANDARD, Engine as _};
-                let bytes = STANDARD.decode(encoded).ok()?;
-                let path = std::env::temp_dir().join("ty-music-now-playing.jpg");
-                std::fs::write(&path, bytes).ok()?;
-                Artwork::from_path(path.to_str()?).ok()
-            })();
-            if let Ok(mut stored) = state.artwork.lock() {
-                *stored = artwork;
-            }
+    if let Some(encoded) = payload.artwork_data.as_deref() {
+        let artwork = (|| {
+            use base64::{engine::general_purpose::STANDARD, Engine as _};
+            let bytes = STANDARD.decode(encoded).ok()?;
+            let path = std::env::temp_dir().join("ty-music-now-playing.jpg");
+            std::fs::write(&path, bytes).ok()?;
+            Artwork::from_path(path.to_str()?).ok()
+        })();
+        if let Ok(mut stored) = state.artwork.lock() {
+            *stored = artwork;
         }
-
-        let center = NowPlayingInfoCenter::default_center();
-        let mut info = NowPlayingInfo::new().title(payload.title);
-        if let Some(artist) = payload.artist { info = info.artist(artist); }
-        if let Some(album) = payload.album { info = info.album_title(album); }
-        if let Some(duration) = payload.duration.filter(|v| v.is_finite() && *v > 0.0) {
-            info = info.playback_duration(duration);
-        }
-        if let Some(position) = payload.position.filter(|v| v.is_finite() && *v >= 0.0) {
-            info = info.elapsed_playback_time(position);
-        }
-        info = info.playback_rate(if payload.is_playing { 1.0 } else { 0.0 })
-            .default_playback_rate(1.0)
-            .media_type(NowPlayingMediaType::Audio);
-        if let Ok(stored) = state.artwork.lock() {
-            center.set_now_playing_info_with_artwork(&info, stored.as_ref());
-        } else {
-            center.set_now_playing_info(&info);
-        }
-        center.set_playback_state(if payload.is_playing { PlaybackState::Playing } else { PlaybackState::Paused });
     }
-    #[cfg(not(target_os = "macos"))]
+
+    let center = NowPlayingInfoCenter::default_center();
+    let mut info = NowPlayingInfo::new().title(payload.title);
+    if let Some(artist) = payload.artist {
+        info = info.artist(artist);
+    }
+    if let Some(album) = payload.album {
+        info = info.album_title(album);
+    }
+    if let Some(duration) = payload.duration.filter(|v| v.is_finite() && *v > 0.0) {
+        info = info.playback_duration(duration);
+    }
+    if let Some(position) = payload.position.filter(|v| v.is_finite() && *v >= 0.0) {
+        info = info.elapsed_playback_time(position);
+    }
+    info = info
+        .playback_rate(if payload.is_playing { 1.0 } else { 0.0 })
+        .default_playback_rate(1.0)
+        .media_type(NowPlayingMediaType::Audio);
+    if let Ok(stored) = state.artwork.lock() {
+        center.set_now_playing_info_with_artwork(&info, stored.as_ref());
+    } else {
+        center.set_now_playing_info(&info);
+    }
+    center.set_playback_state(if payload.is_playing {
+        PlaybackState::Playing
+    } else {
+        PlaybackState::Paused
+    });
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn now_playing_update(payload: NowPlayingPayload) -> Result<(), String> {
     let _ = payload;
     Ok(())
 }
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
-fn now_playing_clear(
-    #[cfg(target_os = "macos")] state: State<'_, NativeMediaState>,
-) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        NowPlayingInfoCenter::default_center().clear();
-        if let Ok(mut artwork) = state.artwork.lock() { *artwork = None; }
+fn now_playing_clear(state: State<'_, NativeMediaState>) -> Result<(), String> {
+    NowPlayingInfoCenter::default_center().clear();
+    if let Ok(mut artwork) = state.artwork.lock() {
+        *artwork = None;
     }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn now_playing_clear() -> Result<(), String> {
     Ok(())
 }
 
@@ -117,9 +137,11 @@ fn setup_native_media(app: &tauri::AppHandle) -> NativeMediaState {
     let center = RemoteCommandCenter::shared();
     let app_handle = app.clone();
     let mut tokens = Vec::new();
-    let emit = |name: &'static str, app: tauri::AppHandle| move |_| {
-        let _ = app.emit(name, ());
-        HandlerStatus::Success
+    let emit = |name: &'static str, app: tauri::AppHandle| {
+        move |_| {
+            let _ = app.emit(name, ());
+            HandlerStatus::Success
+        }
     };
     tokens.push(center.on_play(emit("ty:media-play", app_handle.clone())));
     tokens.push(center.on_pause(emit("ty:media-pause", app_handle.clone())));
@@ -133,33 +155,54 @@ fn setup_native_media(app: &tauri::AppHandle) -> NativeMediaState {
         }
         HandlerStatus::Success
     }));
-    NativeMediaState { _tokens: Mutex::new(tokens), artwork: Mutex::new(None) }
+    NativeMediaState {
+        _tokens: Mutex::new(tokens),
+        artwork: Mutex::new(None),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, shortcut, event| {
-            if event.state() != ShortcutState::Pressed { return; }
-            if shortcut == &"CommandOrControl+Alt+Space".parse::<Shortcut>().expect("valid media shortcut") {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.emit("ty:media-toggle", ());
-                }
-            }
-        }).build())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, shortcut, event| {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if shortcut
+                        == &"CommandOrControl+Alt+Space"
+                            .parse::<Shortcut>()
+                            .expect("valid media shortcut")
+                    {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.emit("ty:media-toggle", ());
+                        }
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.manage(setup_native_media(app.handle()));
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_title("TY Music");
             }
-            let shortcut = "CommandOrControl+Alt+Space".parse::<Shortcut>().map_err(|error| error.to_string())?;
-            app.global_shortcut().register(shortcut).map_err(|error| error.to_string())?;
+            let shortcut = "CommandOrControl+Alt+Space"
+                .parse::<Shortcut>()
+                .map_err(|error| error.to_string())?;
+            app.global_shortcut()
+                .register(shortcut)
+                .map_err(|error| error.to_string())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            platform_info, set_window_title, minimize_window, close_window,
-            now_playing_update, now_playing_clear
+            platform_info,
+            set_window_title,
+            minimize_window,
+            close_window,
+            now_playing_update,
+            now_playing_clear
         ])
         .run(tauri::generate_context!())
         .expect("error while running TY Music");
