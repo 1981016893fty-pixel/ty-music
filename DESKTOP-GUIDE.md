@@ -28,7 +28,7 @@ npm run desktop:build
 
 The Apple Silicon installer is written to:
 
-`src-tauri/target/release/bundle/dmg/TY Music_1.0.0_aarch64.dmg`
+`src-tauri/target/release/bundle/dmg/TY Music_1.0.3_aarch64.dmg`
 
 The current native bridge exposes `platform_info`, `set_window_title`,
 `minimize_window`, and `close_window`. Media-key and Now Playing integration

@@ -17,7 +17,7 @@
   </style>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260814">
   <link rel="preload" href="style.css?v=20260814-client-entry-v12" as="style">
-  <link rel="preload" href="player.js?v=20260810-fullscreen-syncfix-v38" as="script">
+  <link rel="preload" href="player.js?v=20260817-fullscreen-syncfix-v39" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
   <link rel="stylesheet" href="style.css?v=20260814-client-entry-v12">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
@@ -32,7 +32,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/service-worker.js?v=20260810-fullscreen-syncfix-v38').then(function(reg) {
+      navigator.serviceWorker.register('/service-worker.js?v=20260817-fullscreen-syncfix-v39').then(function(reg) {
           console.log('[SW] Registered:', reg.scope);
         }).catch(function(err) {
           console.log('[SW] Failed:', err);
@@ -752,8 +752,8 @@
     }, 32000);
   </script>
   <link rel="stylesheet" href="soft-aurora-react.css?v=20260810hero-layer-fix">
-  <script src="soft-aurora-react.js?v=20260810hero-layer-fix" async fetchpriority="low"></script>
-  <script src="player.js?v=20260810-fullscreen-syncfix-v38" defer></script>
+  <script src="soft-aurora-react.js?v=20260817hero-layer-fix" async fetchpriority="low"></script>
+  <script src="player.js?v=20260817-fullscreen-syncfix-v39" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>

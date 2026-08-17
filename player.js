@@ -3073,6 +3073,13 @@ function updateAmpFullscreenPlayer(trackOverride) {
     if (artistPhotoUrl) coverCandidates.push(artistPhotoUrl);
     
     if (coverCandidates.length > 0) {
+      // Prime the React-mounted TiltedCard immediately so the fullscreen
+      // artwork is visible even before the async image preload resolves.
+      const firstCover = coverCandidates[0];
+      if (firstCover) {
+        window.ampCoverSrc = firstCover;
+        window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: firstCover } }));
+      }
       applyAmpArtwork(artwork, coverCandidates, 0, track.id);
     } else {
       artwork.style.backgroundImage = '';
