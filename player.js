@@ -389,29 +389,57 @@ const SOURCE_LABELS = {
 
 let browseResultTitleOverride = '';
 
+function resizeCoverUrl(value, size) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const raw = value.trim();
+  if (raw.startsWith('data:')) return raw;
+
+  try {
+    const parsed = new URL(raw, window.location.href);
+    const isProxyCover = parsed.pathname === '/api/cover' || parsed.pathname === '/api/music/cover';
+    const isNeteaseCover = /(^|\.)music\.126\.net$/.test(parsed.hostname) || parsed.hostname === 'music.163.com';
+    if (!isProxyCover && !isNeteaseCover) return raw;
+
+    if (isProxyCover) parsed.searchParams.set('size', String(size));
+    else {
+      parsed.protocol = 'https:';
+      parsed.searchParams.set('param', `${size}y${size}`);
+    }
+    return raw.startsWith('/') ? parsed.pathname + parsed.search : parsed.href;
+  } catch (_) {
+    return raw;
+  }
+}
+
+function coverUrlForTrack(song, size, source) {
+  const preferred = size <= 300 ? ['coverSmall', 'cover'] : ['cover', 'coverSmall'];
+  for (const field of preferred) {
+    const value = song?.[field];
+    if (value) return resolveMusicResource(resizeCoverUrl(String(value), size));
+  }
+
+  const picId = song?.picId || song?.pic_id || '';
+  if (!picId) return '';
+  return resolveMusicResource(
+    `/api/music/cover?picId=${encodeURIComponent(picId)}&source=${encodeURIComponent(source || 'netease')}&size=${size}`
+  );
+}
+
 // 标准化歌曲对象（新音源）
 function normalizeTrack(song) {
   var src = song.source || 'netease';
   var pid = song.picId || song.pic_id || '';
   var albumId = song.albumId || song.album_id || '';
-  var coverUrl = song.cover || '';
-  var coverSmallUrl = song.coverSmall || song.cover || '';
-
-  // 无直接封面URL时，通过picId构建代理URL
-  if (!coverUrl && pid) {
-    coverUrl = '/api/music/cover?picId=' + encodeURIComponent(pid) + '&source=' + src + '&size=1000';
-  }
-  if (!coverSmallUrl && pid) {
-    coverSmallUrl = '/api/music/cover?picId=' + encodeURIComponent(pid) + '&source=' + src + '&size=300';
-  }
+  var coverUrl = coverUrlForTrack(song, 1000, src);
+  var coverSmallUrl = coverUrlForTrack(song, 300, src);
 
   return {
     id: String(song.id || ''),
     title: song.name || '未知歌曲',
     artist: song.artist || '未知歌手',
     album: song.album || '',
-    cover: resolveMusicResource(coverUrl || song.cover || (pid ? '/api/music/cover?picId=' + encodeURIComponent(pid) + '&source=' + src + '&size=1000' : '')),
-    coverSmall: resolveMusicResource(coverSmallUrl || song.coverSmall || ''),
+    cover: coverUrl,
+    coverSmall: coverSmallUrl,
     picId: pid,
     albumId: String(albumId || ''),
     duration: song.duration || 0,
@@ -554,18 +582,18 @@ async function fetchNeteaseNew(limit) {
 
 // 标准化新音源歌曲
 function normalizeNeteaseTrack(song) {
-  // 直接使用后端返回的 cover 和 coverSmall（已包含正确的 albumId）
-  // 关键修复：当 coverSmall 为空时，用 cover 填充，确保所有位置都能显示封面
-  const cover = song.cover || (song.picId || song.pic_id ? '/api/music/cover?picId=' + encodeURIComponent(song.picId || song.pic_id) + '&source=netease&size=1000' : '');
-  const coverSmall = song.coverSmall || cover || '';
+  // Keep both artwork sizes canonical even when an older API/cache entry only
+  // contains one cover URL.
   const picId = song.picId || song.pic_id || '';
+  const cover = coverUrlForTrack(song, 1000, 'netease');
+  const coverSmall = coverUrlForTrack(song, 300, 'netease');
   return {
     id: String(song.id || ''),
     title: song.name || '未知歌曲',
     artist: song.artist || '未知歌手',
     album: song.album || '',
-    cover: resolveMusicResource(cover),
-    coverSmall: resolveMusicResource(coverSmall),
+    cover,
+    coverSmall,
     albumId: song.albumId || song.album_id || '',
     picId: picId,
     duration: song.duration || 0,
@@ -781,6 +809,28 @@ function cacheTrack(track) {
     duration: track.duration || 0,
     source: track.source || 'netease',
   });
+}
+
+function trackFromRecentEntry(entry) {
+  if (!entry) return null;
+  const id = String(entry.id || '');
+  if (!id) return null;
+  const cached = state.trackCache.get(id) || state.trackCache.get(entry.id);
+  const merged = { ...(cached || {}), ...entry, id };
+  const source = merged.source || 'netease';
+  return {
+    id,
+    title: merged.title || merged.name || '未知歌曲',
+    artist: merged.artist || '未知歌手',
+    album: merged.album || '',
+    cover: coverUrlForTrack(merged, 1000, source),
+    coverSmall: coverUrlForTrack(merged, 300, source),
+    picId: merged.picId || merged.pic_id || '',
+    albumId: String(merged.albumId || merged.album_id || ''),
+    duration: Number(merged.duration) || 0,
+    previewUrl: merged.previewUrl || '',
+    source,
+  };
 }
 
 function toggleFavorite(track) {
@@ -1031,7 +1081,9 @@ function playTrack(track, index, skipRecentUpdate) {
 
   // 通过代理播放（服务器中转，绕过 CDN 防盗链）
   if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
-    var proxyUrl = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+    var proxyPath = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+    if (window.__TY_MUSIC_DESKTOP__) proxyPath += '&stream=1';
+    var proxyUrl = resolveMusicResource(proxyPath);
     console.log('[Play] Using proxy URL for', track.title);
     audio.src = proxyUrl;
     audio.load();
@@ -1056,7 +1108,7 @@ function playTrack(track, index, skipRecentUpdate) {
 
   // fallback
   if (track.previewUrl) {
-    audio.src = track.previewUrl;
+    audio.src = resolveMusicResource(track.previewUrl);
     audio.load();
     audio.play().then(() => {
       state.isPlaying = true;
@@ -1673,21 +1725,7 @@ function refreshRecentTracksUI() {
     return;
   }
   if (section) section.style.display = '';
-  var recentTracks = state.recentPlays.map(function(r) {
-    var cached = state.trackCache.get(r.id);
-    if (cached) return {
-      id: r.id, title: cached.title || r.title, artist: cached.artist || r.artist,
-      album: cached.album || r.album || '', cover: cached.cover || r.cover || '',
-      coverSmall: cached.coverSmall || r.cover || '', picId: cached.picId || r.picId || '',
-      duration: cached.duration || 0, previewUrl: cached.previewUrl || r.previewUrl || '',
-      source: cached.source || r.source || 'netease',
-    };
-    return {
-      id: r.id, title: r.title, artist: r.artist, album: r.album || '',
-      cover: r.cover || '', coverSmall: r.cover || '', picId: r.picId || '',
-      duration: 0, previewUrl: r.previewUrl || '', source: r.source || 'netease',
-    };
-  });
+  var recentTracks = state.recentPlays.map(trackFromRecentEntry).filter(Boolean);
   container.innerHTML = recentTracks.map(function(t) { return createAMCard(t, true); }).join('');
 }
 
@@ -1810,37 +1848,7 @@ async function loadDiscover() {
   if (state.recentPlays.length) {
     const recentSection = $('#recentSection');
     if (recentSection) recentSection.style.display = '';
-    const recentTracks = state.recentPlays.map(r => {
-      // 优先从 trackCache 拿完整信息（含 album、picId）
-      const cached = state.trackCache.get(r.id);
-      if (cached) {
-        return {
-          id: r.id,
-          title: cached.title || r.title,
-          artist: cached.artist || r.artist,
-          album: cached.album || r.album || '',      // ✅ 补全 album
-          cover: cached.cover || r.cover || '',
-          coverSmall: cached.coverSmall || r.cover || '',
-          picId: cached.picId || r.picId || '', // ✅ 补全 picId
-          duration: cached.duration || 0,
-          previewUrl: cached.previewUrl || r.previewUrl || '',
-          source: cached.source || r.source || 'netease',
-        };
-      }
-      // 没有缓存，直接用 recentPlays 的数据（可能缺 album）
-      return { 
-        id: r.id, 
-        title: r.title, 
-        artist: r.artist, 
-        album: r.album || '',       // ✅ 已有 album 字段
-        cover: r.cover || '', 
-        coverSmall: r.cover || '', 
-        picId: r.picId || '',     // ✅ 已有 picId 字段
-        duration: 0, 
-        previewUrl: '', 
-        source: r.source || 'netease',
-      };
-    });
+    const recentTracks = state.recentPlays.map(trackFromRecentEntry).filter(Boolean);
     addToQueue(recentTracks);
     renderScrollRow('#recentTracks', recentTracks, true);
   } else {

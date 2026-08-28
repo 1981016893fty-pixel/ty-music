@@ -213,6 +213,49 @@ function _httpsGetJSONOnce(url, timeout) {
   });
 }
 
+// Render's outbound network can handle the GD API more reliably through
+// Node's built-in fetch than through the legacy https client. Keep the latter
+// as a fallback when fetch is unavailable or transiently fails.
+async function fetchJSONWithFetch(url, timeout = 10000) {
+  if (typeof fetch !== 'function') throw new Error('fetch is unavailable');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': UA,
+        'Referer': 'https://music.163.com/',
+        'Accept': 'application/json',
+      },
+      redirect: 'follow',
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function gdGetJSON(url, timeout = 10000, isUsable = data => Boolean(data)) {
+  let lastError = null;
+  const requesters = [
+    () => fetchJSONWithFetch(url, timeout),
+    () => httpsGetJSON(url, timeout),
+  ];
+  for (const request of requesters) {
+    try {
+      const data = await request();
+      if (data && typeof data === 'object' && isUsable(data)) return data;
+      lastError = new Error('Unusable GD API response');
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) console.warn(`[GD API] Request failed: ${lastError.message}`);
+  return null;
+}
+
 // HTTP/HTTPS GET (支持重定向，使用 keep-alive 连接复用)
 // timeout 仅用于连接阶段，流式传输不设超时
 function smartGet(url, headers, timeout = 15000) {
@@ -633,7 +676,7 @@ async function gdGetSongUrl(id) {
 
   try {
     const url = `${GD_API}?types=url&id=${id}&source=netease&br=320`;
-    const data = await dedupedGetJSON(url, 15000);
+    const data = await gdGetJSON(url, 15000, response => Boolean(response?.url));
     if (data && data.url) {
       cacheSet(cacheKey, data.url, CACHE_TTL.audio);
       return data.url;
@@ -670,7 +713,7 @@ async function gdGetCoverUrl(picId) {
 
   try {
     const url = `${GD_API}?types=pic&id=${picId}&source=netease`;
-    const data = await dedupedGetJSON(url, 15000);
+    const data = await gdGetJSON(url, 15000, response => Boolean(response?.url));
     if (data && data.url) {
       cacheSet(cacheKey, data.url, CACHE_TTL.cover);
       return data.url;

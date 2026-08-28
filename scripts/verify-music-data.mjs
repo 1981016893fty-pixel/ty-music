@@ -59,6 +59,19 @@ async function verifyCover(track, label) {
   if (body.byteLength < 10_000) fail(`${label} cover response is unexpectedly small`);
 }
 
+async function verifyStreamAudio(track, label) {
+  const response = await fetch(
+    `${baseUrl}/api/music/proxy?id=${encodeURIComponent(track.id)}&stream=1`,
+    { headers: { Range: 'bytes=0-1023' } }
+  );
+  const contentType = response.headers.get('content-type') || '';
+  if (![200, 206].includes(response.status) || !contentType.startsWith('audio/')) {
+    fail(`${label} stream did not return playable audio`);
+  }
+  const body = await response.arrayBuffer();
+  if (body.byteLength < 100) fail(`${label} stream response is unexpectedly small`);
+}
+
 const genreSamples = [];
 for (const genre of genres) genreSamples.push(await verifyGenre(genre));
 
@@ -112,5 +125,6 @@ album.songs.forEach((track, index) => {
 
 await verifyCover(hot.songs[0], '热门排行榜首曲');
 await verifyCover(genreSamples[0], '流行乐首曲');
+await verifyStreamAudio(hot.songs[0], '热门排行榜首曲');
 
-console.log(`Verified ${genres.length} genres, ${featured.songs.length} curated The Weeknd tracks, ${hot.songs.length} chart tracks, and ${album.songs.length} album tracks.`);
+console.log(`Verified ${genres.length} genres, ${featured.songs.length} curated The Weeknd tracks, ${hot.songs.length} chart tracks, ${album.songs.length} album tracks, and a streamable audio response.`);
