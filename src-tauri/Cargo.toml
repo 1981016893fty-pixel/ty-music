@@ -1,6 +1,6 @@
 [package]
 name = "ty-music"
-version = "1.0.3"
+version = "1.0.4"
 description = "TY Music desktop client"
 authors = ["TY Music"]
 edition = "2021"
