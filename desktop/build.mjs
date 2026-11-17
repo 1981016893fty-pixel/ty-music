@@ -8,7 +8,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 const files = [
-  'index.html', 'style.css', 'search-session.js', 'player.js', 'soft-aurora-react.js',
+  'index.html', 'style.css', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js', 'player.js', 'soft-aurora-react.js',
   'soft-aurora-react.css', 'liquid-glass.js', 'manifest.json',
   'icon-192.png', 'icon-512.png', 'service-worker.js', 'desktop.html'
 ];

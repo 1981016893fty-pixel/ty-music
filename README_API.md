@@ -14,3 +14,5 @@ curl --get 'http://localhost:8899/api/music/search' --data-urlencode 'keywords=�
 音频代理为 `/api/music/proxy`，歌词为 `/api/music/lyric`。旧网易云曲目可只传 `id`；Embeat 请求须携带 `source=embeat`、对应资源 `id`、原始 `trackId`、`title`、`artist` 及可用的 `isrc`，由 `player.js` 的 `musicResourceQuery` 构造，不能把内部前缀 ID 直接发给上游。音频以 `urlId` 请求 `types=url&source=embeat&br=999`，歌词以 `lyricId` 请求 `types=lyric&source=embeat`；不依赖音频解析，也不做 autosource 同名模糊替换。Embeat 不支持下载或专辑目录。
 
 Embeat 每次网站请求总预算 12 秒，包含最多 4 秒时钟同步和一次 401 后刷新重试；网易云两个直连接口及 GD 网易云备用接口共用 12 秒预算，每次最多 4 秒。前端每源独立 15 秒截止时间，补充失败不影响已有列表或基础分页。校时兼容 Unix 秒与毫秒；`GD_EMBEAT_CONNECT_HOST` 可启用受限的 GD 官方 HTTP/2 连接路由。实际环境与验收状态见[维护说明](docs/maintenance.md)。
+
+浏览器网页优先由 `browser-provider.js` 直连 GD 公开网易云目录及音乐台 Embeat 网站，基础失败才回退本页服务端搜索接口。浏览器请求不发送凭据；协议复用 `gd-embeat-core.js`，网站版本固定为 `2026.11.11`，服务端环境变量不会改变浏览器版本。音频、歌词和封面按原始资源 ID 解析；响应上限2 MiB、取消和截止同样生效。桌面音频仍使用服务器 `stream=1`。升级协议须同步核心版本、固定签名向量和真实页面验收。

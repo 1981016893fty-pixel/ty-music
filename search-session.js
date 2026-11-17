@@ -2,7 +2,7 @@
 
 // Search state only; rendering and playback remain in player.js. Each catalog
 // owns its cursor and deadline, so optional results cannot lock the base list.
-function createMusicSearchSession({ fetchImpl = globalThis.fetch, onChange }) {
+function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, onChange }) {
   let current = null;
   function cancel() {
     const previous = current;
@@ -53,6 +53,7 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, onChange }) {
     try {
       const query = new URLSearchParams({ keywords: session.query, source: name, limit: '20', offset: String(source.offset) });
       const page = await Promise.race([(async () => {
+        if (searchPage) return searchPage(session.query, name, 20, source.offset, { signal: controller.signal });
         const response = await fetchImpl('/api/music/search?' + query, { signal: controller.signal, cache: 'no-store' });
         if (!response.ok) throw new Error('搜索失败，请稍后重试');
         return response.json();

@@ -53,6 +53,7 @@ vm.runInContext(between('async function openAlbumByPicId(', '// 通过专辑名�
 await context.openAlbumByPicId('pic', track.id, 'Album', 'Artist', 'embeat', 'spotify-album');
 await context.openAlbumByName('Album', 'Artist', 'embeat', 'pic');
 assert.equal(notices.filter(message => /暂不提供专辑曲目/.test(message)).length, 2);
+context.window = {};
 context.AbortController = AbortController;
 context.setTimeout = setTimeout;
 context.clearTimeout = clearTimeout;

@@ -68,6 +68,7 @@ function scheduleNativePositionSync() {
 const apiMemoryCache = new Map();
 const apiInflight = new Map();
 const rawFetch = window.fetch.bind(window);
+window.tyMusicProvider = createBrowserMusicProvider({ fetchImpl: rawFetch, apiBase: window.__TY_MUSIC_API_BASE__ || '' });
 const desktopCacheEnabled = Boolean(window.__TY_MUSIC_DESKTOP__);
 const desktopCachePrefix = 'ty-music-api-cache:';
 function readDesktopApiCache(key) {
@@ -956,8 +957,20 @@ function displayAlbumInfo(albumId, albumName) {
   // 已由 playTrack 直接处理，此函数保留为空以兼容旧调用
 }
 
+let playbackRequestId = 0;
+let playbackAbortController = null;
+let pendingAudioResolution = 0;
 function playTrack(track, index, skipRecentUpdate) {
   if (!track) return;
+  const playbackId = ++playbackRequestId;
+  playbackAbortController?.abort();
+  const playbackController = new AbortController();
+  playbackAbortController = playbackController;
+  audio.pause();
+  audio.removeAttribute('src');
+  audio.load();
+  state.isPlaying = false;
+  clearTimeout(playTimeout);
   if (index !== undefined) state.queueIndex = index;
   else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
 
@@ -1004,6 +1017,7 @@ function playTrack(track, index, skipRecentUpdate) {
   // Update UI
   const coverSrc = track.coverSmall || track.cover || '';
   const playerCoverImg = $('#playerCover');
+  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried']) delete playerCoverImg.dataset[key];
   playerCoverImg.dataset.artist = track.artist || '';
   playerCoverImg.dataset.album = track.album || '';
   playerCoverImg.dataset.name = track.title || '';
@@ -1034,6 +1048,7 @@ function playTrack(track, index, skipRecentUpdate) {
   const mini = $('#nowPlayingMini');
   mini.style.display = 'flex';
   const miniCoverImg = $('#miniCover');
+  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried']) delete miniCoverImg.dataset[key];
   miniCoverImg.dataset.artist = track.artist || '';
   miniCoverImg.dataset.album = track.album || '';
   miniCoverImg.dataset.name = track.title || '';
@@ -1109,30 +1124,51 @@ function playTrack(track, index, skipRecentUpdate) {
     return;
   }
 
-  // 通过代理播放（服务器中转，绕过 CDN 防盗链）
+  // Resolve through the visitor network; keep the same-source server proxy as fallback.
   if (track.id && (track.source === 'embeat' || track.source === 'netease' || track.picId || !track.previewUrl)) {
     var proxyPath = '/api/music/proxy?' + musicResourceQuery(track, 'url');
     if (window.__TY_MUSIC_DESKTOP__) proxyPath += '&stream=1';
     var proxyUrl = resolveMusicResource(proxyPath);
-    console.log('[Play] Using proxy URL for', track.title);
-    audio.src = proxyUrl;
-    audio.load();
     showToast('正在加载音频...');
-    audio.play().then(function() {
-      state.isPlaying = true;
-      updatePlayBtn();
-      var toast = document.querySelector('.toast');
-      if (toast) toast.classList.remove('show');
-    }).catch(function(e) {
-      console.warn('[Play] Proxy play failed:', e.message);
-      showToast('播放失败，请换一首试试');
-    }).finally(function() {
-      updateLikeUI();
-      updatePlayBtn();
-      updateQueueHighlight();
-      if (ampIsShowing) updateAmpFullscreenPlayer(track);
-      state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-    });
+    let audioAttempt = 0;
+    function startAudio(url) {
+      const attempt = ++audioAttempt;
+      audio.src = url;
+      audio.load();
+      // Keep play() inside the original click for WebKit's media permission.
+      return audio.play().then(function() {
+        if (playbackId !== playbackRequestId || attempt !== audioAttempt) return;
+        state.isPlaying = true;
+        updatePlayBtn();
+        var toast = document.querySelector('.toast');
+        if (toast) toast.classList.remove('show');
+      }).catch(function(e) {
+        if (playbackId !== playbackRequestId || attempt !== audioAttempt || pendingAudioResolution === playbackId) return;
+        console.warn('[Play] Audio failed:', e.message);
+        showToast(e.name === 'NotAllowedError' ? '请点击播放按钮继续播放' : '播放失败，请换一首试试');
+      });
+    }
+    const direct = window.tyMusicProvider && !window.__TY_MUSIC_DESKTOP__;
+    pendingAudioResolution = direct ? playbackId : 0;
+    // Start the existing path synchronously, preserving Safari and desktop
+    // gesture behavior. Direct resolution can rescue a rejected server path.
+    startAudio(proxyUrl);
+    if (direct) {
+      window.tyMusicProvider.resource(track, 'url', { signal: playbackController.signal }).then(url => {
+        if (playbackId !== playbackRequestId) return;
+        pendingAudioResolution = 0;
+        if (!audio.paused && audio.currentTime > 0) return;
+        return startAudio(url);
+      }).catch(function() {
+        if (playbackId !== playbackRequestId) return;
+        pendingAudioResolution = 0;
+        if (audio.error) showToast('播放失败，请换一首试试');
+      });
+    }
+    updateLikeUI();
+    updatePlayBtn();
+    updateQueueHighlight();
+    if (ampIsShowing) updateAmpFullscreenPlayer(track);
     return;
   }
 
@@ -1260,11 +1296,13 @@ audio.addEventListener('loadedmetadata', () => {
 let playTimeout = null;
 audio.addEventListener('error', () => {
   if (!state.currentTrack) return;
+  if (pendingAudioResolution === playbackRequestId) return;
   const err = audio.error;
   console.warn('Audio error:', err?.code, err?.message, 'track:', state.currentTrack.title);
   if (state.queue.length > 1) {
     showToast('播放失败，自动切换下一首');
-    setTimeout(() => playNext(), 500);
+    const failedPlaybackId = playbackRequestId;
+    setTimeout(() => { if (failedPlaybackId === playbackRequestId) playNext(); }, 500);
   } else {
     showToast('播放失败：该歌曲暂时不可用');
   }
@@ -1625,8 +1663,12 @@ async function loadLyrics(track, callback) {
   // Step 1: 新音源歌词（通过新 API /api/music/lyric）
   if (track.id && (track.source === 'embeat' || track.source === 'netease' || track.picId)) {
     const data = await tryFetch(signal =>
-      fetch('/api/music/lyric?' + musicResourceQuery(track, 'lyric'), { signal })
-        .then(r => r.json()),
+      window.tyMusicProvider
+        ? window.tyMusicProvider.resource(track, 'lyric', { signal }).catch(error => {
+            if (signal.aborted) throw error;
+            return fetch('/api/music/lyric?' + musicResourceQuery(track, 'lyric'), { signal }).then(r => r.json());
+          })
+        : fetch('/api/music/lyric?' + musicResourceQuery(track, 'lyric'), { signal }).then(r => r.json()),
       track.source === 'embeat' ? 25000 : 5000
     );
     if (data && data.lrc && data.lrc.length > 10) {
@@ -2094,6 +2136,7 @@ let activeSearchHasMore = false;
 let searchResultsObserver = null;
 let activeSearchStatus = null;
 const searchSession = createMusicSearchSession({
+  searchPage: window.tyMusicProvider?.search,
   onChange(page) {
     activeSearchStatus = page;
     activeSearchTracks = page.songs.map(normalizeTrack);
@@ -2322,6 +2365,26 @@ function fixCoverUrl(url) {
 
 function fallbackCover(img) {
   if (img.dataset.fallback) return;
+  // Cover endpoints return JSON upstream; resolve their URL before assigning
+  // an image src. Never let an old resolution repaint a reused player image.
+  if (window.tyMusicProvider && !img.dataset.directCoverTried) {
+    try {
+      const failedSrc = img.src;
+      const url = new URL(failedSrc, location.href);
+      if (['/api/cover', '/api/music/cover'].includes(url.pathname) && url.searchParams.get('picId')) {
+        img.dataset.directCoverTried = failedSrc;
+        const source = url.searchParams.get('source') || 'netease';
+        if (source === 'embeat') { img.dataset.albumTried = '1'; img.dataset.fallbackTried = '1'; }
+        window.tyMusicProvider.resource({ source, picId: url.searchParams.get('picId') }, 'pic')
+          .then(cover => { if (img.src === failedSrc) img.src = cover; })
+          .catch(() => {
+            if (img.src !== failedSrc) return;
+            fallbackCover(img);
+          });
+        return;
+      }
+    } catch (_) {}
+  }
   const artist = img.dataset.artist || '';
   const album = img.dataset.album || '';
   const name = img.dataset.name || '';

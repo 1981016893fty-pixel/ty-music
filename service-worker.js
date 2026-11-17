@@ -4,15 +4,17 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v47-search';
-const APP_SHELL = '/index.html?v=20261117-search-v47';
+const CACHE_NAME = 'ty-music-v48-direct';
+const APP_SHELL = '/index.html?v=20261117-direct-v48';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261117-search-v47',
-  '/player.js?v=20261117-search-v47',
-  '/search-session.js?v=20261117-search-v47',
-  '/soft-aurora-react.js?v=20261117-search-v47',
-  '/soft-aurora-react.css?v=20261117-search-v47',
+  '/style.css?v=20261117-direct-v48',
+  '/player.js?v=20261117-direct-v48',
+  '/gd-embeat-core.js?v=20261117-direct-v48',
+  '/browser-provider.js?v=20261117-direct-v48',
+  '/search-session.js?v=20261117-direct-v48',
+  '/soft-aurora-react.js?v=20261117-direct-v48',
+  '/soft-aurora-react.css?v=20261117-direct-v48',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -22,7 +24,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v47...');
+  console.log('[SW] Installing v48...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
@@ -37,7 +39,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v47');
+  console.log('[SW] Activated v48');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
