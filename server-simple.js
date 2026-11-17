@@ -5,9 +5,8 @@
  */
 const http = require('http');
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
-const zlib = require('zlib');
+const { createStaticHandler } = require('./static-files.cjs');
+const serveStatic = createStaticHandler();
 const { URL } = require('url');
 const { createEmbeatClient } = require('./gd-embeat.cjs');
 const embeat = createEmbeatClient();
@@ -20,96 +19,6 @@ const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50, timeout: 3
 // =========================== 请求去重 ===========================
 // 同一 URL 同时只请求一次，避免并发时重复调用 GD API
 const pendingRequests = new Map(); // url → Promise
-
-// =========================== 静态文件内存缓存 ===========================
-
-// 静态文件配置：[路径名, 文件名, Content-Type]
-const STATIC_FILES = [
-  ['/', 'index.html'],
-  ['/index.html', 'index.html'],
-  ['/desktop.html', 'desktop.html'],
-  ['/player.js', 'player.js'],
-  ['/soft-aurora-react.js', 'soft-aurora-react.js'],
-  ['/soft-aurora-react.css', 'soft-aurora-react.css'],
-  ['/style.css', 'style.css'],
-  ['/liquid-glass.js', 'liquid-glass.js'],
-  ['/manifest.json', 'manifest.json'],
-  ['/service-worker.js', 'service-worker.js'],
-  ['/icon-192.png', 'icon-192.png'],
-  ['/icon-512.png', 'icon-512.png'],
-  ['/icon.svg', 'icon.svg'],
-];
-
-// 内存缓存：{ raw: Buffer, gzip: Buffer, etag: string, contentType: string }
-const staticCache = new Map();
-
-function calcEtag(buf) {
-  // 简单取前 8 字节的 hash 作为 ETag（无需 crypto，够用）
-  const h = require('crypto').createHash('md5').update(buf).digest('hex');
-  return '"' + h + '"';
-}
-
-function preloadStaticFiles() {
-  for (const [urlPath, fileName] of STATIC_FILES) {
-    const filePath = path.join(__dirname, fileName);
-    if (!fs.existsSync(filePath)) continue;
-    const raw = fs.readFileSync(filePath);
-    const gzip = zlib.gzipSync(raw, { level: 6 });
-    const etag = calcEtag(raw);
-    const ext = fileName.split('.').pop();
-    const contentType = { 
-      'html': 'text/html; charset=utf-8', 
-      'js': 'application/javascript; charset=utf-8', 
-      'css': 'text/css; charset=utf-8',
-      'svg': 'image/svg+xml',
-      'json': 'application/json; charset=utf-8',
-      'png': 'image/png'
-    }[ext] || 'application/octet-stream';
-    staticCache.set(urlPath, { raw, gzip, etag, contentType });
-    console.log(`[Cache] Preloaded ${fileName}: ${raw.length}B → gzip ${gzip.length}B (etag: ${etag})`);
-  }
-}
-
-// 启动时预加载
-preloadStaticFiles();
-
-// 提供静态文件（支持 gzip + ETag 协商缓存）
-function serveStatic(req, res, urlPath) {
-  const cached = staticCache.get(urlPath);
-  if (!cached) {
-    res.statusCode = 404;
-    res.end('Not found');
-    return true;
-  }
-  const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
-  const etag = cached.etag;
-  const clientEtag = req.headers['if-none-match'];
-
-  res.setHeader('Content-Type', cached.contentType);
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('ETag', etag);
-  // JS/CSS 禁止强缓存，保证每次都能协商更新
-  if (cached.contentType && (cached.contentType.includes('javascript') || cached.contentType.includes('css'))) {
-    res.setHeader('Cache-Control', 'no-cache');
-  }
-
-  // 协商缓存：如果客户端已有最新版本，返回 304
-  if (clientEtag === etag) {
-    res.statusCode = 304;
-    res.end();
-    return true;
-  }
-
-  if (acceptGzip) {
-    res.setHeader('Content-Encoding', 'gzip');
-    res.setHeader('Content-Length', cached.gzip.length);
-    res.end(cached.gzip);
-  } else {
-    res.setHeader('Content-Length', cached.raw.length);
-    res.end(cached.raw);
-  }
-  return true;
-}
 
 const PORT = process.env.PORT || 8899;
 const GD_API = 'https://music-api.gdstudio.xyz/api.php';
@@ -423,12 +332,15 @@ function formatGDSong(s) {
 function formatEmbeatSong(song) {
   const id = String(song.id);
   const picId = String(song.pic_id || '');
+  // GD can return milliseconds for an Embeat page and seconds for another.
+  const rawDuration = Number(song.extra_data?.duration);
+  const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? Math.round(rawDuration > 10000 ? rawDuration / 1000 : rawDuration) : 0;
   const cover = size => picId ? `/api/cover?${new URLSearchParams({ source: 'embeat', picId, size: String(size) })}` : '/icon.svg';
   return {
     id, providerId: id, source: 'embeat', name: song.name, artist: artistNames(song.artist),
     album: typeof song.album === 'string' ? song.album : '', albumId: '',
     urlId: String(song.url_id || id), lyricId: String(song.lyric_id || id), picId,
-    duration: Math.max(0, Number(song.extra_data?.duration) || 0),
+    duration,
     isrc: typeof song.extra_data?.isrc === 'string' ? song.extra_data.isrc : '',
     cover: cover(1000), coverSmall: cover(300),
   };
@@ -1154,75 +1066,8 @@ const server = http.createServer(async (req, res) => {
   res.setHeader('Timing-Allow-Origin', '*');
   res.setHeader('Connection', 'keep-alive');
 
-  // ========== 静态文件（gzip 压缩 + 内存缓存）==========
-
-  // 1. 精确匹配的内存缓存（STATIC_FILES）
-  if (staticCache.has(pathname)) {
-    serveStatic(req, res, pathname);
-    return;
-  }
-
-  // 2. /vendor/ 目录：直接从磁盘读取（Font Awesome 等第三方库）
-  if (pathname.startsWith('/vendor/')) {
-    const filePath = path.join(__dirname, pathname);
-    // 安全检查：防止路径穿越
-    if (!filePath.startsWith(__dirname + '/vendor/')) {
-      res.statusCode = 403; res.end('Forbidden'); return;
-    }
-    try {
-      const data = fs.readFileSync(filePath);
-      const ext = path.extname(filePath).slice(1);
-      const contentType = {
-        'html': 'text/html; charset=utf-8',
-        'js': 'application/javascript; charset=utf-8',
-        'css': 'text/css; charset=utf-8',
-        'png': 'image/png',
-        'jpg': 'image/jpeg',
-        'jpeg': 'image/jpeg',
-        'gif': 'image/gif',
-        'svg': 'image/svg+xml',
-        'woff2': 'font/woff2',
-        'woff': 'font/woff',
-        'ttf': 'font/ttf',
-        'json': 'application/json; charset=utf-8',
-      }[ext] || 'application/octet-stream';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=2592000'); // 30天
-      const acceptGzip = (req.headers['accept-encoding'] || '').includes('gzip');
-      if (acceptGzip && (ext === 'css' || ext === 'js' || ext === 'html')) {
-        const gzipped = zlib.gzipSync(data);
-        res.setHeader('Content-Encoding', 'gzip');
-        res.setHeader('Content-Length', gzipped.length);
-        res.end(gzipped);
-      } else {
-        res.setHeader('Content-Length', data.length);
-        res.end(data);
-      }
-    } catch (e) {
-      res.statusCode = 404; res.end('Not found');
-    }
-    return;
-  }
-
-  // React Bits FluidGlass assets (official GLB/WebP files).
-  if (pathname.startsWith('/assets/')) {
-    const filePath = path.join(__dirname, pathname);
-    if (!filePath.startsWith(__dirname + '/assets/')) {
-      res.statusCode = 403; res.end('Forbidden'); return;
-    }
-    try {
-      const data = fs.readFileSync(filePath);
-      const ext = path.extname(filePath).slice(1);
-      const contentType = { glb: 'model/gltf-binary', webp: 'image/webp' }[ext] || 'application/octet-stream';
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=2592000');
-      res.setHeader('Content-Length', data.length);
-      res.end(data);
-    } catch (e) {
-      res.statusCode = 404; res.end('Not found');
-    }
-    return;
-  }
+  // Static files share asynchronous IO, bounded caching and HTTP negotiation.
+  if (await serveStatic(req, res, pathname)) return;
 
   // ========== API 端点 ==========
 

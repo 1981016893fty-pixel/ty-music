@@ -6,7 +6,7 @@ import { once } from 'node:events';
 async function app(mode, run) {
   const child = fork(new URL('../server-simple.js', import.meta.url), [], {
     execArgv: ['--require', new URL('./embeat-transport-fixture.cjs', import.meta.url).pathname],
-    env: { ...process.env, PORT: '0', EMBEAT_FIXTURE: mode }, silent: true,
+    env: { ...process.env, GD_EMBEAT_CONNECT_HOST: '', PORT: '0', EMBEAT_FIXTURE: mode }, silent: true,
   });
   let logs = '';
   child.stdout.on('data', chunk => { logs += chunk; }); child.stderr.on('data', chunk => { logs += chunk; });
@@ -18,6 +18,10 @@ async function app(mode, run) {
   }
 }
 const metadata = new URLSearchParams({ id: 'url42', source: 'embeat', trackId: 'song42', title: 'Fixture song', artist: 'Fixture artist', isrc: 'ISRC42' });
+test('search normalizes upstream millisecond duration to playback seconds', async () => app('duration-ms', async get => {
+  const page = await (await get('/api/music/search?keywords=private-query&limit=20')).json();
+  assert.equal(page.songs[0].duration, 270, '269746 milliseconds is approximately 4:30, never 4495 minutes');
+}));
 test('both search aliases default to Embeat and preserve resource identity', async () => app('success', async get => {
   for (const alias of ['/api/search', '/api/music/search']) {
     const response = await get(`${alias}?keywords=private-query&limit=20`);

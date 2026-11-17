@@ -6,7 +6,9 @@ services:
     buildCommand: npm ci --include=dev && npm test && npm run build:aurora
     startCommand: node server-simple.js
     healthCheckPath: /api/health
-    autoDeploy: true
+    autoDeploy: false
     envVars:
       - key: NODE_VERSION
         value: 22.22.2
+      - key: GD_EMBEAT_CONNECT_HOST
+        value: music-api.gdstudio.xyz

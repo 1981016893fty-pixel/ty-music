@@ -100,7 +100,7 @@ window.fetch = function cachedApiFetch(input, init) {
   const apiOrigin = apiBase ? new URL(apiBase).origin : window.location.origin;
   const cacheable = method === 'GET' && (url.origin === window.location.origin || url.origin === apiOrigin) &&
     url.pathname.startsWith('/api/') &&
-    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search)$/.test(url.pathname);
+    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search|\/health)$/.test(url.pathname);
   if (!cacheable) return rawFetch(request);
 
   const key = url.href;
@@ -1295,7 +1295,6 @@ audio.addEventListener('canplay', () => {
 // Progress bar — 支持点击 + 拖拽（鼠标 & 触摸）
 (function () {
   const bar = $('#progressBar');
-  const fill = sliderRangeFor('#progressBar');
   const thumb = { style: {} };
   let dragging = false;
 
@@ -1307,7 +1306,7 @@ audio.addEventListener('canplay', () => {
     const rect = bar.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     // 拖拽期间实时更新 UI，不立刻跳转（减少音频跳动）
-    if (fill) fill.style.width = (pct * 100) + '%';
+    setSliderValue('#progressBar', pct * 100);
     thumb.style.left = (pct * 100) + '%';
     return pct;
   }
@@ -1338,7 +1337,7 @@ audio.addEventListener('canplay', () => {
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
     const targetTime = pct * (audio.duration || 0);
     // 先更新 UI 到目标位置（立刻显示，seeked 前就显示正确位置）
-    if (fill) fill.style.width = (pct * 100) + '%';
+    setSliderValue('#progressBar', pct * 100);
     thumb.style.left = (pct * 100) + '%';
     $('#currentTime').textContent = formatTime(targetTime);
     // 设 currentTime，seeked 事件后再允许 timeupdate 写 UI
@@ -1970,7 +1969,8 @@ async function loadGenreDetail(genreId) {
   const genreNames = { pop: '流行乐', rock: '摇滚', electronic: '电子', hiphop: '嘻哈', jazz: '爵士', classical: '古典', rnb: 'R&B', country: '乡村', kpop: 'K-Pop', chinese: '华语', latin: '拉丁', anime: '动漫' };
   const genreTitle = genreNames[genreId] || genreId;
   const genrePixelNames = { pop: 'POP', rock: 'ROCK', electronic: 'ELECTRONIC', hiphop: 'HIP HOP', jazz: 'JAZZ', classical: 'CLASSICAL', rnb: 'R&B', country: 'COUNTRY', kpop: 'K-POP', chinese: 'CHINESE', latin: 'LATIN', anime: 'ANIME' };
-  window.setGenreShuffleTitle?.(genrePixelNames[genreId] || genreTitle.toUpperCase());
+  window.genreShuffleTitle = genrePixelNames[genreId] || genreTitle.toUpperCase();
+  window.setGenreShuffleTitle?.(window.genreShuffleTitle);
   setTimeout(() => genreSection.scrollIntoView({ behavior: 'smooth' }), 100);
 
   if (genreDetailCache[genreId]) { renderScrollRow('#genreTracks', genreDetailCache[genreId]); return; }
@@ -3554,7 +3554,6 @@ function initAmpFullscreenPlayer() {
   // 全屏进度条 — 支持点击 + 拖拽（鼠标 & 触摸）
   const progressBar = $('#ampProgressBar');
   if (progressBar) {
-    const ampFill = sliderRangeFor('#ampProgressBar');
     const ampThumb = { style: {} };
     let ampDragging = false;
 
@@ -3565,7 +3564,7 @@ function initAmpFullscreenPlayer() {
     function ampApplySeek(clientX) {
       const rect = progressBar.getBoundingClientRect();
       const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-      if (ampFill) ampFill.style.width = (pct * 100) + '%';
+      setSliderValue('#ampProgressBar', pct * 100);
       if (ampThumb) ampThumb.style.left = (pct * 100) + '%';
       return pct;
     }
@@ -3596,7 +3595,7 @@ function initAmpFullscreenPlayer() {
       if (!audio.duration) return;
       const targetTime = pct * audio.duration;
       // 先更新 UI 到目标位置
-      if (ampFill) ampFill.style.width = (pct * 100) + '%';
+      setSliderValue('#ampProgressBar', pct * 100);
       if (ampThumb) ampThumb.style.left = (pct * 100) + '%';
       audio.currentTime = targetTime;
       // 一次性 seeked 监听器

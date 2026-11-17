@@ -20,4 +20,6 @@ jobs:
       - run: npm test
       - run: npm run build:aurora
       - name: Check committed bundles
-        run: git diff --exit-code -- soft-aurora-react.js soft-aurora-react.css
+        run: |
+          git diff --exit-code -- soft-aurora-react.js soft-aurora-react.css assets/aurora
+          test -z "$(git ls-files --others --exclude-standard -- assets/aurora)"

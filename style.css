@@ -1694,7 +1694,7 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   opacity: .86;
   filter: saturate(1.08) contrast(1.04);
 }
-.hero-art.has-elastic-mesh .hero-art-fallback {
+.hero-art:has(#heroElasticMeshMount canvas) .hero-art-fallback {
   display: none;
 }
 .hero-art #heroElasticMeshMount { z-index: 1; }

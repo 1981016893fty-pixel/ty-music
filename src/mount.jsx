@@ -2,8 +2,7 @@ import React from 'react';
 import Scene from './Scene';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
-import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
-import SoftAurora from './SoftAurora';
+import { SoftAurora, ElasticMesh, GridDistortion, Prism, FloatingLines, ElectricBorder, GradientWaves, DriftWall, LiquidEther, GridScan } from './sceneEffects';
 import SpecularButton from './SpecularButton';
 import TiltedCard from './TiltedCard';
 import GlassSurface from './GlassSurface';
@@ -12,20 +11,11 @@ import PlayerBubbleMenu from './PlayerBubbleMenu';
 import ChromaGrid from './ChromaGrid';
 import ElasticSlider from './ElasticSlider';
 import Shuffle from './Shuffle';
-import ElasticMesh from './ElasticMesh';
-import GridDistortion from './GridDistortion';
 import ScrollExpand from './ScrollExpand';
 import MagicBento from './MagicBento';
 import ShinyText from './ShinyText';
 import GlitchText from './GlitchText';
 import SplashCursor from './SplashCursor';
-import Prism from './Prism';
-import FloatingLines from './FloatingLines';
-import ElectricBorder from './ElectricBorder';
-import GradientWaves from './GradientWaves';
-import DriftWall from './DriftWall';
-import LiquidEther from './LiquidEther';
-import { GridScan } from './GridScan';
 import { GlassIcon } from './GlassIcons';
 
 const host = document.getElementById('softAuroraHost');
@@ -118,12 +108,6 @@ if (libraryGradientHost) {
 
 function HeroElasticMesh() {
   const [image, setImage] = React.useState(() => window.heroMeshCover || '');
-  React.useEffect(() => {
-    const art = document.querySelector('.hero-art');
-    if (!art) return undefined;
-    art.classList.add('has-elastic-mesh');
-    return () => art.classList.remove('has-elastic-mesh');
-  }, []);
   React.useEffect(() => {
     const update = event => setImage(event.detail?.cover || '');
     window.addEventListener('ty:herochange', update);
@@ -251,24 +235,19 @@ if (coverFlowGridScanMount) {
   );
 }
 
-const withChakra = element => (
-  <ChakraProvider value={defaultSystem}>{element}</ChakraProvider>
-);
-
-
 const bubbleMenuHost = document.getElementById('bubbleMenuMount');
 if (bubbleMenuHost) {
-  createRoot(bubbleMenuHost).render(withChakra(<BubbleMenu />));
+  createRoot(bubbleMenuHost).render(<BubbleMenu />);
 }
 
 const playerBubbleHost = document.getElementById('playerBubbleMount');
 if (playerBubbleHost) {
-  createRoot(playerBubbleHost).render(withChakra(<PlayerBubbleMenu />));
+  createRoot(playerBubbleHost).render(<PlayerBubbleMenu />);
 }
 
 const chromaGridHost = document.getElementById('chromaGridMount');
 if (chromaGridHost) {
-  createRoot(chromaGridHost).render(<ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
+  sceneRoot(chromaGridHost, 'search').render(<ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
 }
 
 const browseScrollHost = document.getElementById('browseScrollExpandMount');
@@ -279,11 +258,11 @@ if (browseScrollHost) {
     const image = '/assets/browse-listener-hero-v2.jpg';
     return <ScrollExpand src={image} alt="音乐探索" title="发现下一首喜欢的歌" scrollHint="向下滚动探索" startWidth={48} startHeight={64} startRadius={26} mediaZoom={1.02} scrollDistance={1.05} holdDistance={0.25} className="browse-scroll-expand" />;
   }
-  createRoot(browseScrollHost).render(<BrowseScrollExpand />);
+  sceneRoot(browseScrollHost, 'search').render(<BrowseScrollExpand />);
 }
 
 const browseQuickGridHost = document.getElementById('browseQuickGrid');
-if (browseQuickGridHost) createRoot(browseQuickGridHost).render(<MagicBento />);
+if (browseQuickGridHost) sceneRoot(browseQuickGridHost, 'search').render(<MagicBento />);
 
 const splashCursorHost = document.getElementById('browseSplashCursorMount');
 const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
@@ -364,18 +343,21 @@ const renderGenreTitle = text => {
   );
 };
 window.setGenreShuffleTitle = renderGenreTitle;
-renderGenreTitle('GENRE');
+renderGenreTitle(window.genreShuffleTitle || 'GENRE');
 
+const mountedAudio = document.getElementById('audioPlayer');
+const mountedProgress = mountedAudio?.duration > 0 && Number.isFinite(mountedAudio.duration)
+  ? mountedAudio.currentTime / mountedAudio.duration * 100 : 0;
 const sliderMounts = [
-  ['progressSliderMount', 0, false, false, false, 1.2],
-  ['volumeSliderMount', 70, true, true, true, 1.2],
-  ['ampProgressSliderMount', 0, false, false, true, 1.1]
+  ['progressSliderMount', mountedProgress, false, false, false, 1.2],
+  ['volumeSliderMount', Math.round((mountedAudio?.volume ?? 0.7) * 100), true, true, true, 1.2],
+  ['ampProgressSliderMount', mountedProgress, false, false, true, 1.1]
 ];
 sliderMounts.forEach(([mountId, value, showIcons, showValue, interactive, hoverScale]) => {
   const mount = document.getElementById(mountId);
   if (mount) {
     const root = createRoot(mount);
-    flushSync(() => root.render(withChakra(
+    flushSync(() => root.render(
       <ElasticSlider
         defaultValue={value}
         showIcons={showIcons}
@@ -383,7 +365,7 @@ sliderMounts.forEach(([mountId, value, showIcons, showValue, interactive, hoverS
         interactive={interactive}
         hoverScale={hoverScale}
       />
-    )));
+    ));
   }
 });
 
@@ -463,7 +445,8 @@ function ShinyHeading({ target }) {
 }
 
 document.querySelectorAll('[data-shiny-text]').forEach(target => {
-  createRoot(target).render(<ShinyHeading target={target} />);
+  const page = target.closest('.page')?.id?.replace(/^page-/, '') || 'app';
+  sceneRoot(target, page).render(<ShinyHeading target={target} />);
 });
 
 // Apply the same specular language to legacy buttons without replacing their

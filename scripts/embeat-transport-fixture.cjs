@@ -14,7 +14,7 @@ global.fetch = async (raw, options = {}) => {
     if (mode === 'rate') return new Response('', { status: 429 });
     if (mode === 'timeout') return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true }));
     if (q.get('source') !== 'embeat' || q.get('name') !== 'private-query') throw Error('Incorrect search source/query');
-    return Response.json(mode === 'empty' ? [] : [song]);
+    return Response.json(mode === 'empty' ? [] : [{ ...song, extra_data: { ...song.extra_data, duration: mode === 'duration-ms' ? 269746 : 269 } }]);
   }
   if (type === 'url') {
     if (q.get('source') !== 'embeat' || q.get('id') !== 'url42' || q.get('br') !== '999') throw Error('Lost audio resource identity or quality');

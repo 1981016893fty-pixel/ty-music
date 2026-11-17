@@ -6,7 +6,7 @@ import { once } from 'node:events';
 async function app(mode, run) {
   const child = fork(new URL('../server-simple.js', import.meta.url), [], {
     execArgv: ['--require', new URL('./search-transport-fixture.cjs', import.meta.url).pathname],
-    env: { ...process.env, PORT: '0', SEARCH_FIXTURE: mode }, silent: true,
+    env: { ...process.env, GD_EMBEAT_CONNECT_HOST: '', PORT: '0', SEARCH_FIXTURE: mode }, silent: true,
   });
   let logs = '';
   child.stdout.on('data', data => { logs += data; }); child.stderr.on('data', data => { logs += data; });
