@@ -6,7 +6,7 @@ import { build } from 'esbuild';
 
 // Bundle the actual component and local helpers. Only React and browser/GPU
 // boundaries are substituted; a scheduler helper must execute its real code.
-const compiled = new Map(await Promise.all(['ElasticMesh', 'Prism', 'ElectricBorder'].map(async name => {
+const compiled = new Map(await Promise.all(['ElasticMesh', 'Prism', 'ElectricBorder', 'SpecularButton', 'ShinyText'].map(async name => {
   const result = await build({
     entryPoints: [fileURLToPath(new URL(`../src/${name}.jsx`, import.meta.url))],
     bundle: true, write: false, platform: 'node', format: 'cjs',
@@ -16,11 +16,13 @@ const compiled = new Map(await Promise.all(['ElasticMesh', 'Prism', 'ElectricBor
 })));
 
 function mount(name, props = {}, { intersectionObserver = true, width = 800, height = 500, dpr = 2 } = {}) {
-  let now = 0, nextFrame = 0, draws = 0, lostContexts = 0, hookIndex = 0, sineCalls = 0;
+  let now = 0, nextFrame = 0, draws = 0, lostContexts = 0, hookIndex = 0, sineCalls = 0, floorCalls = 0;
   let renderProps = props;
+  let lastUniforms;
   const frames = new Map(), hooks = [], pendingEffects = [], images = [];
   const resizeObservers = [], intersectionObservers = [], canvases = [];
   const paths = [];
+  const animations = [];
   let currentPath = [];
   const canvas2d = { style: {}, parentElement: null, getContext: () => ({
     scale() {}, setTransform() {}, clearRect() {},
@@ -42,13 +44,21 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
     };
   }
   const container = {
-    ...eventTarget(), offsetWidth: width, offsetHeight: height, clientWidth: width, clientHeight: height,
-    getBoundingClientRect() { return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight }; },
-    appendChild(canvas) { canvas.parentElement = this; canvases.push(canvas); },
-    removeChild(canvas) { assert.equal(canvas.parentElement, this); canvas.parentElement = null; },
+    ...eventTarget(),
+    animate(keyframes, options) {
+      const animation = { keyframes, options, playState: 'running', currentTime: 0,
+        pause() { this.playState = 'paused'; }, play() { this.playState = 'running'; }, cancel() { this.playState = 'idle'; } };
+      animations.push(animation);
+      return animation;
+    },
+    offsetWidth: width, offsetHeight: height, clientWidth: width, clientHeight: height,
+    getBoundingClientRect() { return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight, right: this.clientWidth, bottom: this.clientHeight }; },
+    appendChild(canvas) { canvas.parentElement = canvas.parentNode = this; canvases.push(canvas); },
+    removeChild(canvas) { assert.equal(canvas.parentElement, this); canvas.parentElement = canvas.parentNode = null; },
   };
+  const media = { ...eventTarget(), matches: false };
   const window = { ...eventTarget(), innerWidth: width, innerHeight: height, devicePixelRatio: dpr,
-    matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }) };
+    matchMedia: () => media };
   const document = { ...eventTarget(), hidden: false };
   const ogl = {
     Renderer: class {
@@ -73,12 +83,14 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
       }
     },
     Geometry: class { constructor(gl, attributes) { this.attributes = attributes; } },
-    Triangle: class {},
-    Program: class { constructor(gl, { uniforms }) { this.uniforms = uniforms; } },
+    Triangle: class { attributes = {}; },
+    Color: class { set() { this.r = this.g = this.b = 1; return this; } },
+    Program: class { constructor(gl, { uniforms }) { this.uniforms = lastUniforms = uniforms; } },
     Mesh: class { constructor(gl, options) { Object.assign(this, options); } },
     Texture: class {},
   };
   const react = {
+    useSyncExternalStore(subscribe, snapshot) { return snapshot(); },
     createElement(type, props) {
       if (props?.ref) {
         props.ref.current = type === 'canvas' ? canvas2d : container;
@@ -122,7 +134,7 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   const module = { exports: {} };
   const context = {
     module, exports: module.exports, React: react, window, document,
-    Math: Object.assign(Object.create(Math), { sin(value) { sineCalls++; return Math.sin(value); } }),
+    Math: Object.assign(Object.create(Math), { sin(value) { sineCalls++; return Math.sin(value); }, floor(value) { floorCalls++; return Math.floor(value); } }),
     performance: { now: () => now }, ResizeObserver,
     ...(intersectionObserver ? { IntersectionObserver } : {}),
     requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
@@ -151,10 +163,17 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   render();
   intersect(true); // Deliver the browser's asynchronous initial observation.
   return {
+    get uniforms() { return lastUniforms; },
+    globalPointer(x = 200, y = 100) { window.emit('pointermove', { clientX: x, clientY: y }); },
+    globalLeave() { window.emit('mouseleave'); },
+    captureIntersection() { const observer = intersectionObservers.at(-1); return visible => observer?.callback([{ target: container, isIntersecting: visible }]); },
+    get animations() { return animations; },
+    hover(active) { container.emit(active ? 'mouseenter' : 'mouseleave'); },
+    motionPreference(reduce) { media.matches = reduce; media.emit('change'); },
     get pending() { return frames.size; }, get draws() { return draws; },
-    get sineCalls() { return sineCalls; }, get paths() { return paths; },
+    get sineCalls() { return sineCalls; }, get floorCalls() { return floorCalls; }, get paths() { return paths; },
     get lostContexts() { return lostContexts; },
-    get listenerCount() { return container.listenerCount + window.listenerCount + document.listenerCount; },
+    get listenerCount() { return container.listenerCount + window.listenerCount + document.listenerCount + media.listenerCount; },
     get liveObservers() { return [...resizeObservers, ...intersectionObservers].filter(observer => !observer.disconnected).length; },
     get attachedCanvases() { return canvases.filter(canvas => canvas.parentElement).length; },
     get canvasSize() {
@@ -207,6 +226,50 @@ test('Prism with timeScale zero draws once and stays idle', () => {
     assert.equal(effect.draws, 1, 'a static prism must render exactly one initial frame');
     assert.equal(effect.pending, 0);
   } finally { effect.cleanup(); }
+});
+
+test('SpecularButton without auto animation settles with no idle GPU draws', () => {
+  const effect = mount('SpecularButton');
+  try {
+    effect.step(500);
+    assert.ok(effect.draws > 0, 'the resting rim must remain visible');
+    assert.equal(effect.pending, 0, 'an unlit button must not retain a permanent frame loop');
+    const before = effect.draws;
+    effect.step(120);
+    assert.equal(effect.draws, before);
+    effect.resize();
+    effect.step(500);
+    assert.ok(effect.draws > before, 'resize must redraw the resting rim');
+    assert.equal(effect.pending, 0);
+  } finally { effect.cleanup(); }
+});
+
+test('SpecularButton auto animation pauses offscreen and hidden and disposes cleanly', () => {
+  const effect = mount('SpecularButton', { autoAnimate: true });
+  try {
+    effect.step(10);
+    const before = effect.draws;
+    effect.intersect(false);
+    effect.resize();
+    effect.step(100);
+    assert.equal(effect.draws, before);
+    assert.equal(effect.pending, 0);
+    effect.intersect(true);
+    effect.step(10);
+    assert.ok(effect.draws > before);
+    effect.visibility(true);
+    const hidden = effect.draws;
+    effect.step(100);
+    assert.equal(effect.draws, hidden);
+    effect.visibility(false);
+    effect.step(10);
+    assert.ok(effect.draws > hidden);
+  } finally { effect.cleanup(); }
+  assert.equal(effect.pending, 0);
+  assert.equal(effect.liveObservers, 0);
+  assert.equal(effect.listenerCount, 0);
+  assert.equal(effect.attachedCanvases, 0);
+  assert.equal(effect.lostContexts, 1);
 });
 
 test('ElasticMesh wakes on pointer movement and settles after leaving', () => {
@@ -454,4 +517,76 @@ test('ElectricBorder preserves its 640-sample path while bounding first-frame si
     const expected = [614486.441356541, 198486.35907780143, 175955545.990897, 83351418.22148266];
     sums.forEach((value, index) => assert.ok(Math.abs(value - expected[index]) < (index < 2 ? 1e-6 : 1e-3), `path aggregate ${index} changed`));
   } finally { effect.cleanup(); }
+});
+
+test('ElectricBorder caches spatial noise work instead of repeating it every frame', () => {
+  const effect = mount('ElectricBorder', {}, { width: 1800, height: 500 });
+  try {
+    effect.step(4);
+    const before = effect.floorCalls;
+    const draws = effect.draws;
+    effect.step(60);
+    assert.ok(effect.draws > draws + 15, 'keep the existing animation cadence');
+    assert.ok(effect.floorCalls - before < 1000, `repeated lattice decomposition: ${effect.floorCalls - before}`);
+  } finally { effect.cleanup(); }
+});
+
+test('ShinyText delegates its sweep to a native timeline and suspends when invisible', () => {
+  const props = { text: 'Music', speed: 2, delay: 1, yoyo: true, direction: 'right', pauseOnHover: true };
+  const effect = mount('ShinyText', props);
+  try {
+    assert.equal(effect.pending, 0, 'a text sweep must not register a JavaScript animation loop');
+    assert.equal(effect.animations.length, 1);
+    const animation = effect.animations[0];
+    assert.equal(animation.options.duration, 6000);
+    assert.deepEqual(Array.from(animation.keyframes, frame => [frame.offset, frame.backgroundPosition]), [
+      [0, '-50% center'], [1/3, '150% center'], [0.5, '150% center'], [5/6, '-50% center'], [1, '-50% center']
+    ]);
+    animation.currentTime = 1200;
+    for (const [pause, resume] of [
+      [() => effect.intersect(false), () => effect.intersect(true)],
+      [() => effect.visibility(true), () => effect.visibility(false)],
+      [() => effect.hover(true), () => effect.hover(false)],
+      [() => effect.motionPreference(true), () => effect.motionPreference(false)],
+      [() => effect.render({ ...props, disabled: true }), () => effect.render(props)],
+    ]) {
+      pause(); assert.equal(animation.playState, 'paused');
+      resume(); assert.equal(animation.playState, 'running');
+      assert.equal(animation.currentTime, 1200, 'pause/resume must preserve the current sweep');
+    }
+    effect.intersect(false);
+    effect.visibility(true); effect.visibility(false);
+    assert.equal(animation.playState, 'paused', 'a visible tab must not restart an offscreen label');
+  } finally { effect.cleanup(); }
+  assert.equal(effect.animations[0].playState, 'idle');
+  assert.equal(effect.listenerCount, 0);
+  assert.equal(effect.liveObservers, 0);
+});
+
+test('ShinyText avoids an invisible timeline when the text and shine colors match', () => {
+  const effect = mount('ShinyText', { text: 'Client', color: '#FFFFFF', shineColor: '#FFFFFF' });
+  try {
+    assert.equal(effect.pending, 0);
+    assert.equal(effect.animations.length, 0);
+  } finally { effect.cleanup(); }
+});
+
+test('SpecularButton keeps proximity brightness when angle tracking is disabled', () => {
+  const effect = mount('SpecularButton', { followMouse: false });
+  try {
+    effect.step(500);
+    effect.globalPointer(); effect.step(100);
+    assert.ok(effect.uniforms.uIntensity.value > 0, 'hover proximity must still light the rim');
+    effect.globalLeave(); effect.step(500);
+    assert.equal(effect.uniforms.uIntensity.value, 0);
+    assert.equal(effect.pending, 0);
+  } finally { effect.cleanup(); }
+});
+
+test('ShinyText ignores already queued observer deliveries after unmount', () => {
+  const effect = mount('ShinyText', { text: 'Music' });
+  const lateIntersection = effect.captureIntersection();
+  effect.cleanup();
+  lateIntersection(true);
+  assert.equal(effect.animations[0].playState, 'idle', 'a released native timeline must never restart');
 });
