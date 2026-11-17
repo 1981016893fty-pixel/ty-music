@@ -8,7 +8,8 @@
 | --- | --- |
 | 搜索上游、分页及 HTTP 状态 | `server-simple.js` |
 | 静态资源、压缩、ETag 与路径边界 | `static-files.cjs` |
-| Embeat 网站协议、时钟与签名 | `gd-embeat.cjs` |
+| 共用 Embeat 协议、时钟与签名 | `gd-embeat-core.js`；Node wrapper `gd-embeat.cjs` |
+| 浏览器直连搜索、音频、歌词和封面 | `browser-provider.js` |
 | GD 官方 HTTP/2 连接路由与会话释放 | `gd-transport.cjs` |
 | 双源游标、取消、超时及去重 | `search-session.js` |
 | 搜索 UI、队列与播放 | `player.js` |
@@ -25,17 +26,17 @@
 
 基础网易云按两个官方端点→GD 公开网易云目录顺序尝试，共用 12 秒预算、每次最多 4 秒；官方合法空结果直接返回，不以别的歌曲替换。GD 分页将 offset 换算为页与页内偏移，未知总数保持 `null`。Embeat 每次网站请求总预算 12 秒，含最多 4 秒校时与一次 401 后刷新重试；校时兼容 10 位 Unix 秒与 13 位毫秒，用单调时钟推进。新查询与清空同时取消两路，旧响应、异常与 finally 均不得修改新会话。补充失败下一次查询会重新尝试，不把一次不可用永久锁死。
 
-这套规则按实际请求可用性运行，不检测 VPN。线上请求从 Render 发出，访问者 VPN 通常不改变 Render 的上游出口；本地 Node 服务受本机网络影响。不能把本地“开 VPN 成功”当作线上可用证据，也不自动添加第三方代理或付费资源。
+这套规则按实际请求可用性运行，不检测 VPN。网页搜索优先从浏览器直连 GD，使用访问者当前网络；VPN 可能改变补充结果。网易直连失败回退服务端；这条回退仍使用 Render 出口。不能把本地“开 VPN 成功”当作线上可用证据，也不自动添加第三方代理或付费资源。
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261117-search-v47`，service worker 名称是 `ty-music-v47-search`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261117-direct-v48`，service worker 名称是 `ty-music-v48-direct`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
 遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；Render 可能冷启动。确认服务重启与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 
 ## Embeat 协议维护与残余风险
 
-GD 公开 `music-api.gdstudio.xyz` 接口不支持 Embeat；本项目使用 `music.gdstudio.xyz` 网站当前非文档协议，不代表官方稳定 API 或完整网站源码。默认网站版本为 `2026.11.11`；`GD_EMBEAT_VERSION` 只能覆盖网站版本字符串，不能替代签名器维护。当前修改版 MD5 的 `T[49]` 为 `0xB893382C`，所核对网站 `crc32.min.js` 的 SHA-256 为 `ed8dac33e9e79d70c5701bb9602cb66a0841c1fbfb0e46038579ba3dc6576da0`，来源保留在 `gd-embeat.cjs` 头部。
+GD 公开 `music-api.gdstudio.xyz` 接口不支持 Embeat；本项目使用 `music.gdstudio.xyz` 网站当前非文档协议，不代表官方稳定 API 或完整网站源码。默认网站版本为 `2026.11.11`；`GD_EMBEAT_VERSION` 只能覆盖网站版本字符串，不能替代签名器维护。当前修改版 MD5 的 `T[49]` 为 `0xB893382C`，所核对网站 `crc32.min.js` 的 SHA-256 为 `ed8dac33e9e79d70c5701bb9602cb66a0841c1fbfb0e46038579ba3dc6576da0`，来源保留在 `gd-embeat-core.js` 头部。
 
 维护时先核对网站版本、脚本哈希和时钟接口变化；签名器修改须通过固定向量回归和独立实时验收，不能只改版本字符串就声明恢复。不记录或共享凭据、Cookie。夹具测试只能证明可控边界，不替代联网结果。
 
@@ -87,7 +88,7 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 ## 数据、备份与删除边界
 
-默认服务转发外部目录/媒体请求；当前 `server-simple.js` 没有应用账号系统或持久曲库数据库。基础搜索关键词发送至服务器与网易云／GD 网易云目录，补充搜索发送至 GD 音乐台网站；Embeat 音频、歌词、封面向 GD 发送对应的原始资源 ID，不再向 autosource 发送标题等元数据。音频 URL 缓存在服务端内存，收藏等个人数据仍在本地。其他封面、歌词、音频由各自路径请求外部服务。外部服务自己的访问日志、保留期限及授权规则未核实。
+网页搜索与资源优先直连固定 GD 主机，失败时使用适用的同源兼容路径；当前 `server-simple.js` 没有应用账号系统或持久曲库数据库。基础关键词先发送至 GD 公开网易云目录，失败时发送至本站及网易云／GD；补充关键词直接发送至 GD 音乐台，第三方可见访问者出口 IP；Embeat 音频、歌词、封面向 GD 发送对应的原始资源 ID，不再向 autosource 发送标题等元数据。音频 URL 缓存在服务端内存，收藏等个人数据仍在本地。其他封面、歌词、音频由各自路径请求外部服务。外部服务自己的访问日志、保留期限及授权规则未核实。
 
 当前浏览器 origin 的 `localStorage` 使用 `melodybox_fav`（收藏）、`melodybox_pl`（歌单）、`melodybox_rec`（最近播放）、`melodybox_album_fav`、`melodybox_tracks` 与 `melodybox_album_<ID>`；布局还有 `ty-sidebar-collapsed`、`ty-player-collapsed`。桌面目录缓存前缀为 `ty-music-api-cache:`。本地音频存储在 IndexedDB 数据库 `melodybox_local` 的 `tracks` 对象仓库，不是服务器备份。端口或域名变化会改变浏览器存储 origin。
 
@@ -103,7 +104,11 @@ ego lite 的 v47 真实页面搜索“周杰伦”返回网易云 20 条与 Embe
 
 同一页面通过 CDP 阻断 `source=embeat` 后搜索“林俊杰”，仍显示 20 条网易云结果、补充为零且加载结束；解除阻断后新查询恢复 40 条双源结果。此前尝试在页面替换 fetch 未覆盖已捕获的会话传输，因此不把那次尝试作为失败隔离证据。分页、15 秒截止与忽略 abort 的传输边界另由自动测试覆盖。
 
-当前变更尚待后续 PR、远端 CI、合并与 Render 发布，下文生产记录均为此前版本历史；本地双源成功不代表 Render 上游已恢复。
+PR #2 已合并为 `84b2e2b`，[push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44051046088) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44053169845) 通过。Render 部署 `dep-dbu1lh6c6qcc73esubu0` 已 Live，健康提交 `66c00e6`；但实际服务端搜索仍失败：官方网易云 code=-462、GD 网易云403、Embeat 校时403。部署成功不代表搜索恢复。
+
+v48 浏览器直连已实现，当前待新 PR、CI、合并与部署。浏览器与 Node 共用签名核心，不新增依赖；直连不发送凭据，只请求固定 GD 主机。音频在用户点击内同步启动原同源代理路径，以保持 Safari 播放许可；网页同时按原 urlId 直连解析，代理尚未实际播放时切到直连结果。代理已实际播放则不打断；桌面保持同步 stream=1。歌词按 lyricId 独立解析，字面换行规范化；封面代理失败按同源 picId 直连解析。切歌取消旧解析，并以递增代次保护同一首重复点击；旧播放回调不再清空新歌词。复审发现的 Embeat CDN 图片失败后跨目录猜封面已修复，失败仅显示默认图标；同步媒体调用与图片二次失败都有回归覆盖。Safari 真机首次点击仍待实际验证。
+
+本轮111/111 node:test 与播放器、交互、拖动和动效检查通过；前端构建与桌面复制通过。ego lite 真实 v48 页面搜索周杰伦返回20条网易云加20条Embeat，资源记录确认两路均从浏览器直接请求。阻断音乐台后搜索林俊杰仍返回20条网易云、加载结束；解除阻断后可重新尝试。此前一次校时超时及网易直连失败后回退20条也已观察到，故不保证上游持续可用。另实测 Embeat 晴天／周杰倫原曲资源：歌词1061字、封面解析为 Tidal 图片，点击后 audio.readyState=4、paused=false、duration=269.747秒，已暂停。只证明当次网络与该曲，不代表全目录可用。
 
 ```sh
 npm ci

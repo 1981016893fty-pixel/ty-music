@@ -2,7 +2,7 @@
 
 浏览器音乐播放器，提供在线搜索、播放、收藏、歌单与本地音频管理。原生 HTML/CSS/JavaScript 负责播放器，React 与 WebGL 组件负责部分视觉场景；仓库也包含 Tauri 桌面构建入口。
 
-搜索先显示网易云基础结果，Embeat 可访问时异步追加，无需手动切源；Embeat 失败不影响基础列表与分页。网易云直连失败时使用 GD 公开 API 的同一网易云目录。各歌曲保留来源及原始资源 ID，不按同名合并或替换；旧曲库保留。Embeat 不提供下载或专辑目录，其接入使用 `music.gdstudio.xyz` 网站当前非文档协议；GD 公开 music-api 不支持 Embeat，这不是官方稳定 API 或完整网站源码。
+搜索先显示网易云基础结果，Embeat 可访问时异步追加，无需手动切源；Embeat 失败不影响基础列表与分页。网页从访问者网络直连 GD 网易云目录与 Embeat 网站，基础直连失败保留原服务端回退。各歌曲保留来源及原始资源 ID，不按同名合并或替换；旧曲库保留。Embeat 不提供下载或专辑目录，其接入使用 `music.gdstudio.xyz` 网站当前非文档协议；GD 公开 music-api 不支持 Embeat，这不是官方稳定 API 或完整网站源码。
 
 ## 本地运行
 
@@ -38,7 +38,7 @@ npm run build:aurora
 
 `npm test` 覆盖搜索 HTTP 边界、客户端请求竞态、缓存策略、场景生命周期和已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 
-双源请求、独立游标、取消和超时集中在 `search-session.js`，`player.js` 负责显示及播放；新增的脚本必须随静态路由、service worker 与桌面复制清单一起更新。音源是否可用由实际请求决定，不检测 VPN。线上请求由 Render 转发，访问者开启 VPN 通常不会改变服务器的上游出口；本地 Node 服务则受本机网络影响。
+双源游标、取消和超时集中在 `search-session.js`；`browser-provider.js` 负责浏览器搜索和资源解析，`gd-embeat-core.js` 与 Node 共用签名协议，`player.js` 负责显示及播放。脚本必须随静态路由、service worker 与桌面复制清单一起更新。网页直接使用访问者网络请求 GD 网易云目录与 Embeat 网站，网易直连失败才回退服务端；VPN 可能改变补充结果，无需手动切源或检测 VPN。只有服务端回退使用 Render 出口。
 
 动效采用按场景加载和按需绘制：封面网格收敛后停止，离屏或隐藏的局部动效暂停；浏览页柔光背景设有独立于 Retina 密度的 50 万像素上限。`scripts/verify-effect-lifecycle.mjs` 检查静置、指针／尺寸唤醒、离屏、隐藏和卸载行为，实际设备表现及测量边界见[维护指南](docs/maintenance.md#场景与流畅度)。
 
