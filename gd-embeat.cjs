@@ -74,9 +74,16 @@ function createEmbeatClient({ fetchImpl = process.env.GD_EMBEAT_CONNECT_HOST ? c
         const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 4000);
         try {
           const response = await abortable(fetchImpl(`https://${HOST}/time`, { headers, signal: controller.signal, redirect: 'error' }), controller.signal);
-          if (!response.ok) throw fault(response.status === 429 ? 429 : 502, response.status === 429 ? 'GD_RATE_LIMITED' : 'GD_CLOCK_ERROR');
+          if (!response.ok) {
+            response.body?.cancel().catch(() => {});
+            console.warn('[Embeat clock]', { kind: 'http', status: response.status, contentType: response.headers.get('content-type'), encoding: response.headers.get('content-encoding') });
+            throw fault(response.status === 429 ? 429 : 502, response.status === 429 ? 'GD_RATE_LIMITED' : 'GD_CLOCK_ERROR');
+          }
           const text = (await boundedText(response, controller.signal, 128)).trim();
-          if (!/^\d{10}(?:\d{3})?$/.test(text)) throw fault(502, 'GD_CLOCK_ERROR');
+          if (!/^\d{10}(?:\d{3})?$/.test(text)) {
+            console.warn('[Embeat clock]', { kind: 'invalid-timestamp', status: response.status, contentType: response.headers.get('content-type'), encoding: response.headers.get('content-encoding'), bytes: Buffer.byteLength(text) });
+            throw fault(502, 'GD_CLOCK_ERROR');
+          }
           clock = { serverMs: Number(text) * (text.length === 10 ? 1000 : 1), sampledAt: performance.now() };
           return clock;
         } finally { clearTimeout(timer); }

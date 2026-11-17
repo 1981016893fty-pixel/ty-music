@@ -79,6 +79,20 @@ test('401 retry is finite and clock failure can recover', async () => {
   await assert.rejects(client.search('query', 2, 0), e => e.statusCode === 502);
   assert.equal(clocks, 3); assert.equal(api, 2);
 });
+for (const status of [301, 403, 421, 429]) {
+  test(`clock HTTP ${status} releases its response stream and can recover`, async () => {
+    let cancelled = 0, failed = false;
+    const client = createEmbeatClient({ fetchImpl: async url => {
+      if (!String(url).endsWith('/time')) return json([]);
+      if (failed) return new Response('1794826800');
+      failed = true;
+      return new Response(new ReadableStream({ cancel() { cancelled++; } }), { status });
+    } });
+    await assert.rejects(client.search('query'), e => e.code === (status === 429 ? 'GD_RATE_LIMITED' : 'GD_CLOCK_ERROR'));
+    assert.equal(cancelled, 1);
+    assert.deepEqual((await client.search('retry')).songs, []);
+  });
+}
 test('cached clock advances across ten-second bucket rather than caching prefix', async () => {
   let clocks = 0; const signatures = [];
   const client = createEmbeatClient({ fetchImpl: async url => {

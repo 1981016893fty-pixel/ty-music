@@ -11,4 +11,4 @@ services:
       - key: NODE_VERSION
         value: 22.22.2
       - key: GD_EMBEAT_CONNECT_HOST
-        value: music-api.gdstudio.xyz
+        value: music.gdstudio.xyz

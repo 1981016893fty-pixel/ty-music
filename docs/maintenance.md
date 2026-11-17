@@ -41,7 +41,7 @@ Embeat 封面仅接受资源 ID，当前允许已核对的 `resources.tidal.com`
 
 本机直连网站域名出现 DNS 答案不一致及连接超时；不修改系统 DNS、代理或 TLS 校验。可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz` 启用原生 HTTP/2 连接路由：TLS 连接到 GD 的官方主机，HTTP authority、路径、签名和资源来源仍为 `music.gdstudio.xyz` 网站。仅允许该值和 `music.gdstudio.xyz`；不允许自定义主机或 IP，也不跟随 API 重定向。该方式依赖 GD 当前同站点路由，若上游不再支持需重新核对；不能把它描述成公开 API 已支持 Embeat。
 
-HTTP/2 同一客户端复用会话；取消只关闭对应流，不中断其他请求；连接在响应头之前断开时最多重连一次，受原有总截止时间约束。空闲会话不阻止进程退出，30 秒空闲后关闭。2026-11-17 本地真实搜索“晴天 周杰伦”约 2.7 秒返回 Embeat 原曲，歌词及封面 200，音频地址 302；本地浏览器已验证原曲实际起播、时长约 269.747 秒、进度拖动至约 134.88 秒和歌词同步。
+HTTP/2 同一客户端复用会话；gzip、br、deflate 响应先流式解压，再由现有响应上限检查解压后字节数。取消只关闭对应流，不中断其他请求；校时 HTTP 失败也必须取消响应体。校时故障日志仅记录状态、类型、编码和格式分类／长度，不记录响应正文、用户查询或签名。连接在响应头之前断开时最多重连一次，受原有总截止时间约束。空闲会话不阻止进程退出，30 秒空闲后关闭。2026-11-17 本地真实搜索“晴天 周杰伦”约 2.7 秒返回 Embeat 原曲，歌词及封面 200，音频地址 302；本地浏览器已验证原曲实际起播、时长约 269.747 秒、进度拖动至约 134.88 秒和歌词同步。
 
 ## 场景与流畅度
 
@@ -81,8 +81,8 @@ Embeat 默认搜索与资源路由已在本地实现；2026-11-16 完整 `npm te
 
 本次 Embeat 版本另经 ego lite 页面检查：本地页面可打开，搜索请求超时时结束加载并显示失败，不显示为零结果；探索区正确收起，默认标签为 Embeat，无手动切源控件。一次刷新报告渲染器无响应，关闭该任务页并在同一 Space 新建页面后，正常动效模式加载/刷新成功，尚未确定单次异常根因。这不能替代真实成功结果、音频、歌词或 Safari 流畅度验收。独立审查发现的问题由主代理修复并回归验证，审查范围限本次改动与直接调用方。
 
-本轮任务分支为 `codex/deploy-embeat-search`，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 保持未合并。初版提交 `2ac858d` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44017050490) 已通过，但 Render 部署 `dep-dbttk52fngtc73a6q3i0` 因测试继承生产传输变量而失败，线上原 Live 提交 `85f5697` 未被替换。该环境隔离已在本地修复；最新 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz npm test` 通过（67 个 node:test 用例及播放器、动效检查），新增分包与缓存修复仍需重新推送、CI 与上线验收，不能将本地通过记为已部署。
+本轮任务分支为 `codex/deploy-embeat-search`，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 保持未合并。初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，该隔离问题已修复。性能提交 `a4e8dfa250aa049087e224810351951433a1a912` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 已通过，2026-11-17 Render 部署 `dep-dbtu882fngtc73a8g7p0` 已 Live，随后配置部署 `dep-dbtuascipgvc73a67q30` 也成功，健康检查确认 Node 22.22.2 和 Embeat 默认源。然而生产搜索仍返回 `GD_CLOCK_ERROR`，不能视为搜索验收通过。本地同代码返回20首；改生产连接主机为网站域名仍失败。当前进一步修复 HTTP/2 压缩响应解码和失败响应流释放，并增加不含正文的校时诊断，以区别上游 HTTP 拒绝与时间格式异常；线上根因尚待新部署日志确认。该传输补丁已通过77个 node:test 用例、播放器／动效检查和生产构建，独立复审未发现阻止提交的问题。
 
-既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2`、`GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz` 已保存。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
+既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2`、`GD_EMBEAT_CONNECT_HOST=music.gdstudio.xyz` 已保存。生产连接入口需在生产环境单独验证，不可直接套用本机网络绕行配置。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
 
 回退时由维护者使用 `git revert <本次PR提交>` 保留历史，再运行测试和构建、提交生成资源；部署所有者按既有授权流程重新部署并核对健康、搜索、播放和个人曲库。不要使用强推或硬重置覆盖其他改动。第三方服务、媒体及依赖的授权/分发条件需要各自核实，当前没有替代权利人的许可声明。

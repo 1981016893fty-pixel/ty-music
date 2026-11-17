@@ -1,8 +1,10 @@
 'use strict';
 
 const http2 = require('node:http2');
-const { Readable } = require('node:stream');
+const { Readable, pipeline } = require('node:stream');
+const { createGunzip, createBrotliDecompress, createInflate } = require('node:zlib');
 const WEBSITE = 'music.gdstudio.xyz';
+const DECODERS = { gzip: createGunzip, br: createBrotliDecompress, deflate: createInflate };
 
 // Connection routing is separate from the website authority and signed payload.
 // Only GD's two verified hosts are allowed; TLS validation remains enabled.
@@ -42,7 +44,20 @@ function createEmbeatTransport({ connectHost = WEBSITE, connectImpl = http2.conn
         const status = incoming[':status'];
         const responseHeaders = Object.fromEntries(Object.entries(incoming).filter(([name]) => !name.startsWith(':')));
         try {
-          resolve(new Response([204, 205, 304].includes(status) ? null : Readable.toWeb(stream), { status, headers: responseHeaders }));
+          let body = null;
+          if (![204, 205, 304].includes(status)) {
+            const encodings = String(incoming['content-encoding'] || '').toLowerCase().split(',').map(value => value.trim()).filter(value => value && value !== 'identity').reverse();
+            const decoders = encodings.map(encoding => {
+              if (!Object.hasOwn(DECODERS, encoding)) throw new Error('Unsupported GD content encoding');
+              return DECODERS[encoding]();
+            });
+            // Match fetch: expose decoded bytes but retain original response
+            // headers for diagnostics. Pipeline propagates abort/cancel to the
+            // HTTP/2 stream; the client bounds the decoded byte count.
+            if (decoders.length) pipeline(stream, ...decoders, () => {});
+            body = Readable.toWeb(decoders.at(-1) || stream);
+          }
+          resolve(new Response(body, { status, headers: responseHeaders }));
         } catch (error) { stream.close(); reject(error); }
       });
       stream.end();

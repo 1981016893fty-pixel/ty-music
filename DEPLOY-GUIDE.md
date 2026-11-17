@@ -7,7 +7,7 @@
 1. 使用 Node.js 22，本地运行 `npm ci --include=dev`、`npm test`、`npm run build:aurora`，确认生成资源无遗漏。
 2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。本轮部署分支为 `codex/deploy-embeat-search`；主分支的合并单独处理。
 3. 在既有 Render 服务的 Settings 核对仓库、部署分支与启动命令；环境变量设置 `NODE_VERSION=22.22.2`。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`，启动命令为 `node server-simple.js`。`esbuild` 是构建所需开发依赖，不能在构建前省略。
-4. 网络无法直连音乐台时，可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz`。该选项只启用到 GD 官方主机的 HTTP/2 连接路由，网站 authority 与签名仍为 `music.gdstudio.xyz`，来源仍为 Embeat；公开 API 自身不支持 Embeat。该路由依赖 GD 当前托管配置，不能保证未来稳定。未设置时使用网站默认连接方式；不支持任意代理主机，不禁用 TLS 校验。
+4. 网络无法直连音乐台时，可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz`。该选项只启用到 GD 官方主机的 HTTP/2 连接路由，网站 authority 与签名仍为 `music.gdstudio.xyz`，来源仍为 Embeat；公开 API 自身不支持 Embeat。该路由依赖 GD 当前托管配置，不能保证未来稳定。本地与 Render 的出口和 CDN 节点不同，不应直接照搬本地连接设置；当前 Render 使用 `music.gdstudio.xyz`，校时故障正在通过安全诊断区分 HTTP 状态和格式。未设置时使用网站默认连接方式；不支持任意代理主机，不禁用 TLS 校验。
 5. 当前既有服务 Auto-Deploy 为 Off，按此流程手动发布，避免未经验收的任务分支更新自动替换线上。部署已通过检查的具体提交，等待 Render 显示 Live，并对照实际提交哈希。不要把推送、触发构建或健康检查成功当成完整上线验收。
 
 仅修改 `render.yaml` 不会自动更改所有既有手动创建服务的设置，必须在控制台核对实际值。回退前保留原分支、运行时和部署提交，不覆盖其他项目或环境变量。

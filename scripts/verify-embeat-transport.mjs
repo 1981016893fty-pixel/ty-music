@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import http2 from 'node:http2';
 import { once } from 'node:events';
 import { createRequire } from 'node:module';
+import { gzipSync, brotliCompressSync, deflateSync } from 'node:zlib';
 const require = createRequire(import.meta.url);
 const { createEmbeatTransport } = require('../gd-transport.cjs');
 const { createEmbeatClient } = require('../gd-embeat.cjs');
@@ -74,5 +75,65 @@ test('a connection dropped before headers reconnects once within the caller dead
   }, stream => {
     if (++requests === 1) return stream.session.destroy();
     stream.respond({ ':status': 200 }); stream.end('1794826800');
+  });
+});
+
+for (const [encoding, compress] of [['gzip', gzipSync], ['br', brotliCompressSync], ['deflate', deflateSync]]) {
+  test(`HTTP/2 ${encoding} responses decode before clock and API validation`, async () => {
+    await upstream(async fetchImpl => {
+      const client = createEmbeatClient({ fetchImpl });
+      assert.equal((await client.search('compressed', 1, 0)).songs[0].id, 'original-id');
+    }, (stream, headers) => {
+      const body = headers[':path'] === '/time' ? '1794826800' : JSON.stringify([
+        { id: 'original-id', source: 'embeat', name: 'Fixture', artist: ['Artist'] },
+      ]);
+      const compressed = compress(body);
+      stream.respond({ ':status': 200, 'content-encoding': encoding, 'content-length': compressed.length });
+      stream.end(compressed);
+    });
+  });
+}
+
+test('decoded bodies retain diagnostic encoding headers and cancellation closes only their stream', async () => {
+  let closed;
+  const streamClosed = new Promise(resolve => { closed = resolve; });
+  await upstream(async (transport, sessions) => {
+    const response = await transport('https://music.gdstudio.xyz/api.php?slow=1');
+    assert.equal(response.headers.get('content-encoding'), 'gzip');
+    await response.body.cancel();
+    let timer;
+    try { await Promise.race([streamClosed, new Promise((resolve, reject) => { timer = setTimeout(() => reject(Error('Canceled decoder left HTTP/2 stream open')), 1000); })]); }
+    finally { clearTimeout(timer); }
+    const healthy = await transport('https://music.gdstudio.xyz/time');
+    assert.equal(await healthy.text(), '1794826800');
+    assert.equal(sessions.size, 1, 'canceling a body must preserve the shared HTTP/2 session');
+  }, (stream, headers) => {
+    if (headers[':path'].includes('slow')) {
+      stream.once('close', closed);
+      stream.respond({ ':status': 200, 'content-encoding': 'gzip' });
+      stream.write(gzipSync('partial response')); // Leave the upstream stream open until cancellation.
+    } else { stream.respond({ ':status': 200 }); stream.end('1794826800'); }
+  });
+});
+
+test('decoded byte limits reject a small gzip response that expands beyond the API cap', async () => {
+  await upstream(async fetchImpl => {
+    const client = createEmbeatClient({ fetchImpl });
+    await assert.rejects(client.search('oversized', 1, 0), error => error.code === 'GD_RESPONSE_TOO_LARGE');
+  }, (stream, headers) => {
+    if (headers[':path'] === '/time') { stream.respond({ ':status': 200 }); return stream.end('1794826800'); }
+    const body = gzipSync(' '.repeat(2 * 1024 * 1024 + 1));
+    stream.respond({ ':status': 200, 'content-encoding': 'gzip', 'content-length': body.length });
+    stream.end(body);
+  });
+});
+
+test('corrupt compressed data fails explicitly instead of returning a successful empty page', async () => {
+  await upstream(async fetchImpl => {
+    const client = createEmbeatClient({ fetchImpl });
+    await assert.rejects(client.search('corrupt', 1, 0), error => error.statusCode === 502 && error.code === 'GD_UPSTREAM_ERROR');
+  }, (stream, headers) => {
+    if (headers[':path'] === '/time') { stream.respond({ ':status': 200 }); return stream.end('1794826800'); }
+    stream.respond({ ':status': 200, 'content-encoding': 'gzip' }); stream.end('invalid gzip bytes');
   });
 });
