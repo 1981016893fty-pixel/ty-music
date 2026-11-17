@@ -9,7 +9,7 @@ const compress = promisify(gzip);
 
 const FILES = new Map([
   ['/', 'index.html'], ['/index.html', 'index.html'], ['/desktop.html', 'desktop.html'],
-  ...['player.js', 'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css',
+  ...['player.js', 'search-session.js', 'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css',
     'liquid-glass.js', 'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg']
     .map(file => ['/' + file, file]),
 ]);

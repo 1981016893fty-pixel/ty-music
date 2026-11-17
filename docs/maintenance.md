@@ -10,7 +10,8 @@
 | 静态资源、压缩、ETag 与路径边界 | `static-files.cjs` |
 | Embeat 网站协议、时钟与签名 | `gd-embeat.cjs` |
 | GD 官方 HTTP/2 连接路由与会话释放 | `gd-transport.cjs` |
-| 搜索 UI、取消与超时 | `player.js` |
+| 双源游标、取消、超时及去重 | `search-session.js` |
+| 搜索 UI、队列与播放 | `player.js` |
 | 离线资源、网络缓存 | `service-worker.js`、`index.html` |
 | 场景生命周期 | `src/Scene.jsx`、`src/sceneStore.mjs`、`src/mount.jsx` |
 | 动效帧调度、离屏与隐藏暂停 | `src/renderLoop.mjs` |
@@ -20,11 +21,15 @@
 
 ## 搜索契约与排障
 
-两个搜索入口 `/api/search`、`/api/music/search` 接收 `keywords`、`limit`、`offset`，默认使用 Embeat 综合搜索，无手动切源操作。显式 `source=netease` 仅保留旧精选/新歌内部兼容，不是默认搜索回退。Embeat 每次网站请求的总预算为 12 秒，含最多 4 秒时钟同步与一次 401 后刷新重试；前端搜索预算为 15 秒。校时兼容当前返回的 10 位 Unix 秒与旧 13 位毫秒，归一到毫秒后用单调时钟推进。新增查询取消旧请求，旧响应不得覆盖新查询，翻页绑定当前查询代次。
+两个搜索入口 `/api/search`、`/api/music/search` 接收 `keywords`、`limit`、`offset`、`source`，默认网易云。网页同时独立请求 `source=netease` 与 `source=embeat`，先展示网易首批，再追加成功的 Embeat；无手动切源。`search-session.js` 为每源保存独立游标、请求及 15 秒截止时间；补充失败只结束自身，不影响基础结果或下一页。Embeat 早到先暂存，基础首批成功或失败后释放，后续页只追加不重新排序。来源+原始 providerId 去重，不能仅凭标题或跨来源相同数字 ID 合并。
+
+基础网易云按两个官方端点→GD 公开网易云目录顺序尝试，共用 12 秒预算、每次最多 4 秒；官方合法空结果直接返回，不以别的歌曲替换。GD 分页将 offset 换算为页与页内偏移，未知总数保持 `null`。Embeat 每次网站请求总预算 12 秒，含最多 4 秒校时与一次 401 后刷新重试；校时兼容 10 位 Unix 秒与 13 位毫秒，用单调时钟推进。新查询与清空同时取消两路，旧响应、异常与 finally 均不得修改新会话。补充失败下一次查询会重新尝试，不把一次不可用永久锁死。
+
+这套规则按实际请求可用性运行，不检测 VPN。线上请求从 Render 发出，访问者 VPN 通常不改变 Render 的上游出口；本地 Node 服务受本机网络影响。不能把本地“开 VPN 成功”当作线上可用证据，也不自动添加第三方代理或付费资源。
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261117-motion-v46`，service worker 名称是 `ty-music-v46-motion`；以后更新须同步 `index.html`、预缓存列表与 `CACHE_NAME`，并运行缓存回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261117-search-v47`，service worker 名称是 `ty-music-v47-search`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
 遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；Render 可能冷启动。确认服务重启与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 
@@ -82,13 +87,23 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 ## 数据、备份与删除边界
 
-默认服务转发外部目录/媒体请求；当前 `server-simple.js` 没有应用账号系统或持久曲库数据库。默认搜索关键词发送至服务器与 GD 音乐台网站；Embeat 音频、歌词、封面向 GD 发送对应的原始资源 ID，不再向 autosource 发送标题等元数据。音频 URL 缓存在服务端内存，收藏等个人数据仍在本地。旧网易云兼容目录及其他封面、歌词、音频会由各自路径请求外部服务。外部服务自己的访问日志、保留期限及授权规则未核实。
+默认服务转发外部目录/媒体请求；当前 `server-simple.js` 没有应用账号系统或持久曲库数据库。基础搜索关键词发送至服务器与网易云／GD 网易云目录，补充搜索发送至 GD 音乐台网站；Embeat 音频、歌词、封面向 GD 发送对应的原始资源 ID，不再向 autosource 发送标题等元数据。音频 URL 缓存在服务端内存，收藏等个人数据仍在本地。其他封面、歌词、音频由各自路径请求外部服务。外部服务自己的访问日志、保留期限及授权规则未核实。
 
 当前浏览器 origin 的 `localStorage` 使用 `melodybox_fav`（收藏）、`melodybox_pl`（歌单）、`melodybox_rec`（最近播放）、`melodybox_album_fav`、`melodybox_tracks` 与 `melodybox_album_<ID>`；布局还有 `ty-sidebar-collapsed`、`ty-player-collapsed`。桌面目录缓存前缀为 `ty-music-api-cache:`。本地音频存储在 IndexedDB 数据库 `melodybox_local` 的 `tracks` 对象仓库，不是服务器备份。端口或域名变化会改变浏览器存储 origin。
 
 升级通常保留这些数据；回归测试不应删除真实浏览器资料。清除站点数据、删除 IndexedDB 或卸载桌面端可能丢失个人内容。需要迁移/备份时先保留原始音频，并单独导出/备份相关浏览器存储，再验证恢复；当前没有经本次验证的一键完整备份流程。不得把删除全部浏览器资料当成缓存排障步骤。
 
 ## 验证与交付状态
+
+### 当前双源版本（2026-11-17）
+
+网易云保底与 Embeat 自动补充已实现；本地完整测试为 105/105 node:test，加播放器、来源身份、交互及既有动效检查通过，前端构建、静态分发与 README 链接审计通过。独立复审覆盖双源会话、GD 网易云备用链路及失败响应体释放，未发现本次改动的阻断问题。新脚本没有引入依赖；搜索状态集中在 `search-session.js`，资源身份与播放保持现有入口。
+
+ego lite 的 v47 真实页面搜索“周杰伦”返回网易云 20 条与 Embeat 20 条，先基础后补充；本次网络资源耗时约 255ms 与 3.3s，仅代表该次本地网络。快速从“陈奕迅”切换“晴天 周杰伦”后显示最后查询，Embeat 原曲“晴天／周杰倫／葉惠美”保留独立身份，网易同名翻唱未被替换。欢迎页高层点击受验收工具节点失效影响，本轮以应用已有入口进入，不能将其记为欢迎按钮点击验收通过。
+
+同一页面通过 CDP 阻断 `source=embeat` 后搜索“林俊杰”，仍显示 20 条网易云结果、补充为零且加载结束；解除阻断后新查询恢复 40 条双源结果。此前尝试在页面替换 fetch 未覆盖已捕获的会话传输，因此不把那次尝试作为失败隔离证据。分页、15 秒截止与忽略 abort 的传输边界另由自动测试覆盖。
+
+当前变更尚待后续 PR、远端 CI、合并与 Render 发布，下文生产记录均为此前版本历史；本地双源成功不代表 Render 上游已恢复。
 
 ```sh
 npm ci
@@ -104,13 +119,13 @@ Embeat 默认搜索与资源路由已在本地实现；2026-11-16 完整 `npm te
 
 本次 Embeat 版本另经 ego lite 页面检查：本地页面可打开，搜索请求超时时结束加载并显示失败，不显示为零结果；探索区正确收起，默认标签为 Embeat，无手动切源控件。一次刷新报告渲染器无响应，关闭该任务页并在同一 Space 新建页面后，正常动效模式加载/刷新成功，尚未确定单次异常根因。这不能替代真实成功结果、音频、歌词或 Safari 流畅度验收。独立审查发现的问题由主代理修复并回归验证，审查范围限本次改动与直接调用方。
 
-本轮任务分支为 `codex/deploy-embeat-search`，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 保持未合并。初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，该隔离问题已修复。性能提交 `a4e8dfa` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 与部署已通过；进一步的传输修复 `4f513a0582b60c8ffde4f447e7694af6d4a0be13` 已通过 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44024742320)，Render 部署 `dep-dbtue1m7bikc73fp4rp0` 已 Live。2026-11-17 后续标准 fetch 配置部署 `dep-dbtugb3l550s739d6mu0` 也已 Live，健康检查确认同一提交、Node 22.22.2 和默认 Embeat。
+动效提交 `7496567` 已通过两项 [Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44043737345)，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 已合并为 `efaef0d`。后续双源搜索变更沿用部署分支 `codex/deploy-embeat-search`，本地验证与远端发布分别确认。此前初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，隔离问题已修复。性能提交 `a4e8dfa` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 与部署通过；传输修复 `4f513a0582b60c8ffde4f447e7694af6d4a0be13` 已通过 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44024742320)，Render 部署 `dep-dbtue1m7bikc73fp4rp0` 已 Live。后续标准 fetch 配置部署 `dep-dbtugb3l550s739d6mu0` 也已 Live，健康检查确认同一提交、Node 22.22.2 和旧默认 Embeat。
 
 **生产搜索仍未通过验收。** 本地同代码返回20首；Render 经网站主机 HTTP/2 的校时日志明确为 HTTP 403、`text/html; charset=UTF-8`、无内容编码。切换 API 连接主机及标准 fetch 后仍有 `GD_CLOCK_ERROR`；不能把这一错误解释为 Render 冷启动、压缩错误或无歌曲。已确认并修复的压缩处理与失败响应流释放问题是独立缺陷，77个 node:test、播放器／动效检查和生产构建均通过，独立复审未发现阻止提交的问题，但并未消除生产上游拒绝。
 
 线上静态清单及3个核心模块、v45 worker 均可访问；hash 分块为 JavaScript MIME 和 immutable 缓存，条件请求返回304。浏览器搜索失败会结束加载并显示错误，不伪装为空结果。线上原曲播放、拖动和歌词同步因搜索阻塞尚未完成本轮验收，本地成功证据不能替代生产结果。
 
-当前可确认的阻塞是 GD 网站校时对该 Render 运行环境的 HTTP 拒绝；是否连带拒绝网站 `/api.php` 尚未取得运行时探针结果，不能扩大为“GD 封禁所有 Render IP”。曾准备一次只把校时请求映射到 GD 官方 API 主机、搜索仍请求原网站的短探针；Render 控制台保存启动配置报 `Failed to fetch (api.render.com)`，重启也失败，随后控制台无法加载服务设置。未确认该临时启动配置写入，也未取得探针结果。控制台恢复后先核对 Start Command，若含 `node -e` 诊断前缀，恢复为 `node server-simple.js`，再继续验证；不重复执行未知状态的配置写入。网站健康端点仍正常。下一步需要可访问 GD 网站的既有运行出口或由上游确认访问规则；不得默认换源、引入第三方代理、升级付费或新建资源。
+此前确认 GD 网站校时对该 Render 运行环境 HTTP 拒绝；是否连带拒绝 `/api.php` 尚未取得探针结果，不能扩大为“GD 封禁所有 Render IP”。一次临时探针配置保存报 `Failed to fetch (api.render.com)`，没有取得探针结果。2026-11-17 后续控制台恢复，重新读取实际 Start Command 为 `node server-simple.js`，Auto-Deploy 为 Off，无需修复启动命令。新规则将网易云作为基础、Embeat 按实际可用性补充；仍不得引入第三方代理、付费升级或新建资源。
 
 既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2` 已保存；最后确认上线的 `GD_EMBEAT_CONNECT_HOST` 为空，使用标准 fetch。生产连接入口需在生产环境单独验证，不可直接套用本机网络绕行配置。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
 

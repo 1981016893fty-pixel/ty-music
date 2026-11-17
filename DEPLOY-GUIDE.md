@@ -5,7 +5,7 @@
 ## 构建和发布
 
 1. 使用 Node.js 22，本地运行 `npm ci --include=dev`、`npm test`、`npm run build:aurora`，确认生成资源无遗漏。
-2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。本轮部署分支为 `codex/deploy-embeat-search`、PR #1；用户已授权在验收通过后合并及部署。核对远端真实状态，不能把本地提交当作已推送或已合并。
+2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。部署分支为 `codex/deploy-embeat-search`，动效 PR #1 已合并，后续双源搜索单独提交 PR；用户已授权验收后合并及部署。核对远端真实状态，不能把本地提交当作已推送或已合并。
 3. 在既有 Render 服务的 Settings 核对仓库、部署分支与启动命令；环境变量设置 `NODE_VERSION=22.22.2`。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`，启动命令为 `node server-simple.js`。`esbuild` 是构建所需开发依赖，不能在构建前省略。
 4. 网络无法直连音乐台时，可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz`。该选项只启用到 GD 官方主机的 HTTP/2 连接路由，网站 authority 与签名仍为 `music.gdstudio.xyz`，来源仍为 Embeat；公开 API 自身不支持 Embeat。该路由依赖 GD 当前托管配置，不能保证未来稳定。本地与 Render 的出口和 CDN 节点不同，不应直接照搬本地连接设置；最后确认的 Render 配置为空值（标准 fetch）；网站主机 HTTP/2 已实测校时403，其他方式仍返回校时失败。具体阻塞与控制台恢复后的核对步骤见维护指南。未设置时使用网站默认连接方式；不支持任意代理主机，不禁用 TLS 校验。
 5. 当前既有服务 Auto-Deploy 为 Off，按此流程手动发布，避免未经验收的任务分支更新自动替换线上。部署已通过检查的具体提交，等待 Render 显示 Live，并对照实际提交哈希。不要把推送、触发构建或健康检查成功当成完整上线验收。
@@ -14,7 +14,7 @@
 
 ## 上线验收
 
-动效修复使用 `20261117-motion-v46` 资源标记与 `ty-music-v46-motion` worker；目前尚未发布。发布前必须核对实际 Start Command 为 `node server-simple.js`：此前控制台保存临时诊断命令报网络错误，尚未确认是否写入。不能在未知启动配置下直接触发新部署。动效的像素预算、按需调度和本地测量见[维护指南](docs/maintenance.md#场景与流畅度)。
+新版本沿用已合并的动效修复，双源搜索使用 `20261117-search-v47` 资源标记与 `ty-music-v47-search` worker；发布状态见维护指南。2026-11-17 控制台恢复后重新读到实际 Start Command 为 `node server-simple.js`、Auto-Deploy 为 Off。动效的像素预算、按需调度和本地测量见[维护指南](docs/maintenance.md#场景与流畅度)。
 
 ```sh
 curl 'https://ty-music.onrender.com/api/health'
@@ -22,7 +22,7 @@ curl --get 'https://ty-music.onrender.com/api/music/search' \
   --data-urlencode 'keywords=晴天 周杰伦' --data 'limit=20'
 ```
 
-健康响应的 `commit` 应与目标部署一致，`node` 应为 Node 22，`searchSource` 应为 `embeat`；非 Render 本地环境 `commit` 可以为 `null`。搜索应返回真实 Embeat 歌曲及原始资源 ID，不能只检查 HTTP 200 或伪造总数。然后在网页搜索并播放，核对歌名/歌手、封面、歌词、音频起播与拖动；失败、无结果、连续切词和再次搜索应正常结束加载。不要删除真实收藏、歌单或浏览器站点数据来完成验收。
+健康响应的 `commit` 应与目标部署一致，`node` 应为 Node 22，`searchSource` 为 `netease`、`supplementalSearchSource` 为 `embeat`；非 Render 本地环境 `commit` 可以为 `null`。默认搜索应返回真实网易云目录；显式请求 `source=embeat` 单独核对补充可用性。浏览器验证基础列表能在补充挂起、403 或超时时先显示并继续分页，可用补充在基础首批后追加。然后播放并核对歌名/歌手、封面、歌词、音频起播与拖动；失败、无结果、连续切词和再次搜索应正常结束加载。不要删除真实收藏、歌单或浏览器站点数据来完成验收。
 
 Render 控制台已确认当前为 Free 实例，明确提示闲置休眠后的请求可能延迟 50 秒以上。代码无法关闭平台休眠；本轮仅确认该机制，未测一次完整闲置→唤醒耗时。新 service worker 让已有完整缓存的返访外壳先显示，但搜索／音频仍需网络。首次访客无缓存时仍会等待唤醒；本任务不升级付费、不添加后台保活。
 

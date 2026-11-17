@@ -17,9 +17,9 @@ async function app(mode, run) {
     try {
       [{ port }] = await once(child, 'message', { signal: startup.signal });
     } finally { clearTimeout(startupTimer); }
-    // Keep the legacy Netease catalog contract covered explicitly. Embeat is
-    // the public default and has separate source-aware HTTP regressions.
-    const get = async path => { const response = await fetch(`http://127.0.0.1:${port}${path}${path.includes('?') ? '&' : '?'}source=netease`); return { status: response.status, data: await response.json() }; };
+    // No source parameter: both public aliases must retain the base catalog
+    // even when optional Embeat is unavailable.
+    const get = async path => { const response = await fetch(`http://127.0.0.1:${port}${path}`); return { status: response.status, data: await response.json() }; };
     await run(get, () => logs);
   } finally {
     if (child.exitCode === null && child.signalCode === null) {
@@ -36,6 +36,27 @@ for (const mode of ['business', 'http', 'malformed', 'transport', 'timeout']) {
     assert.ok(!logs().includes('private-query'));
   }));
 }
+test('both public search aliases default to the base Netease catalog', async () => app('success', async get => {
+  for (const alias of ['/api/search', '/api/music/search']) {
+    const result = await get(alias + '?keywords=Fixture');
+    assert.equal(result.status, 200);
+    assert.equal(result.data.songs[0].source, 'netease');
+  }
+}));
+test('GD public Netease catalog preserves source and non-aligned paging when official endpoints fail', async () => app('gd-fallback', async get => {
+  const { status, data } = await get('/api/search?keywords=Fixture&limit=3&offset=4');
+  assert.equal(status, 200);
+  assert.deepEqual(data.songs.map(s => s.id), ['42', '43']);
+  assert.ok(data.songs.every(s => s.source === 'netease'));
+  assert.equal(data.total, null, 'GD cannot invent an official total count');
+  assert.equal(data.hasMore, true);
+  assert.equal(data.nextOffset, 6);
+}));
+test('official HTTP failures release their bodies before switching to the GD base catalog', async () => app('gd-http-cancel', async get => {
+  const { status, data } = await get('/api/search?keywords=Fixture&limit=3&offset=4');
+  assert.equal(status, 200, 'the fixture rejects GD access while failed official bodies are unclosed');
+  assert.equal(data.songs[0].id, '42');
+}));
 test('validated alternate preserves query pagination and metadata', async () => app('alternate', async get => {
   const { status, data } = await get('/api/search?keywords=Fixture&limit=1&offset=2');
   assert.equal(status, 200); assert.equal(data.songs[0].id, '42');

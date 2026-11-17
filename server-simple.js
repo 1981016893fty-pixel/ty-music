@@ -1,6 +1,6 @@
 /**
  * TY Music Server - GD Studio API Version
- * 默认使用 GD音乐台 Embeat 综合搜索，保留网易精选与旧曲库兼容。
+ * 网易云基础搜索，Embeat 可用时由客户端独立补充。
  * 无需本地 NCM API 进程，更简单更稳定
  */
 const http = require('http');
@@ -141,7 +141,10 @@ async function fetchJSONWithFetch(url, timeout = 10000) {
       redirect: 'follow',
       signal: controller.signal,
     });
-    if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}`), { upstreamStatus: response.status });
+    if (!response.ok) {
+      response.body?.cancel().catch(() => {});
+      throw Object.assign(new Error(`HTTP ${response.status}`), { upstreamStatus: response.status });
+    }
     return await response.json();
   } finally {
     clearTimeout(timer);
@@ -484,9 +487,8 @@ async function gdSearch(keywords, limit = 30) {
   return [];
 }
 
-// Search has one bounded attempt per official endpoint (10s + at most 800ms
-// optional artwork), below the player's 15s deadline. Other API callers keep
-// their existing transport/retry policy.
+// Two official endpoints, then GD's public Netease catalog. They share a
+// 12-second budget; never switch catalogs or replace a valid empty response.
 async function searchNeteaseCatalogPage(keywords, limit, offset = 0) {
   const requestedLimit = Number(limit);
   const requestedOffset = Number(offset);
@@ -494,10 +496,11 @@ async function searchNeteaseCatalogPage(keywords, limit, offset = 0) {
   const safeOffset = Math.max(0, Number.isFinite(requestedOffset) ? Math.trunc(requestedOffset) : 0);
   const query = new URLSearchParams({ s: keywords, type: '1', limit: String(safeLimit), offset: String(safeOffset) });
   const started = Date.now();
+  const deadline = started + 12000;
   let lastError;
   for (const source of ['cloudsearch/pc', 'search/get']) {
     try {
-      const data = await fetchJSONWithFetch(`https://music.163.com/api/${source}?${query}`, 5000);
+      const data = await fetchJSONWithFetch(`https://music.163.com/api/${source}?${query}`, 4000);
       const result = data?.result;
       const total = result?.songCount;
       // A business error, malformed response or missing count is not zero hits.
@@ -531,6 +534,19 @@ async function searchNeteaseCatalogPage(keywords, limit, offset = 0) {
       lastError = error;
       console.warn(`[Search] source=${source} status=${error.upstreamStatus || (error.name === 'AbortError' ? 'timeout' : 'failed')} elapsed=${Date.now() - started}`);
     }
+  }
+  try {
+    if (Date.now() >= deadline) throw Object.assign(new Error('Search deadline'), { name: 'AbortError' });
+    const query = new URLSearchParams({ types: 'search', source: 'netease', name: keywords, count: String(safeLimit), pages: String(Math.floor(safeOffset / safeLimit) + 1) });
+    const data = await fetchJSONWithFetch(`${GD_API}?${query}`, Math.min(4000, deadline - Date.now()));
+    if (!Array.isArray(data) || data.length > safeLimit || data.some(song => !song || song.source !== 'netease' ||
+        !['string', 'number'].includes(typeof song.id) || !String(song.id).trim() || typeof song.name !== 'string' || !song.name.trim())) throw new Error('Invalid GD Netease response');
+    const songs = data.slice(safeOffset % safeLimit).map(formatGDSong);
+    console.log(`[Search] source=gd-netease status=ok count=${songs.length} elapsed=${Date.now() - started}`);
+    return { songs, total: null, hasMore: data.length >= safeLimit, nextOffset: safeOffset + songs.length };
+  } catch (error) {
+    lastError = error;
+    console.warn(`[Search] source=gd-netease status=${error.upstreamStatus || (error.name === 'AbortError' ? 'timeout' : 'failed')} elapsed=${Date.now() - started}`);
   }
   const error = new Error(lastError?.name === 'AbortError' ? 'Search upstream timed out' : 'Search upstream unavailable');
   error.statusCode = lastError?.name === 'AbortError' ? 504 : 502;
@@ -1078,7 +1094,7 @@ const server = http.createServer(async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (!keywords || keywords.length > 512) { res.statusCode = 400; res.end(JSON.stringify({ error: 'Missing or invalid keywords' })); return; }
     try {
-      const source = params.get('source') || 'embeat';
+      const source = params.get('source') || 'netease';
       if (!['netease', 'embeat'].includes(source)) throw mediaFault(400, 'Unsupported source', 'INVALID_SOURCE');
       const page = source === 'netease'
         ? await searchNeteaseCatalogPage(keywords, params.get('limit'), params.get('offset'))
@@ -1430,7 +1446,7 @@ const server = http.createServer(async (req, res) => {
   // ========== 健康检查 ==========
   if (pathname === '/api/health') {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ status: 'ok', timestamp: Date.now(), commit: process.env.RENDER_GIT_COMMIT || null, node: process.versions.node, searchSource: 'embeat' }));
+    res.end(JSON.stringify({ status: 'ok', timestamp: Date.now(), commit: process.env.RENDER_GIT_COMMIT || null, node: process.versions.node, searchSource: 'netease', supplementalSearchSource: 'embeat' }));
     return;
   }
 
@@ -1589,7 +1605,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] TY Music 运行在 http://localhost:${PORT}`);
-  console.log('[Server] 默认搜索：GD音乐台 Embeat；网易云精选与旧曲库兼容');
+  console.log('[Server] 默认搜索：网易云；Embeat 独立补充，不阻塞基础结果');
   console.log('[Server] API 端点:');
   console.log('  /api/discover/hot       - 发现页热门')
   console.log('  /api/music/search       - 搜索歌曲')
