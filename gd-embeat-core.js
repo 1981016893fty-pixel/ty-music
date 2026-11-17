@@ -80,7 +80,7 @@ function createEmbeatClient({ fetchImpl = globalThis.fetch, version = '2026.11.1
       pendingClock = (async () => {
         const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), 4000);
         try {
-          const response = await abortable(fetchImpl(`https://${HOST}/time`, { headers, signal: controller.signal, redirect: 'error', credentials: 'omit' }), controller.signal);
+          const response = await abortable(fetchImpl(`https://${HOST}/time`, { headers, signal: controller.signal, redirect: 'error', credentials: 'omit', cache: 'no-store' }), controller.signal);
           if (!response.ok) {
             response.body?.cancel().catch(() => {});
             console.warn('[Embeat clock]', { kind: 'http', status: response.status, contentType: response.headers.get('content-type'), encoding: response.headers.get('content-encoding') });
@@ -118,7 +118,7 @@ function createEmbeatClient({ fetchImpl = globalThis.fetch, version = '2026.11.1
         const prefix = String(Math.floor(sample.serverMs + performance.now() - sample.sampledAt)).slice(0, 9);
         const signature = modifiedMD5(`${prefix}|${HOST}|${normalizedVersion}|${encodeURIComponent(payload)}`).slice(-8).toUpperCase();
         const query = new URLSearchParams({ types: type, ...params, s: signature });
-        const response = await abortable(fetchImpl(`https://${HOST}/api.php?${query}`, { headers, signal: controller.signal, redirect: 'error', credentials: 'omit' }), controller.signal);
+        const response = await abortable(fetchImpl(`https://${HOST}/api.php?${query}`, { headers, signal: controller.signal, redirect: 'error', credentials: 'omit', cache: 'no-store' }), controller.signal);
         if (response.status === 401 && attempt === 0) { response.body?.cancel().catch(() => {}); continue; }
         if (!response.ok) { response.body?.cancel().catch(() => {}); throw fault(response.status === 429 ? 429 : 502, response.status === 429 ? 'GD_RATE_LIMITED' : 'GD_UPSTREAM_ERROR'); }
         const text = await boundedText(response, controller.signal, 2 * 1024 * 1024);

@@ -14,6 +14,7 @@ test('browser searches both real catalogs without a Render request and preserves
   const provider = await browser(async (raw, options) => {
     const url = new URL(raw); calls.push(url);
     assert.equal(options.credentials, 'omit');
+    assert.equal(options.cache, 'no-store');
     if (url.pathname === '/time') return new Response('1794826800');
     assert.equal(url.pathname, '/api.php');
     const source = url.searchParams.get('source');

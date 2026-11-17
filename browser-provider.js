@@ -24,7 +24,7 @@ function createBrowserMusicProvider({ fetchImpl = globalThis.fetch, apiBase = ''
     try {
       const query = new URLSearchParams({ types: type, source: 'netease', ...params });
       const response = await GDMusicProtocol.abortable(fetchImpl('https://music-api.gdstudio.xyz/api.php?' + query, {
-        signal: controller.signal, credentials: 'omit', redirect: 'error', headers: { Accept: 'application/json' },
+        signal: controller.signal, credentials: 'omit', cache: 'no-store', redirect: 'error', headers: { Accept: 'application/json' },
       }), controller.signal);
       if (!response.ok) { response.body?.cancel().catch(() => {}); throw new Error('Music provider unavailable'); }
       return JSON.parse(await GDMusicProtocol.boundedText(response, controller.signal, 2097152));
