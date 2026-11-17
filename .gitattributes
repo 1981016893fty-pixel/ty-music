@@ -1,0 +1,4 @@
+# Generated bundles contain verbatim upstream shader/template strings.
+assets/aurora/*.js linguist-generated=true whitespace=-blank-at-eol,-space-before-tab
+soft-aurora-react.js linguist-generated=true
+soft-aurora-react.css linguist-generated=true

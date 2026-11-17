@@ -292,7 +292,7 @@ export default function FloatingLines({
     // Keep the fluid background crisp while avoiding excessive fragment work
     // on Retina displays. The visual size remains unchanged via CSS sizing.
     const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, coarsePointer ? 1 : 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     container.appendChild(renderer.domElement);
@@ -432,40 +432,11 @@ export default function FloatingLines({
     }
 
     let raf = 0;
-    let isVisible = true;
-    let pageObserver = null;
     let lastRenderedAt = 0;
     const frameInterval = 1000 / Math.max(1, maxFps);
 
-    const updateVisibility = () => {
-      let node = container;
-      let nextVisible = true;
-      while (node && node !== document.body) {
-        const style = getComputedStyle(node);
-        if (style.visibility === 'hidden' || style.display === 'none' || style.opacity === '0') {
-          nextVisible = false;
-          break;
-        }
-        node = node.parentElement;
-      }
-      if (nextVisible === isVisible) return;
-      isVisible = nextVisible;
-      if (!isVisible) {
-        cancelAnimationFrame(raf);
-      } else {
-        raf = requestAnimationFrame(renderLoop);
-      }
-    };
-
-    // Page navigation toggles the active class on sibling sections. Observe
-    // that small state change so hidden background canvases stop rendering.
-    if (typeof MutationObserver !== 'undefined') {
-      pageObserver = new MutationObserver(updateVisibility);
-      pageObserver.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class', 'style'] });
-    }
-
     const renderLoop = now => {
-      if (!active || !isVisible) return;
+      if (!active) return;
 
       if (now - lastRenderedAt < frameInterval) {
         raf = requestAnimationFrame(renderLoop);
@@ -499,7 +470,6 @@ export default function FloatingLines({
       cancelAnimationFrame(raf);
 
       if (ro) ro.disconnect();
-      if (pageObserver) pageObserver.disconnect();
 
       if (interactive) {
         window.removeEventListener('pointermove', handlePointerMove);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import './ElectricBorder.css';
 import { loopNoise } from './electricBorderNoise.mjs';
 import { roundedRectPerimeter, roundedRectPoint } from './electricBorderGeometry.mjs';
+import { createRenderLoop } from './renderLoop.mjs';
 
 export default function ElectricBorder({
   children,
@@ -16,11 +17,22 @@ export default function ElectricBorder({
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const animationRef = useRef(null);
   const timeRef = useRef(0);
   const lastFrameTimeRef = useRef(0);
+  const randomCacheRef = useRef(new Map());
 
-  const random = useCallback(x => (Math.sin(x * 12.9898) * 43758.5453) % 1, []);
+  // Adjacent path samples repeatedly ask for the same deterministic lattice
+  // values. Reuse them without changing the noise or retaining an unbounded map.
+  const random = useCallback(x => {
+    const cache = randomCacheRef.current;
+    let value = cache.get(x);
+    if (value === undefined) {
+      value = (Math.sin(x * 12.9898) * 43758.5453) % 1;
+      if (cache.size >= 8192) cache.clear();
+      cache.set(x, value);
+    }
+    return value;
+  }, []);
 
   const noise2D = useCallback((x, y) => {
     const i = Math.floor(x);
@@ -56,7 +68,8 @@ export default function ElectricBorder({
     if (!canvas || !container) return undefined;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
-    const octaves = 10;
+    let loop;
+    const octaves = 5;
     const lacunarity = 1.6;
     const gain = 0.7;
     const amplitude = chaos;
@@ -73,17 +86,22 @@ export default function ElectricBorder({
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
       ctx.scale(dpr, dpr);
+      loop?.request();
       return { width, height };
     };
     let { width, height } = updateSize();
     let lastDpr = Math.min(window.devicePixelRatio || 1, 2);
+    let lastDraw = 0;
+    lastFrameTimeRef.current = performance.now();
     const drawElectricBorder = currentTime => {
+      if (currentTime - lastDraw < 1000 / 30) return true;
+      lastDraw = currentTime;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       if (dpr !== lastDpr) {
         lastDpr = dpr;
         ({ width, height } = updateSize());
       }
-      timeRef.current += ((currentTime - lastFrameTimeRef.current) / 1000) * speed;
+      timeRef.current += Math.min((currentTime - lastFrameTimeRef.current) / 1000, 0.1) * speed;
       lastFrameTimeRef.current = currentTime;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -98,7 +116,7 @@ export default function ElectricBorder({
       const borderHeight = height - 2 * borderOffset;
       const radius = Math.min(borderRadius, Math.min(borderWidth, borderHeight) / 2);
       const perimeter = roundedRectPerimeter(borderWidth, borderHeight, radius);
-      const sampleCount = Math.floor(perimeter / 2);
+      const sampleCount = Math.max(64, Math.min(640, Math.ceil(perimeter / 5)));
       // Preserve the reference card's arc density when this component wraps a wide hero.
       const noiseSpan = 8 * Math.max(1, perimeter / 2500);
       const sampleNoiseX = offset => octavedNoise(offset * noiseSpan, octaves, lacunarity, gain, amplitude, frequency, timeRef.current, 0, baseFlatness);
@@ -116,13 +134,14 @@ export default function ElectricBorder({
       ctx.closePath();
       ctx.stroke();
       if (topLeftExclusion > 0) ctx.clearRect(0, 0, topLeftExclusion, topLeftExclusion);
-      animationRef.current = requestAnimationFrame(drawElectricBorder);
+      return true;
     };
+    loop = createRenderLoop(container, drawElectricBorder);
     const resizeObserver = new ResizeObserver(() => ({ width, height } = updateSize()));
     resizeObserver.observe(container);
-    animationRef.current = requestAnimationFrame(drawElectricBorder);
+    loop.request();
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      loop.dispose();
       resizeObserver.disconnect();
     };
   }, [color, speed, chaos, borderRadius, borderOffset, topLeftExclusion, octavedNoise]);

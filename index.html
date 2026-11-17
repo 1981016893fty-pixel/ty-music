@@ -16,10 +16,10 @@
     .welcome-screen.is-dismissed { opacity: 0; visibility: hidden; pointer-events: none; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260814">
-  <link rel="preload" href="style.css?v=20260814-client-entry-v12" as="style">
-  <link rel="preload" href="player.js?v=20260817-fullscreen-syncfix-v39" as="script">
+  <link rel="preload" href="style.css?v=20261117-motion-v46" as="style">
+  <link rel="preload" href="player.js?v=20261117-motion-v46" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20260814-client-entry-v12">
+  <link rel="stylesheet" href="style.css?v=20261117-motion-v46">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -32,7 +32,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/service-worker.js?v=20260817-fullscreen-syncfix-v39').then(function(reg) {
+      navigator.serviceWorker.register('/service-worker.js?v=20261117-motion-v46').then(function(reg) {
           console.log('[SW] Registered:', reg.scope);
         }).catch(function(err) {
           console.log('[SW] Failed:', err);
@@ -286,7 +286,7 @@
         <section class="section browse-results-section" id="searchResultsSection" style="display:none" aria-labelledby="searchResultTitle">
           <div class="section-header">
             <h2 class="section-title" id="searchResultTitle">搜索结果</h2>
-            <span class="section-link" id="searchSourceLabel">音源：全网搜索</span>
+            <span class="section-link" id="searchSourceLabel">音源：Embeat 综合搜索</span>
           </div>
           <div class="track-list-container" id="searchResults"></div>
         </section>
@@ -501,9 +501,9 @@
           <div class="am-artist-section-header">
             <div>
               <span class="am-artist-kicker">按音源顺序</span>
-              <h2 class="am-artist-section-title" id="artistLatestHeading">最新歌曲</h2>
+              <h2 class="am-artist-section-title" id="artistLatestHeading">更多作品</h2>
             </div>
-            <span class="am-artist-section-note">持续更新</span>
+            <span class="am-artist-section-note">综合搜索结果</span>
           </div>
           <div class="am-artist-list" id="artistLatestList"></div>
         </section>
@@ -751,9 +751,9 @@
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20260810hero-layer-fix">
-  <script src="soft-aurora-react.js?v=20260817hero-layer-fix" async fetchpriority="low"></script>
-  <script src="player.js?v=20260817-fullscreen-syncfix-v39" defer></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20261117-motion-v46">
+  <script type="module" src="soft-aurora-react.js?v=20261117-motion-v46" fetchpriority="low"></script>
+  <script src="player.js?v=20261117-motion-v46" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>

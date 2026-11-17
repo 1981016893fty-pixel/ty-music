@@ -1,21 +1,17 @@
 /**
  * TY Music - Service Worker
  * PWA 离线缓存 + 桌面安装支持
- * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
+ * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v39-fullscreen-syncfix';
-const API_WARMUP = [
-  '/api/discover/featured?limit=6',
-  '/api/discover/hot?limit=6',
-  '/api/music/hot?source=netease&limit=6'
-];
+const CACHE_NAME = 'ty-music-v46-motion';
+const APP_SHELL = '/index.html?v=20261117-motion-v46';
 const STATIC_ASSETS = [
-  '/index.html?v=20260817-fullscreen-syncfix-v39',
-  '/style.css?v=20260817-fullscreen-syncfix-v39',
-  '/player.js?v=20260817-fullscreen-syncfix-v39',
-  '/soft-aurora-react.js?v=20260817-fullscreen-syncfix-v39',
-  '/soft-aurora-react.css?v=20260817-fullscreen-syncfix-v39',
+  APP_SHELL,
+  '/style.css?v=20261117-motion-v46',
+  '/player.js?v=20261117-motion-v46',
+  '/soft-aurora-react.js?v=20261117-motion-v46',
+  '/soft-aurora-react.css?v=20261117-motion-v46',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -25,25 +21,26 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v39...');
+  console.log('[SW] Installing v46...');
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
+    caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
-      return cache.addAll(STATIC_ASSETS).then(() => Promise.allSettled(API_WARMUP.map(async url => {
-        const response = await fetch(url, { credentials: 'same-origin' });
-        if (response.ok) await cache.put(url, response.clone());
-      })));
+      const manifest = await fetch('/assets/aurora/manifest.json', { cache: 'no-store' });
+      if (!manifest.ok) throw new Error('UI module manifest unavailable');
+      const modules = await manifest.json();
+      if (!Array.isArray(modules) || modules.some(path => typeof path !== 'string' || !/^\/(?:soft-aurora-react\.js|assets\/aurora\/[\w-]+\.js)$/.test(path))) throw new Error('Invalid UI module manifest');
+      return cache.addAll([...new Set([...STATIC_ASSETS, ...modules])]);
     }).then(() => self.skipWaiting())
   );
 });
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v39');
+  console.log('[SW] Activated v46');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
-        if (name !== CACHE_NAME) {
+        if (name.startsWith('ty-music-') && name !== CACHE_NAME) {
           console.log('[SW] Deleting old cache:', name);
           return caches.delete(name);
         }
@@ -56,9 +53,18 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
+  // A cached shell keeps navigation responsive during platform wake-up.
+  // Refresh in the background; search and playback still require the network.
+  if (event.request.mode === 'navigate' && url.origin === self.location.origin && ['/', '/index.html'].includes(url.pathname)) {
+    const refresh = fetchAndCache(event.request);
+    event.waitUntil(refresh.catch(() => {}));
+    event.respondWith(caches.match(event.request).then(cached => cached || caches.match(APP_SHELL)).then(cached => cached || refresh));
+    return;
+  }
+
   // Audio and lyric streams must remain network-only. Catalog JSON can use
   // stale-while-revalidate so a page switch is instant after first load.
-  const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
+  const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search|\/health)$/.test(url.pathname);
   if (url.pathname.startsWith('/api/') && !networkOnlyApi && event.request.method === 'GET') {
     event.respondWith(caches.match(event.request).then(cached => {
       const refresh = fetch(event.request).then(response => {
@@ -95,7 +101,7 @@ self.addEventListener('fetch', event => {
       caches.match(event.request).then(cached => {
         if (cached) {
           // 后台更新缓存（stale-while-revalidate）
-          fetchAndCache(event.request);
+          event.waitUntil(fetchAndCache(event.request).catch(() => {}));
           return cached;
         }
         return fetchAndCache(event.request).catch(() => {
@@ -133,10 +139,12 @@ self.addEventListener('fetch', event => {
 
 // 辅助函数：获取并更新缓存
 function fetchAndCache(request) {
-  return fetch(request).then(response => {
+  return fetch(request).then(async response => {
     if (response && response.status === 200 && response.type === 'basic') {
       const clone = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+      // Include persistence in waitUntil without turning storage pressure into
+      // a network failure for an otherwise usable response.
+      try { await (await caches.open(CACHE_NAME)).put(request, clone); } catch (_) {}
     }
     return response;
   });

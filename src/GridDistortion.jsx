@@ -39,6 +39,11 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
     if (!containerRef.current) return;
 
     const container = containerRef.current;
+    let disposed = false;
+
+    const wake = () => {
+      if (!disposed && animationIdRef.current === null) animationIdRef.current = requestAnimationFrame(animate);
+    };
 
     const scene = new THREE.Scene();
     sceneRef.current = scene;
@@ -66,17 +71,6 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       uDataTexture: { value: null }
     };
 
-    const textureLoader = new THREE.TextureLoader();
-    textureLoader.load(imageSrc, texture => {
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.wrapS = THREE.ClampToEdgeWrapping;
-      texture.wrapT = THREE.ClampToEdgeWrapping;
-      imageAspectRef.current = texture.image.width / texture.image.height;
-      uniforms.uTexture.value = texture;
-      handleResize();
-    });
-
     const size = grid;
     const data = new Float32Array(4 * size * size);
     for (let i = 0; i < size * size; i++) {
@@ -102,7 +96,7 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
     scene.add(plane);
 
     const handleResize = () => {
-      if (!container || !renderer || !camera) return;
+      if (disposed) return;
 
       const rect = container.getBoundingClientRect();
       const width = rect.width;
@@ -127,6 +121,7 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       camera.updateProjectionMatrix();
 
       uniforms.resolution.value.set(width, height, 1, 1);
+      wake();
     };
 
     if (window.ResizeObserver) {
@@ -200,12 +195,10 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       mouseState.vX = x - mouseState.prevX;
       mouseState.vY = y - mouseState.prevY;
       Object.assign(mouseState, { x, y, prevX: x, prevY: y });
+      if (mouseState.vX || mouseState.vY) wake();
     };
 
     const handleMouseLeave = () => {
-      if (dataTexture) {
-        dataTexture.needsUpdate = true;
-      }
       resetMouseState();
     };
 
@@ -221,19 +214,20 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
     });
     fullscreenObserver?.observe(fullscreenPlayer, { attributes: true, attributeFilter: ['class', 'style'] });
 
-    handleResize();
-
-    const animate = () => {
-      animationIdRef.current = requestAnimationFrame(animate);
-
-      if (!renderer || !scene || !camera) return;
+    function animate() {
+      animationIdRef.current = null;
+      if (disposed) return;
 
       uniforms.time.value += 0.05;
 
       const data = dataTexture.image.data;
+      let peak = 0;
+      let changed = false;
       for (let i = 0; i < size * size; i++) {
+        changed ||= data[i * 4] !== 0 || data[i * 4 + 1] !== 0;
         data[i * 4] *= relaxation;
         data[i * 4 + 1] *= relaxation;
+        peak = Math.max(peak, Math.abs(data[i * 4]), Math.abs(data[i * 4 + 1]));
       }
 
       const gridMouseX = size * mouseState.x;
@@ -248,6 +242,8 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
             const power = Math.min(maxDist / Math.sqrt(distSq), 10);
             data[index] += strength * 100 * mouseState.vX * power;
             data[index + 1] -= strength * 100 * mouseState.vY * power;
+            peak = Math.max(peak, Math.abs(data[index]), Math.abs(data[index + 1]));
+            changed ||= mouseState.vX !== 0 || mouseState.vY !== 0;
           }
         }
       }
@@ -256,15 +252,34 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       // keeps injecting force into one grid cell forever.
       mouseState.vX = 0;
       mouseState.vY = 0;
-      dataTexture.needsUpdate = true;
+      // At this amplitude the UV displacement is below 0.00002 (0.04px at
+      // 2000px). Snap to the undistorted image rather than drawing forever.
+      const settled = peak < 0.001;
+      if (settled && changed) data.fill(0);
+      if (changed) dataTexture.needsUpdate = true;
       renderer.render(scene, camera);
-    };
+      if (!settled && relaxation !== 1) wake();
+    }
 
-    animate();
+    const textureLoader = new THREE.TextureLoader();
+    const imageTexture = textureLoader.load(imageSrc, texture => {
+      if (disposed) { texture.dispose(); return; }
+      texture.minFilter = THREE.LinearFilter;
+      texture.magFilter = THREE.LinearFilter;
+      texture.wrapS = THREE.ClampToEdgeWrapping;
+      texture.wrapT = THREE.ClampToEdgeWrapping;
+      imageAspectRef.current = texture.image.width / texture.image.height;
+      uniforms.uTexture.value = texture;
+      handleResize();
+    });
+
+    handleResize();
 
     return () => {
-      if (animationIdRef.current) {
+      disposed = true;
+      if (animationIdRef.current !== null) {
         cancelAnimationFrame(animationIdRef.current);
+        animationIdRef.current = null;
       }
 
       if (resizeObserverRef.current) {
@@ -289,7 +304,7 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       if (geometry) geometry.dispose();
       if (material) material.dispose();
       if (dataTexture) dataTexture.dispose();
-      if (uniforms.uTexture.value) uniforms.uTexture.value.dispose();
+      imageTexture.dispose();
 
       sceneRef.current = null;
       rendererRef.current = null;

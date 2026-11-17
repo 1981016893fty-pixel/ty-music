@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Renderer, Geometry, Program, Mesh, Texture } from 'ogl';
+import { createRenderLoop } from './renderLoop.mjs';
 
 import './ElasticMesh.css';
 
@@ -146,6 +147,7 @@ const ElasticMesh = ({
   const containerRef = useRef(null);
 
   const propsRef = useRef({});
+  const loopRef = useRef(null);
   propsRef.current = {
     color1,
     color2,
@@ -171,6 +173,9 @@ const ElasticMesh = ({
     if (!container) return;
 
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let disposed = false;
+    let loop;
+    const wake = () => loop?.request();
 
     const renderer = new Renderer({ alpha: true, antialias: true, dpr: Math.min(window.devicePixelRatio || 1, 2) });
     const gl = renderer.gl;
@@ -230,11 +235,13 @@ const ElasticMesh = ({
     if (image) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
-      img.src = image;
       img.onload = () => {
+        if (disposed) return;
         texture.image = img;
         program.uniforms.uHasImage.value = 1;
+        wake();
       };
+      img.src = image;
     }
 
     const program = new Program(gl, {
@@ -286,6 +293,7 @@ const ElasticMesh = ({
       program.uniforms.uAspect.value = aspect;
       program.uniforms.uRes.value = [w, h];
       refreshBase();
+      wake();
     }
 
     const ro = new ResizeObserver(resize);
@@ -313,12 +321,15 @@ const ElasticMesh = ({
     function onMove(e) {
       toPlane(e.clientX, e.clientY);
       if (propsRef.current.interaction === 'hover') pointer.targetActive = true;
+      wake();
     }
     function onEnter() {
       if (propsRef.current.interaction === 'hover') pointer.targetActive = true;
+      wake();
     }
     function onLeave() {
       pointer.targetActive = false;
+      wake();
     }
     function onDown(e) {
       if (propsRef.current.interaction === 'drag') {
@@ -326,15 +337,18 @@ const ElasticMesh = ({
         pointer.x = pointer.tx;
         pointer.y = pointer.ty;
         pointer.targetActive = true;
+        wake();
       }
     }
     function onUp() {
       if (propsRef.current.interaction === 'drag') pointer.targetActive = false;
+      wake();
     }
     function onTouch(e) {
       if (e.touches.length) {
         toPlane(e.touches[0].clientX, e.touches[0].clientY);
         pointer.targetActive = true;
+        wake();
       }
     }
 
@@ -518,9 +532,7 @@ const ElasticMesh = ({
       geometry.attributes.aNormal.needsUpdate = true;
     }
 
-    let raf = 0;
     function frame(now) {
-      raf = requestAnimationFrame(frame);
       const p = propsRef.current;
 
       program.uniforms.uShading.value = p.shading;
@@ -554,14 +566,28 @@ const ElasticMesh = ({
       if (accTime > STEP) accTime = 0;
 
       commit();
+      const resting = !pointer.targetActive || !p.enabled || reduceMotion;
+      const settled = maxVel < 0.00001 && (resting
+        ? maxOffset < 0.0001
+        : Math.abs(pointer.tx - pointer.x) + Math.abs(pointer.ty - pointer.y) < 0.0001);
+      if (settled && resting && maxOffset > 0) {
+        pos.fill(0);
+        vel.fill(0);
+        commit();
+      }
       renderer.render({ scene: mesh });
+      return !settled;
     }
-    raf = requestAnimationFrame(frame);
+    loop = createRenderLoop(container, frame);
+    loopRef.current = loop;
+    loop.request();
 
     container.appendChild(gl.canvas);
 
     return () => {
-      cancelAnimationFrame(raf);
+      disposed = true;
+      loop.dispose();
+      loopRef.current = null;
       ro.disconnect();
       container.removeEventListener('mousemove', onMove);
       container.removeEventListener('mouseenter', onEnter);
@@ -577,6 +603,9 @@ const ElasticMesh = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [image, resolution]);
+
+  // Non-geometry props update uniforms/physics without rebuilding the GPU context.
+  useEffect(() => loopRef.current?.request(), [color1, color2, highlight, showGrid, gridDensity, gridOpacity, gridColor, borderRadius, stiffness, damping, grabRadius, pull, wobble, tilt, shading, interaction, enabled]);
 
   return (
     <div ref={containerRef} className={`elastic-mesh${className ? ` ${className}` : ''}`} style={style} {...rest} />
