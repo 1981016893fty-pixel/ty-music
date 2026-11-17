@@ -98,7 +98,9 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 生命周期回归新增高光静置／唤醒、离屏／隐藏、原生扫光时序、同色跳过和卸载迟到回调等边界；将旧源码字符串匹配改为实际缓存采样器的周期闭合检查。完整本地 `npm test` 118/118 node:test 以及播放器／交互／边框／网格检查通过，前端构建通过。本地真实页面仍显示网易云20首＋Embeat20首，Embeat 晴天原曲 readyState=4、paused=false、duration=269.747秒。连续切换首页／浏览页10轮，再静置约60秒，四次观察均保持首页5个画布及2个有效原生扫光，没有观察到数量增长；这不是完整的内存或温度长测。工程复审修复角度跟随与迟到回调两项回归后，直接相关模块未发现新的阻断问题；不代表全仓库认证。
 
-当前阶段：已实现、本地验证通过；远端 CI、合并与生产部署待本轮交付确认。生产上一版仍为 v48，不能将本地构建当作已上线。回退可部署上一应用提交 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`；保留浏览器曲库，正常 service worker 更新后刷新，不清除站点数据。
+当前阶段：已实现、本地验证通过，应用提交 `7824f265fae6c0cdc9eb79224c403086fe8acb72` 的 [push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079563111) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079952839) 均通过。[Render 部署 dep-dbu47eu7bikc7388ln1g](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbu47eu7bikc7388ln1g) 已确认 Live，生产 `/api/health` 返回上述应用提交与 Node 22.22.2。[PR #5](https://github.com/1981016893fty-pixel/ty-music/pull/5) 记录维护说明的后续检查与实际合并状态；应用部署与文档提交分开记载，AutoDeploy 保持关闭。
+
+生产页面未绕过 service worker 或清除资料，普通刷新更新至 `20261117-thermal-v49`。实际搜索仍返回网易云20首＋Embeat20首，点击 Embeat 晴天原曲起播，readyState=4、paused=false、duration=269.747秒；验收后暂停。阻断 `music.gdstudio.xyz` 后搜索林俊杰仍返回20首网易云，基础及补充加载结束、无错误；随后解除阻断。首页实际文字扫光为原生 `Animation`，同色桌面入口无文字时间轴。欢迎页原生自动点击发生工具节点断开／坐标命中偏移，程序化按钮点击可正常进入，因此不把该入口的完整原生点击链路记为通过。Safari 发热与帧率、长时间功耗仍未实测。回退可部署上一应用提交 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`；保留浏览器曲库，正常 service worker 更新后刷新，不清除站点数据。
 
 ## 数据、备份与删除边界
 
