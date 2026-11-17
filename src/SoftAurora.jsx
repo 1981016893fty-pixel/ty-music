@@ -144,7 +144,7 @@ export default function SoftAurora({
     const renderer = new Renderer({
       alpha: true,
       premultipliedAlpha: false,
-      dpr: Math.min(window.devicePixelRatio || 1, coarsePointer ? 1 : 1.5)
+      dpr: Math.min(window.devicePixelRatio || 1, 1)
     });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
@@ -187,7 +187,7 @@ export default function SoftAurora({
     }
     let animationFrameId;
     let lastRenderedAt = 0;
-    const frameInterval = 1000 / (coarsePointer ? 24 : 60);
+    const frameInterval = 1000 / (coarsePointer ? 24 : 30);
     function update(time) {
       animationFrameId = requestAnimationFrame(update);
       if (document.hidden || time - lastRenderedAt < frameInterval) return;

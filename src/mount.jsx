@@ -1,4 +1,5 @@
-import React, { StrictMode } from 'react';
+import React from 'react';
+import Scene from './Scene';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { ChakraProvider, defaultSystem } from '@chakra-ui/react';
@@ -28,10 +29,14 @@ import { GridScan } from './GridScan';
 import { GlassIcon } from './GlassIcons';
 
 const host = document.getElementById('softAuroraHost');
+const sceneRoot = (target, name, decorative = false) => {
+  const root = createRoot(target);
+  return { render: element => root.render(<Scene name={name} decorative={decorative}>{element}</Scene>) };
+};
 
 const welcomeStartMount = document.getElementById('welcomeStartMount');
 if (welcomeStartMount) {
-  createRoot(welcomeStartMount).render(
+  sceneRoot(welcomeStartMount, 'welcome', false).render(
     <SpecularButton
       className="welcome-start-button"
       tint="rgba(255, 255, 255, 0.02)"
@@ -49,7 +54,7 @@ if (welcomeStartMount) {
 
 const welcomeLearnMoreMount = document.getElementById('welcomeLearnMoreMount');
 if (welcomeLearnMoreMount) {
-  createRoot(welcomeLearnMoreMount).render(
+  sceneRoot(welcomeLearnMoreMount, 'welcome', false).render(
     <SpecularButton
       className="welcome-learn-more"
       tint="rgba(255, 255, 255, 0.02)"
@@ -67,7 +72,7 @@ if (welcomeLearnMoreMount) {
 
 const welcomeLiquidEtherMount = document.getElementById('welcomeLiquidEtherMount');
 if (welcomeLiquidEtherMount) {
-  createRoot(welcomeLiquidEtherMount).render(
+  sceneRoot(welcomeLiquidEtherMount, 'welcome', true).render(
     <LiquidEther
       colors={['#5227FF', '#FF9FFC', '#B497CF']}
       mouseForce={20}
@@ -86,7 +91,7 @@ if (welcomeLiquidEtherMount) {
 
 const libraryGradientHost = document.getElementById('libraryGradientWavesMount');
 if (libraryGradientHost) {
-  createRoot(libraryGradientHost).render(
+  sceneRoot(libraryGradientHost, 'library', true).render(
     <GradientWaves
       horizonColor="#141125"
       waveColor="#6d46ff"
@@ -129,7 +134,7 @@ function HeroElasticMesh() {
 }
 
 const heroMeshMount = document.getElementById('heroElasticMeshMount');
-if (heroMeshMount) createRoot(heroMeshMount).render(<HeroElasticMesh />);
+if (heroMeshMount) sceneRoot(heroMeshMount, 'discover', true).render(<HeroElasticMesh />);
 
 function HeroElectricBorder() {
   const [color, setColor] = React.useState(() => window.heroAccentHex || '#62F1F3');
@@ -142,7 +147,7 @@ function HeroElectricBorder() {
 }
 
 const heroElectricBorderMount = document.getElementById('heroElectricBorderMount');
-if (heroElectricBorderMount) createRoot(heroElectricBorderMount).render(<HeroElectricBorder />);
+if (heroElectricBorderMount) sceneRoot(heroElectricBorderMount, 'discover', true).render(<HeroElectricBorder />);
 
 function AmpTiltedArtwork() {
   const [image, setImage] = React.useState(() => window.ampCoverSrc || '');
@@ -157,7 +162,7 @@ function AmpTiltedArtwork() {
 }
 
 const ampTiltedCardMount = document.getElementById('ampTiltedCardMount');
-if (ampTiltedCardMount) createRoot(ampTiltedCardMount).render(<AmpTiltedArtwork />);
+if (ampTiltedCardMount) sceneRoot(ampTiltedCardMount, 'fullscreen', false).render(<AmpTiltedArtwork />);
 
 const ampGridFallback = {
   primary: { r: 74, g: 44, b: 156 },
@@ -183,7 +188,7 @@ function AmpGridDistortion() {
 }
 
 const ampGridMount = document.getElementById('ampGridDistortionMount');
-if (ampGridMount) createRoot(ampGridMount).render(<AmpGridDistortion />);
+if (ampGridMount) sceneRoot(ampGridMount, 'fullscreen', true).render(<AmpGridDistortion />);
 
 function AlbumDriftWall() {
   const [items, setItems] = React.useState(() => window.albumDriftWallItems || []);
@@ -213,11 +218,11 @@ function AlbumDriftWall() {
 }
 
 const albumDriftWallMount = document.getElementById('albumDriftWallMount');
-if (albumDriftWallMount) createRoot(albumDriftWallMount).render(<AlbumDriftWall />);
+if (albumDriftWallMount) sceneRoot(albumDriftWallMount, 'album-favorites', true).render(<AlbumDriftWall />);
 
 const coverFlowGridScanMount = document.getElementById('coverFlowGridScanMount');
 if (coverFlowGridScanMount) {
-  createRoot(coverFlowGridScanMount).render(
+  sceneRoot(coverFlowGridScanMount, 'coverflow', true).render(
     <GridScan
       enableWebcam={false}
       showPreview={false}
@@ -284,11 +289,11 @@ const splashCursorHost = document.getElementById('browseSplashCursorMount');
 const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
 const compactViewport = window.matchMedia('(max-width: 768px)').matches;
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-if (splashCursorHost) createRoot(splashCursorHost).render(<SplashCursor active={!coarsePointer && !reducedMotion} />);
+if (splashCursorHost) sceneRoot(splashCursorHost, 'search', true).render(<SplashCursor active={!coarsePointer && !reducedMotion} />);
 
 const browsePrismHost = document.getElementById('browsePrismMount');
 if (browsePrismHost) {
-  createRoot(browsePrismHost).render(
+  sceneRoot(browsePrismHost, 'search', true).render(
     <Prism
       animationType="rotate"
       timeScale={compactViewport || reducedMotion ? 0 : 0.22}
@@ -310,13 +315,13 @@ const homeFloatingLinesHost = document.getElementById('homeFloatingLinesMount');
 if (homeFloatingLinesHost) {
   // Keep the official React Bits defaults so the homepage retains the
   // recognizable pink/blue flowing-line composition.
-  createRoot(homeFloatingLinesHost).render(
+  sceneRoot(homeFloatingLinesHost, 'discover', true).render(
     <FloatingLines
       interactive={!coarsePointer && !reducedMotion}
       parallax={!coarsePointer && !reducedMotion}
       lineCount={compactViewport ? [4] : [6]}
       animationSpeed={reducedMotion ? 0 : compactViewport ? 0.55 : 1}
-      maxFps={compactViewport ? 30 : 60}
+      maxFps={30}
     />
   );
 }
@@ -383,23 +388,21 @@ sliderMounts.forEach(([mountId, value, showIcons, showValue, interactive, hoverS
 });
 
 if (host) {
-  createRoot(host).render(
-    <StrictMode>
-      <SoftAurora />
-    </StrictMode>
+  sceneRoot(host, 'aurora', true).render(
+    <SoftAurora />
   );
 }
 
 const heroPlayMount = document.getElementById('heroPlaySpecularMount');
 if (heroPlayMount) {
-  createRoot(heroPlayMount).render(
+  sceneRoot(heroPlayMount, 'discover', false).render(
     <SpecularButton className="hero-play-cyan" onClick={() => window.playHeroTrack?.()} tint="rgba(47, 221, 227, 0.2)" blur={16} lineColor="#FFFFFF" baseColor="#FFFFFF" intensity={0.72} autoAnimate><ShinyText text="立即播放" speed={2.1} color="#E8FFFF" shineColor="#FFFFFF" /></SpecularButton>
   );
 }
 
 const albumPlayAllMount = document.getElementById('albumPlayAllBtn');
 if (albumPlayAllMount) {
-  createRoot(albumPlayAllMount).render(
+  sceneRoot(albumPlayAllMount, 'album-detail', false).render(
     <SpecularButton
       className="album-play-specular"
       tint="rgba(255, 255, 255, 0.08)"
@@ -428,7 +431,7 @@ if (topDockBrandMount) createRoot(topDockBrandMount).render(<GlitchText classNam
 
 const topDockClientMount = document.getElementById('topDockClientMount');
 if (topDockClientMount) {
-  createRoot(topDockClientMount).render(
+  sceneRoot(topDockClientMount, 'app', false).render(
     <SpecularButton
       className="top-dock__client-entry"
       tint="rgba(255, 255, 255, 0.02)"
@@ -465,11 +468,19 @@ document.querySelectorAll('[data-shiny-text]').forEach(target => {
 
 // Apply the same specular language to legacy buttons without replacing their
 // existing handlers or IDs.
+let pointerFrame = 0;
+let pointerTarget;
+let pointerPosition;
 const updateButtonSpecular = event => {
-  document.querySelectorAll('button:not(.specular-button)').forEach(button => {
-    const rect = button.getBoundingClientRect();
-    button.style.setProperty('--sb-mx', `${event.clientX - rect.left}px`);
-    button.style.setProperty('--sb-my', `${event.clientY - rect.top}px`);
+  pointerTarget = event.target instanceof Element ? event.target.closest('button:not(.specular-button)') : null;
+  pointerPosition = { x: event.clientX, y: event.clientY };
+  if (pointerFrame || !pointerTarget) return;
+  pointerFrame = requestAnimationFrame(() => {
+    pointerFrame = 0;
+    if (!pointerTarget?.isConnected) return;
+    const rect = pointerTarget.getBoundingClientRect();
+    pointerTarget.style.setProperty('--sb-mx', `${pointerPosition.x - rect.left}px`);
+    pointerTarget.style.setProperty('--sb-my', `${pointerPosition.y - rect.top}px`);
   });
 };
 if (!coarsePointer && !reducedMotion) {
@@ -477,9 +488,15 @@ if (!coarsePointer && !reducedMotion) {
 }
 
 const tiltedRoots = new Map();
-function mountTiltedCards() {
+function matchingTargets(scope, selector) {
+  const targets = Array.from(scope.querySelectorAll(selector));
+  if (scope instanceof Element && scope.matches(selector)) targets.unshift(scope);
+  return targets;
+}
+
+function mountTiltedCards(scope = document) {
   if (coarsePointer || reducedMotion) return;
-  document.querySelectorAll('.am-artwork').forEach(artwork => {
+  matchingTargets(scope, '.am-artwork').forEach(artwork => {
     if (tiltedRoots.has(artwork)) return;
     const image = artwork.querySelector(':scope > img');
     const imageSource = image?.getAttribute('src') || '';
@@ -496,34 +513,21 @@ function mountTiltedCards() {
   });
 }
 
-const tiltedObserver = new MutationObserver(records => {
-  records.forEach(record => record.removedNodes.forEach(node => {
-    if (!(node instanceof Element)) return;
-    node.querySelectorAll('.am-artwork').forEach(artwork => {
-      const root = tiltedRoots.get(artwork);
-      if (root) { root.unmount(); tiltedRoots.delete(artwork); }
-    });
-  }));
-  mountTiltedCards();
-  mountGlassSurfaces();
-});
-tiltedObserver.observe(document.body, { childList: true, subtree: true });
-mountTiltedCards();
 
 const glassRoots = new Map();
-function mountGlassSurfaces() {
+function mountGlassSurfaces(scope = document) {
   // Playing state can move between rows without replacing the whole list.
   // Unmount a previous row surface so ordinary browse rows remain unframed.
   glassRoots.forEach((root, target) => {
     const isSongRow = target.classList.contains('track-row') || target.classList.contains('album-track-row') || target.classList.contains('fav-track-row') || target.classList.contains('local-track-row');
-    if (isSongRow && !target.classList.contains('playing')) {
+    if (!target.isConnected || isSongRow && !target.classList.contains('playing')) {
       root.unmount();
       target.querySelector('.glass-surface-mount')?.remove();
       target.classList.remove('song-row');
       glassRoots.delete(target);
     }
   });
-  document.querySelectorAll('.top-dock,.browse-search-box,.hero-card,.recent-section .am-card.wide,.nav-item,.bubble-menu__trigger,.bubble-menu__item,.player-bubble-menu__trigger,.player-bubble-menu__now-playing,.player-bubble-menu__item,.player-bubble-menu__volume,.progress-bar,.volume-bar,.amp-progress-bar,.modal-content,.queue-panel,.album-detail-panel,.track-options-menu,.am-artist-page-surface,.am-album-page-surface,.am-artist-bio,.local-upload-area,.track-row.playing,.album-track-row.playing,.fav-track-row.playing,.local-track-row.playing').forEach(target => {
+  matchingTargets(scope, '.top-dock,.browse-search-box,.hero-card,.recent-section .am-card.wide,.nav-item,.bubble-menu__trigger,.bubble-menu__item,.player-bubble-menu__trigger,.player-bubble-menu__now-playing,.player-bubble-menu__item,.player-bubble-menu__volume,.progress-bar,.volume-bar,.amp-progress-bar,.modal-content,.queue-panel,.album-detail-panel,.track-options-menu,.am-artist-page-surface,.am-album-page-surface,.am-artist-bio,.local-upload-area,.track-row.playing,.album-track-row.playing,.fav-track-row.playing,.local-track-row.playing').forEach(target => {
     if (glassRoots.has(target)) return;
     target.classList.add('glass-surface-host');
     const mount = document.createElement('div');
@@ -563,3 +567,32 @@ window.mountGlassSurfaces = mountGlassSurfaces;
 mountGlassSurfaces();
 window.setTimeout(mountGlassSurfaces, 100);
 window.setTimeout(mountGlassSurfaces, 800);
+
+// Coalesce added subtrees and release detached roots, including directly removed cards.
+const pendingSubtrees = new Set();
+let mountFrame = 0;
+const tiltedObserver = new MutationObserver(records => {
+  for (const record of records) {
+    for (const node of record.addedNodes) {
+      if (node instanceof Element && !node.closest('.glass-surface-mount, .tilted-card-mount')) pendingSubtrees.add(node);
+    }
+  }
+  if (mountFrame) return;
+  mountFrame = requestAnimationFrame(() => {
+    mountFrame = 0;
+    for (const [target, root] of tiltedRoots) {
+      if (!target.isConnected) { root.unmount(); tiltedRoots.delete(target); }
+    }
+    for (const [target, root] of glassRoots) {
+      if (!target.isConnected) { root.unmount(); glassRoots.delete(target); }
+    }
+    for (const scope of pendingSubtrees) {
+      if (!scope.isConnected || Array.from(pendingSubtrees).some(other => other !== scope && other.contains(scope))) continue;
+      mountTiltedCards(scope);
+      mountGlassSurfaces(scope);
+    }
+    pendingSubtrees.clear();
+  });
+});
+tiltedObserver.observe(document.body, { childList: true, subtree: true });
+mountTiltedCards();

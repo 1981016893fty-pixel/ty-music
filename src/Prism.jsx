@@ -410,6 +410,7 @@ const Prism = ({
         delete container.__prismIO;
       }
       if (gl.canvas.parentElement === container) container.removeChild(gl.canvas);
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
     };
   }, [
     height,

@@ -56,7 +56,7 @@ export default function ElectricBorder({
     if (!canvas || !container) return undefined;
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
-    const octaves = 10;
+    const octaves = 5;
     const lacunarity = 1.6;
     const gain = 0.7;
     const amplitude = chaos;
@@ -77,7 +77,12 @@ export default function ElectricBorder({
     };
     let { width, height } = updateSize();
     let lastDpr = Math.min(window.devicePixelRatio || 1, 2);
+    let lastDraw = 0;
+    lastFrameTimeRef.current = performance.now();
     const drawElectricBorder = currentTime => {
+      animationRef.current = requestAnimationFrame(drawElectricBorder);
+      if (currentTime - lastDraw < 1000 / 30) return;
+      lastDraw = currentTime;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       if (dpr !== lastDpr) {
         lastDpr = dpr;
@@ -98,7 +103,7 @@ export default function ElectricBorder({
       const borderHeight = height - 2 * borderOffset;
       const radius = Math.min(borderRadius, Math.min(borderWidth, borderHeight) / 2);
       const perimeter = roundedRectPerimeter(borderWidth, borderHeight, radius);
-      const sampleCount = Math.floor(perimeter / 2);
+      const sampleCount = Math.max(64, Math.min(640, Math.ceil(perimeter / 5)));
       // Preserve the reference card's arc density when this component wraps a wide hero.
       const noiseSpan = 8 * Math.max(1, perimeter / 2500);
       const sampleNoiseX = offset => octavedNoise(offset * noiseSpan, octaves, lacunarity, gain, amplitude, frequency, timeRef.current, 0, baseFlatness);
@@ -116,7 +121,6 @@ export default function ElectricBorder({
       ctx.closePath();
       ctx.stroke();
       if (topLeftExclusion > 0) ctx.clearRect(0, 0, topLeftExclusion, topLeftExclusion);
-      animationRef.current = requestAnimationFrame(drawElectricBorder);
     };
     const resizeObserver = new ResizeObserver(() => ({ width, height } = updateSize()));
     resizeObserver.observe(container);

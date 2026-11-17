@@ -101,14 +101,32 @@ export default function GradientWaves({
     const onMove = event => { const rect = canvas.getBoundingClientRect(); target[0] = (event.clientX - rect.left) / rect.width; target[1] = 1 - (event.clientY - rect.top) / rect.height; };
     const onLeave = () => { target[0] = 0.5; target[1] = 0.5; };
     if (mouseInteraction) { window.addEventListener('pointermove', onMove, { passive: true }); window.addEventListener('pointerleave', onLeave); }
-    let raf = 0, pageVisible = !document.hidden, active = true, start = performance.now();
-    const isLibraryPage = () => document.querySelector('#page-local.active, #page-playlists.active');
-    const loop = time => { if (!active || !pageVisible || !isLibraryPage()) { raf = 0; return; } program.uniforms.iTime.value = (time - start) * 0.001; const tx = mouseEnabled.current ? target[0] : 0.5; const ty = mouseEnabled.current ? target[1] : 0.5; current[0] += 0.05 * (tx - current[0]); current[1] += 0.05 * (ty - current[1]); program.uniforms.uMouse.value[0] = current[0]; program.uniforms.uMouse.value[1] = current[1]; renderer.render({ scene: mesh }); raf = requestAnimationFrame(loop); };
-    const startLoop = () => { if (!raf && pageVisible && isLibraryPage()) raf = requestAnimationFrame(loop); };
-    const observer = new MutationObserver(startLoop); observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
-    const onVisibility = () => { pageVisible = !document.hidden; pageVisible ? startLoop() : (raf && cancelAnimationFrame(raf), raf = 0); };
-    document.addEventListener('visibilitychange', onVisibility); startLoop();
-    return () => { active = false; if (raf) cancelAnimationFrame(raf); ro.disconnect(); observer.disconnect(); document.removeEventListener('visibilitychange', onVisibility); if (mouseInteraction) { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerleave', onLeave); } canvas.remove(); gl.getExtension('WEBGL_lose_context')?.loseContext(); };
+    let raf = 0, active = true;
+    const start = performance.now();
+    const loop = time => {
+      if (!active) return;
+      program.uniforms.iTime.value = (time - start) * 0.001;
+      const tx = mouseEnabled.current ? target[0] : 0.5;
+      const ty = mouseEnabled.current ? target[1] : 0.5;
+      current[0] += 0.05 * (tx - current[0]);
+      current[1] += 0.05 * (ty - current[1]);
+      program.uniforms.uMouse.value[0] = current[0];
+      program.uniforms.uMouse.value[1] = current[1];
+      renderer.render({ scene: mesh });
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      active = false;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      if (mouseInteraction) {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerleave', onLeave);
+      }
+      canvas.remove();
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    };
   }, []);
 
   return <div ref={containerRef} className="gradient-waves-container" aria-hidden="true" />;

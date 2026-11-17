@@ -100,7 +100,7 @@ window.fetch = function cachedApiFetch(input, init) {
   const apiOrigin = apiBase ? new URL(apiBase).origin : window.location.origin;
   const cacheable = method === 'GET' && (url.origin === window.location.origin || url.origin === apiOrigin) &&
     url.pathname.startsWith('/api/') &&
-    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
+    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search)$/.test(url.pathname);
   if (!cacheable) return rawFetch(request);
 
   const key = url.href;
@@ -162,7 +162,7 @@ const state = {
   shuffledQueue: [],
   recentPlays: [],
   _discoverLoaded: false,
-  currentSource: 'netease',
+  currentSource: 'embeat',
   // Dynamic lyrics
   lyrics: { lines: [], activeIndex: -1, expanded: false },
   // Album favorites
@@ -265,12 +265,7 @@ function loadData() {
     console.warn('[Storage] Favorites exist but track cache is empty, attempting recovery from recent plays...');
     state.recentPlays.forEach(function(rp) {
       if (state.favorites.has(rp.id)) {
-        state.trackCache.set(rp.id, {
-          id: rp.id, title: rp.title, artist: rp.artist,
-          album: '', cover: rp.cover || '', coverSmall: rp.cover || '',
-          picId: '', duration: 0, source: rp.source || '',
-          _gdSource: true,
-        });
+        state.trackCache.set(rp.id, trackFromRecentEntry(rp));
       }
     });
     if (state.trackCache.size > 0) {
@@ -382,7 +377,8 @@ syncWelcomeScreen();
 
 // ========== Search ==========
 const SOURCE_LABELS = {
-  netease: '全网搜索',
+  embeat: 'Embeat 综合搜索',
+  netease: '网易云音乐',
   'netease-hot': '热门排行榜',
   'netease-new': '新歌速递',
 };
@@ -425,17 +421,46 @@ function coverUrlForTrack(song, size, source) {
   );
 }
 
+// Keep upstream resource IDs separate from the safe internal queue/storage identity.
+function providerTrackId(track) {
+  if (track.providerId != null && track.providerId !== '') return String(track.providerId);
+  const id = String(track.id ?? '');
+  if (track.source === 'embeat' && id.startsWith('embeat:')) {
+    try { return decodeURIComponent(id.slice(7)); } catch (_) { return ''; }
+  }
+  return id;
+}
+
+function musicResourceQuery(track, kind) {
+  const providerId = providerTrackId(track);
+  const id = kind === 'lyric' ? track.lyricId || providerId : track.urlId || providerId;
+  const params = new URLSearchParams({ id, source: track.source || 'netease' });
+  if (track.source === 'embeat') {
+    params.set('trackId', providerId);
+    params.set('title', track.title || '');
+    params.set('artist', track.artist || '');
+    if (track.isrc) params.set('isrc', track.isrc);
+  }
+  return params.toString();
+}
+
 // 标准化歌曲对象（新音源）
 function normalizeTrack(song) {
   var src = song.source || 'netease';
+  var providerId = providerTrackId(song);
+  var internalId = src === 'embeat' && providerId ? 'embeat:' + encodeURIComponent(providerId).replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase()) : String(song.id ?? '');
   var pid = song.picId || song.pic_id || '';
   var albumId = song.albumId || song.album_id || '';
   var coverUrl = coverUrlForTrack(song, 1000, src);
   var coverSmallUrl = coverUrlForTrack(song, 300, src);
 
   return {
-    id: String(song.id || ''),
-    title: song.name || '未知歌曲',
+    id: internalId,
+    providerId,
+    urlId: song.urlId || song.url_id || '',
+    lyricId: song.lyricId || song.lyric_id || '',
+    isrc: song.isrc || '',
+    title: song.name || song.title || '未知歌曲',
     artist: song.artist || '未知歌手',
     album: song.album || '',
     cover: coverUrl,
@@ -461,7 +486,7 @@ async function searchLocal(keywords, limit) {
     if (!data.songs || !data.songs.length) return [];
     return data.songs.map(function(s) { return normalizeTrack(s); });
   } catch (e) {
-    console.warn('[Search] Failed for "' + keywords + '":', e.message);
+    console.warn('[Search] Failed:', e.message);
     return [];
   }
 }
@@ -500,26 +525,25 @@ async function fetchPlaylistSongs(limit) {
 }
 
 // 新音源搜索（通过 GD Studio API）
-async function searchNetease(keywords, limit) {
-  limit = limit || 80;
+async function searchNetease(keywords, limit, source) {
+  limit = Math.min(limit || 20, 20);
   var ctrl = new AbortController();
-  var timer = setTimeout(function() { ctrl.abort(); }, 2500);
+  var timer = setTimeout(function() { ctrl.abort(); }, 15000);
   try {
-    var url = '/api/music/search?keywords=' + encodeURIComponent(keywords) + '&source=netease&limit=' + limit;
-    console.log('[Search] fetching:', url);
+    var url = '/api/music/search?keywords=' + encodeURIComponent(keywords) + '&limit=' + limit;
+    if (source) url += '&source=' + encodeURIComponent(source);
     var res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(timer);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var data = await res.json();
     if (!data.songs || !data.songs.length) {
-      console.warn('[Search] No results for "' + keywords + '"');
       return [];
     }
-    console.log('[Search] Got', data.songs.length, 'tracks for "' + keywords + '"');
-    return data.songs.map(function(s) { return normalizeNeteaseTrack(s); });
+    return data.songs.map(function(s) { return normalizeTrack(s); });
   } catch (e) {
-    console.error('[Search] Failed for "' + keywords + '":', e.message);
+    console.error('[Search] Failed:', e.message);
     throw e; // 抛出错误，让调用方处理
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -566,7 +590,7 @@ async function fetchNeteaseNew(limit) {
   for (var qi = 0; qi < queries.length; qi++) {
     if (allTracks.length >= limit) break;
     try {
-      var qtracks = await searchNetease(queries[qi], qi === 0 ? limit : Math.ceil(limit / 2));
+      var qtracks = await searchNetease(queries[qi], qi === 0 ? limit : Math.ceil(limit / 2), 'netease');
       for (var ti = 0; ti < qtracks.length; ti++) {
         if (allTracks.length >= limit) break;
         if (!seen.has(qtracks[ti].id)) {
@@ -604,24 +628,11 @@ function normalizeNeteaseTrack(song) {
 // 通用搜索
 async function universalSearch(query, limit, forceSource) {
   limit = limit || 80;
-  var source = forceSource || state.currentSource;
   var results = [];
 
   if (!forceSource) showToast('正在搜索...');
 
-  switch (source) {
-    case 'netease':
-      results = await searchNetease(query, limit);
-      break;
-    case 'netease-hot':
-      results = await fetchNeteaseHot(limit);
-      break;
-    case 'netease-new':
-      results = await fetchNeteaseNew(limit);
-      break;
-    default:
-      results = await searchNetease(query, limit);
-  }
+  results = await searchNetease(query, limit);
 
   if (!results.length) {
     if (!forceSource) showToast('未找到歌曲，请尝试其他关键词');
@@ -635,6 +646,10 @@ function esc(str) {
   const d = document.createElement('div');
   d.textContent = str;
   return d.innerHTML;
+}
+
+function escAttr(value) {
+  return esc(value).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 // 格式化歌手名，支持多人合唱显示
@@ -806,6 +821,11 @@ function cacheTrack(track) {
     cover: track.cover || track.coverSmall || '',
     coverSmall: track.coverSmall || track.cover || '',
     picId: track.picId || '',
+    providerId: providerTrackId(track),
+    urlId: track.urlId || '',
+    lyricId: track.lyricId || '',
+    isrc: track.isrc || '',
+    albumId: track.albumId || '',
     duration: track.duration || 0,
     source: track.source || 'netease',
   });
@@ -820,6 +840,10 @@ function trackFromRecentEntry(entry) {
   const source = merged.source || 'netease';
   return {
     id,
+    providerId: providerTrackId(merged),
+    urlId: merged.urlId || merged.url_id || '',
+    lyricId: merged.lyricId || merged.lyric_id || '',
+    isrc: merged.isrc || '',
     title: merged.title || merged.name || '未知歌曲',
     artist: merged.artist || '未知歌手',
     album: merged.album || '',
@@ -883,6 +907,7 @@ $('#playerDownload').addEventListener('click', async () => {
     return;
   }
   const track = state.currentTrack;
+  if (track.source === 'embeat') { showToast('Embeat 目前仅支持在线播放，暂不提供下载'); return; }
   showToast('正在获取下载链接...');
   try {
     const res = await fetch('/api/music/download?id=' + encodeURIComponent(track.id) + '&title=' + encodeURIComponent(track.title + ' - ' + track.artist));
@@ -961,6 +986,11 @@ function playTrack(track, index, skipRecentUpdate) {
     album: track.album || '',
     cover: track.cover || track.coverSmall || '', source: track.source,
     picId: track.picId || '',
+    providerId: providerTrackId(track),
+    urlId: track.urlId || '',
+    lyricId: track.lyricId || '',
+    albumId: track.albumId || '',
+    isrc: track.isrc || '',
     previewUrl: track.previewUrl,
   });
 
@@ -1032,7 +1062,7 @@ function playTrack(track, index, skipRecentUpdate) {
       miniAlbumEl.title = '点击打开专辑';
       miniAlbumEl.onclick = function() {
         // 优先使用 picId，没有的话用 songId 让后端自动获取
-        openAlbumByPicId(picId, songId, albumText, track.artist, 'netease', albumId);
+        openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
       };
     }
     // 全屏播放器
@@ -1046,7 +1076,7 @@ function playTrack(track, index, skipRecentUpdate) {
         closeAmpFullscreenPlayer();
         setTimeout(function() {
           // 优先使用 picId，没有的话用 songId 让后端自动获取
-          openAlbumByPicId(picId, songId, albumText, track.artist, 'netease', albumId);
+          openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
         }, 400);
       };
     }
@@ -1080,8 +1110,8 @@ function playTrack(track, index, skipRecentUpdate) {
   }
 
   // 通过代理播放（服务器中转，绕过 CDN 防盗链）
-  if (track.id && (track.source === 'netease' || track.picId || !track.previewUrl)) {
-    var proxyPath = '/api/music/proxy?id=' + encodeURIComponent(track.id);
+  if (track.id && (track.source === 'embeat' || track.source === 'netease' || track.picId || !track.previewUrl)) {
+    var proxyPath = '/api/music/proxy?' + musicResourceQuery(track, 'url');
     if (window.__TY_MUSIC_DESKTOP__) proxyPath += '&stream=1';
     var proxyUrl = resolveMusicResource(proxyPath);
     console.log('[Play] Using proxy URL for', track.title);
@@ -1466,7 +1496,7 @@ function renderQueue() {
   $('#queueCount').textContent = `${state.queue.length} 首`;
   $('#queueList').innerHTML = state.queue.map((t, i) => `
     <div class="track-row ${state.currentTrack?.id === t.id ? 'playing' : ''}" data-track-id="${t.id}" data-idx="${i}">
-      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${esc(t.artist || '')}" data-album="${esc(t.album || '')}" data-name="${esc(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
+      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${escAttr(t.artist || '')}" data-album="${escAttr(t.album || '')}" data-name="${escAttr(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
       <div class="row-info">
         <div class="row-title">${esc(t.title)}</div>
         <div class="row-artist">${esc(t.artist)}</div>
@@ -1584,21 +1614,21 @@ async function loadLyrics(track, callback) {
   let lrcText = null;
   let tlyricText = null;
 
-  const tryFetch = async (fetchFn) => {
+  const tryFetch = async (fetchFn, budget = 5000) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), budget);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      const data = await fetchFn(controller.signal);
-      clearTimeout(timeout);
-      return data;
+      return await fetchFn(controller.signal);
     } catch (e) { return null; }
+    finally { clearTimeout(timeout); }
   };
 
   // Step 1: 新音源歌词（通过新 API /api/music/lyric）
-  if (track.id && (track.source === 'netease' || track.picId)) {
+  if (track.id && (track.source === 'embeat' || track.source === 'netease' || track.picId)) {
     const data = await tryFetch(signal =>
-      fetch(`/api/music/lyric?id=${encodeURIComponent(track.id)}&source=${track.source || 'netease'}`, { signal })
-        .then(r => r.json())
+      fetch('/api/music/lyric?' + musicResourceQuery(track, 'lyric'), { signal })
+        .then(r => r.json()),
+      track.source === 'embeat' ? 25000 : 5000
     );
     if (data && data.lrc && data.lrc.length > 10) {
       lrcText = data.lrc;
@@ -1607,7 +1637,7 @@ async function loadLyrics(track, callback) {
   }
 
   // Step 2: Try Netease LRC — first by direct song ID, then by search
-  if (!lrcText) {
+  if (!lrcText && track.source !== 'embeat') {
     const idMatch1 = track.previewUrl && track.previewUrl.match(/[?&]id=([^&]+)/);
     const idMatch2 = track.lyricsUrl && track.lyricsUrl.match(/[?&]id=([^&]+)/);
     const songId = idMatch1 ? idMatch1[1] : (idMatch2 ? idMatch2[1] : null);
@@ -1624,7 +1654,7 @@ async function loadLyrics(track, callback) {
   }
 
   // Step 3: If no lyrics yet, try search by artist+title
-  if (!lrcText && track.artist && track.title) {
+  if (!lrcText && track.source !== 'embeat' && track.artist && track.title) {
     const data = await tryFetch(signal =>
       fetch(`/api/search-lyric?artist=${encodeURIComponent(track.artist)}&title=${encodeURIComponent(track.title)}`, { signal })
         .then(r => r.json())
@@ -1643,6 +1673,9 @@ async function loadLyrics(track, callback) {
       return;
     }
   }
+
+  // Embeat resource resolution is authoritative; do not guess another catalog.
+  if (track.source === 'embeat') { if (callback) callback([]); return; }
 
   // Step 5: Fallback to lyrics.ovh
   const ovhData = await tryFetch(signal =>
@@ -1683,7 +1716,7 @@ function createAMCard(track, wide = false) {
   return `
     <div class="am-card ${wide ? 'wide' : ''}" data-track-id="${track.id}">
       <div class="am-artwork">
-        <img src="${track.coverSmall || track.cover || ''}" alt="" loading="lazy" data-artist="${esc(track.artist || '')}" data-album="${esc(track.album || '')}" data-name="${esc(track.title || '')}" onerror="fallbackCover(this)">
+        <img src="${track.coverSmall || track.cover || ''}" alt="" loading="lazy" data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || '')}" onerror="fallbackCover(this)">
         <div class="am-play-overlay">
           <div class="am-play-circle"><i class="fa-solid fa-play"></i></div>
         </div>
@@ -2055,16 +2088,34 @@ if (browseQuickGrid) {
 let searchTimeout;
 let autoAbortCtrl = null;
 let autoIndex = -1;
-const SEARCH_PAGE_SIZE = 60;
+const SEARCH_PAGE_SIZE = 20;
+const SEARCH_REQUEST_TIMEOUT = 15000;
 let activeSearchQuery = '';
 let activeSearchTracks = [];
 let activeSearchOffset = 0;
 let activeSearchHasMore = false;
 let activeSearchLoading = false;
 let searchResultsObserver = null;
+let activeSearchGeneration = 0;
+let activeSearchController = null;
+
+function cancelSearch() {
+  activeSearchGeneration++;
+  activeSearchController?.abort();
+  activeSearchController = null;
+  activeSearchLoading = false;
+  activeSearchHasMore = false;
+  searchResultsObserver?.disconnect();
+  searchResultsObserver = null;
+}
 
 $('#searchInput').addEventListener('input', () => {
+  cancelSearch();
+  hideAutocomplete();
   const q = $('#searchInput').value.trim();
+  $('#searchResultsSection').style.display = 'none';
+  const quickStart = $('#page-search .browse-quick-section');
+  if (quickStart) quickStart.style.display = '';
   $('#searchBtn').style.display = q ? 'flex' : 'none';
   clearTimeout(searchTimeout);
   autoIndex = -1;
@@ -2147,16 +2198,23 @@ async function fetchAutocomplete(query) {
   if (!query || query.length < 1) { hideAutocomplete(); return; }
   // 取消上一次请求
   if (autoAbortCtrl) autoAbortCtrl.abort();
-  autoAbortCtrl = new AbortController();
+  const controller = new AbortController();
+  autoAbortCtrl = controller;
+  const timer = setTimeout(() => controller.abort(), SEARCH_REQUEST_TIMEOUT);
   
   try {
-    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(query) + '&source=netease&limit=8', { signal: autoAbortCtrl.signal });
+    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(query) + '&limit=8', { signal: controller.signal, cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (controller.signal.aborted || autoAbortCtrl !== controller || $('#searchInput').value.trim() !== query) return;
     const songs = data.songs || [];
     if (!songs.length) { hideAutocomplete(); return; }
     renderAutocomplete(songs);
   } catch (e) {
     if (e.name !== 'AbortError') console.warn('[Autocomplete]', e.message);
+  } finally {
+    clearTimeout(timer);
+    if (autoAbortCtrl === controller) autoAbortCtrl = null;
   }
 }
 
@@ -2167,8 +2225,8 @@ function renderAutocomplete(songs) {
   autoIndex = -1;
   box.style.display = 'block';
   box.innerHTML = songs.map((s, i) => `
-    <div class="auto-item" data-idx="${i}" data-query="${esc(s.name + ' ' + s.artist)}">
-      <img class="auto-item-cover" src="${s.coverSmall || s.cover || ''}" data-artist="${esc(s.artist || '')}" data-album="${esc(s.album || '')}" data-name="${esc(s.name || '')}" onerror="fallbackCover(this)">
+    <div class="auto-item" data-idx="${i}" data-query="${escAttr(s.name + ' ' + s.artist)}">
+      <img class="auto-item-cover" src="${s.coverSmall || s.cover || ''}" data-artist="${escAttr(s.artist || '')}" data-album="${escAttr(s.album || '')}" data-name="${escAttr(s.name || '')}" onerror="fallbackCover(this)">
       <div class="auto-item-info">
         <span class="auto-item-name">${esc(s.name)}</span>
         <span class="auto-item-artist">${esc(s.artist)}</span>
@@ -2183,6 +2241,7 @@ function renderAutocomplete(songs) {
 }
 
 function hideAutocomplete() {
+  clearTimeout(searchTimeout);
   const box = $('#searchAutocomplete');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
   autoIndex = -1;
@@ -2191,11 +2250,15 @@ function hideAutocomplete() {
 
 async function performSearch(query, resultTitle = '') {
   if (!query) return;
+  cancelSearch();
   browseResultTitleOverride = resultTitle || '';
   hideAutocomplete();
   const suggestions = $('#searchSuggestions');
   if (suggestions) suggestions.style.display = 'none';
   $('#searchResultsSection').style.display = 'block';
+  const quickStart = $('#page-search .browse-quick-section');
+  if (quickStart) quickStart.style.display = 'none';
+  $('#searchResultTitle').textContent = resultTitle || '搜索结果';
   $('#searchResults').innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
   activeSearchQuery = query;
   activeSearchTracks = [];
@@ -2233,12 +2296,18 @@ function renderPaginatedSearchResults() {
 async function loadMoreSearchResults() {
   if (activeSearchLoading || !activeSearchQuery || !activeSearchHasMore) return;
   activeSearchLoading = true;
+  const generation = activeSearchGeneration;
+  const controller = new AbortController();
+  activeSearchController = controller;
+  const timer = setTimeout(() => controller.abort(), SEARCH_REQUEST_TIMEOUT);
 
   try {
     const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(activeSearchQuery) +
-      '&source=netease&limit=' + SEARCH_PAGE_SIZE + '&offset=' + activeSearchOffset);
+      '&limit=' + SEARCH_PAGE_SIZE + '&offset=' + activeSearchOffset,
+      { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (generation !== activeSearchGeneration || controller.signal.aborted) return;
     const incoming = (data.songs || []).map(function(song) { return normalizeTrack(song); });
     const seen = new Set(activeSearchTracks.map(function(track) { return track.id; }));
     const additions = incoming.filter(function(track) {
@@ -2251,14 +2320,26 @@ async function loadMoreSearchResults() {
     activeSearchHasMore = data.hasMore === true;
 
     $('#searchResultTitle').textContent = browseResultTitleOverride || '搜索结果';
-    $('#searchSourceLabel').textContent = `音源：${SOURCE_LABELS[state.currentSource]}`;
+    $('#searchSourceLabel').textContent = '音源：Embeat 综合搜索';
     if (additions.length) addToQueue(additions);
     renderPaginatedSearchResults();
   } catch (e) {
-    if (!activeSearchTracks.length) $('#searchResults').innerHTML = '<p class="empty-state">搜索失败，请稍后重试</p>';
+    if (generation !== activeSearchGeneration) return;
+    if (!activeSearchTracks.length) $('#searchResults').innerHTML = '<p class="empty-state">' +
+      (controller.signal.aborted ? '搜索超时，请稍后重试' : '搜索失败，请稍后重试') + '</p>';
+    else {
+      const notice = document.createElement('p');
+      notice.className = 'empty-state';
+      notice.textContent = '后续歌曲加载失败，请重新搜索';
+      $('#searchResults').appendChild(notice);
+    }
     activeSearchHasMore = false;
   } finally {
-    activeSearchLoading = false;
+    clearTimeout(timer);
+    if (generation === activeSearchGeneration) {
+      activeSearchLoading = false;
+      activeSearchController = null;
+    }
   }
 }
 
@@ -2315,7 +2396,7 @@ function renderTrackList(containerId, tracks) {
   container.innerHTML = tracks.map((t, i) => `
     <div class="track-row${isBrowseResults ? ' browse-result-row' : ''}" data-track-id="${t.id}" data-idx="${i}">
       ${isBrowseResults ? '<span class="browse-result-index">' + (i + 1) + '</span>' : ''}
-      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${esc(t.artist || '')}" data-album="${esc(t.album || '')}" data-name="${esc(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
+      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${escAttr(t.artist || '')}" data-album="${escAttr(t.album || '')}" data-name="${escAttr(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
       <div class="row-info">
         <div class="row-title">${esc(t.title)}</div>
         <div class="row-artist">${esc(t.artist)}${isBrowseResults ? '' : (t.album ? ' — ' + esc(t.album) : '')}</div>
@@ -2399,7 +2480,7 @@ function renderFavorites() {
     if (!track) {
       var rp = state.recentPlays.find(function(r) { return r.id === id; });
       if (rp) {
-        track = { id: rp.id, title: rp.title, artist: rp.artist, cover: rp.cover || '', coverSmall: rp.cover || '', duration: 0, source: rp.source || '' };
+        track = trackFromRecentEntry(rp);
       }
     }
     if (track) favs.push(track);
@@ -2429,7 +2510,7 @@ function renderFavorites() {
     var coverSrc = track.coverSmall || track.cover || '';
     return '<div class="fav-track-row" data-id="' + track.id + '">' +
       '<div class="fav-track-index">' + (i + 1) + '</div>' +
-      '<div class="fav-track-cover">' + (coverSrc ? '<img src="' + coverSrc + '" alt="" loading="lazy" data-artist="' + esc(track.artist || '') + '" data-album="' + esc(track.album || '') + '" data-name="' + esc(track.title || '') + '" onerror="fallbackCover(this)">' : '<i class="fa-solid fa-music"></i>') + '</div>' +
+      '<div class="fav-track-cover">' + (coverSrc ? '<img src="' + coverSrc + '" alt="" loading="lazy" data-artist="' + escAttr(track.artist || '') + '" data-album="' + escAttr(track.album || '') + '" data-name="' + escAttr(track.title || '') + '" onerror="fallbackCover(this)">' : '<i class="fa-solid fa-music"></i>') + '</div>' +
       '<div class="fav-track-copy">' +
         '<div class="fav-track-title">' + esc(track.title) + '</div>' +
         '<div class="fav-track-artist">' + esc(track.artist) + '</div>' +
@@ -2522,15 +2603,7 @@ function renderPlaylists() {
       if (!firstTrack && state.recentPlays && state.recentPlays.length > 0) {
         const rp = state.recentPlays.find(r => r.id === firstTrackId);
         if (rp) {
-          firstTrack = { 
-            id: rp.id, 
-            title: rp.title, 
-            artist: rp.artist, 
-            cover: rp.cover || '', 
-            coverSmall: rp.cover || '', 
-            duration: 0, 
-            source: rp.source || '' 
-          };
+          firstTrack = trackFromRecentEntry(rp);
         }
       }
       
@@ -2597,7 +2670,7 @@ function openPlaylist(idx) {
     if (!t) t = state.trackCache.get(id);
     if (!t) {
       var rp = state.recentPlays.find(function(r) { return r.id === id; });
-      if (rp) t = { id: rp.id, title: rp.title, artist: rp.artist, cover: rp.cover || '', coverSmall: rp.cover || '', duration: 0, source: rp.source || '' };
+      if (rp) t = trackFromRecentEntry(rp);
     }
     return t;
   }).filter(Boolean);
@@ -2646,39 +2719,7 @@ $('#cancelSettings').addEventListener('click', () => $('#settingsModal').classLi
 
 // ========== 音源 Tabs ==========
 const sourceTabsEl = $('#sourceTabs');
-if (sourceTabsEl) {
-  sourceTabsEl.addEventListener('click', (e) => {
-    const tab = e.target.closest('.source-tab');
-    if (!tab) return;
-    state.currentSource = tab.dataset.source;
-    sourceTabsEl.querySelectorAll('.source-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const label = $('#searchSourceLabel');
-    if (label) label.textContent = `音源：${SOURCE_LABELS[state.currentSource] || state.currentSource}`;
-
-    // 热门推荐/新歌速递：无需搜索词，自动加载
-    if (['netease-hot', 'netease-new'].includes(state.currentSource)) {
-      const sugg = $('#searchSuggestions');
-      const resSec = $('#searchResultsSection');
-      if (sugg) sugg.style.display = 'none';
-      if (resSec) resSec.style.display = 'block';
-      const si = $('#searchInput');
-      if (si) si.value = '';
-      loadSourceSongs(state.currentSource);
-    } else {
-      // 有搜索词就搜，没搜索词就显示搜索提示
-      const query = $('#searchInput')?.value?.trim() || '';
-      if (query) {
-        performSearch(query);
-      } else {
-        const sugg = $('#searchSuggestions');
-        const resSec = $('#searchResultsSection');
-        if (sugg) sugg.style.display = 'block';
-        if (resSec) resSec.style.display = 'none';
-      }
-    }
-  });
-}
+if (sourceTabsEl) sourceTabsEl.remove();
 
 async function loadSourceSongs(source) {
   $('#searchResults').innerHTML = '<div class="loading" aria-label="内容加载中"></div>';
@@ -4295,6 +4336,7 @@ function renderAlbumTracks(tracks) {
 
 // 通过 picId 获取专辑信息（最准确）
 async function openAlbumByPicId(picId, songId, albumName, artistName, source, albumId) {
+  if (source === 'embeat') { showToast('Embeat 暂不提供专辑曲目'); return; }
   console.log('[Album] openAlbumByPicId', { picId, songId, albumName, artistName, source, albumId });
   
   // 导航到专辑详情页
@@ -4401,6 +4443,7 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
 
 // 通过专辑名称搜索曲目（向后兼容）
 async function openAlbumByName(albumName, artistName, source, picId) {
+  if (source === 'embeat') { showToast('Embeat 暂不提供专辑曲目'); return; }
   console.log('[Album] openAlbumByName (fallback)', { albumName, artistName, source, picId });
   
   // 导航到专辑详情页
@@ -4503,7 +4546,9 @@ var currentArtistOtherTracks = [];
 var currentArtistName = '';
 var currentArtistOffset = 0;
 var currentArtistHasMore = true;
-const ARTIST_PAGE_SIZE = 60;
+var currentArtistGeneration = 0;
+var currentArtistLoading = false;
+const ARTIST_PAGE_SIZE = 20;
 
 function resetArtistPageColors() {
   var page = document.getElementById('page-artist-detail');
@@ -4577,9 +4622,15 @@ function bindArtistFeaturedCards() {
 
 async function openArtistPage(artistName) {
   if (!artistName) return;
+  const generation = ++currentArtistGeneration;
+  currentArtistLoading = true;
+  currentArtistTracks = [];
+  currentArtistFeaturedTracks = [];
+  currentArtistLatestTracks = [];
+  currentArtistOtherTracks = [];
   currentArtistName = artistName;
   currentArtistOffset = 0;
-  currentArtistHasMore = true;
+  currentArtistHasMore = false;
   resetArtistPageColors();
   navigateTo('artist-detail');
   setShinyText('artistDetailName', artistName);
@@ -4599,44 +4650,25 @@ async function openArtistPage(artistName) {
     bg.style.display = 'block';
   }
   try {
-    var data = await Promise.all([
-      fetch('/api/music/search?keywords='+encodeURIComponent(artistName)+'&source=netease&limit='+ARTIST_PAGE_SIZE).then(r=>r.json()).then(d=>d.songs||[]).catch(()=>[]),
-      fetch('/api/music/artist?name='+encodeURIComponent(artistName)+'&source=netease&limit='+ARTIST_PAGE_SIZE).then(r=>r.json()).catch(()=>({ songs: [], hasMore: false }))
-    ]);
-    var fs = data[0], artistPage = data[1] || {}, as = artistPage.songs || [];
-    var normalizeArtistTracks = function(list) {
-      var localSeen = new Set();
-      return list.map(function(s) {
-        if (localSeen.has(s.id)) return null;
-        localSeen.add(s.id);
-        s.source = 'netease';
-        s.picId = s.picId || '';
-        return normalizeTrack(s);
-      }).filter(Boolean);
-    };
-    // Search results provide representative works; the artist endpoint provides
-    // the source's latest ordering. Remaining unique songs form the full list.
-    var searchTracks = normalizeArtistTracks(fs);
-    var artistTracks = normalizeArtistTracks(as);
-    currentArtistFeaturedTracks = searchTracks.slice(0, 6);
-    var featuredIds = new Set(currentArtistFeaturedTracks.map(function(track) { return track.id; }));
-    // Some artists are missing from the upstream artist endpoint. Keep the
-    // latest section useful by falling back to the ordered search response.
-    var latestPool = artistTracks.length ? artistTracks : searchTracks;
-    currentArtistLatestTracks = latestPool.filter(function(track) { return !featuredIds.has(track.id); }).slice(0, 8);
-    var sectionIds = new Set(currentArtistFeaturedTracks.concat(currentArtistLatestTracks).map(function(track) { return track.id; }));
-    currentArtistOtherTracks = artistTracks.concat(searchTracks).filter(function(track) {
-      if (sectionIds.has(track.id)) return false;
-      sectionIds.add(track.id);
+    var artistPage = await fetch('/api/music/search?keywords='+encodeURIComponent(artistName)+'&limit='+ARTIST_PAGE_SIZE, { cache: 'no-store', signal: AbortSignal.timeout(15000) }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    if (generation !== currentArtistGeneration) return;
+    const songs = artistPage.songs || [];
+    const seen = new Set();
+    // Embeat supplies relevance order, not release dates.
+    currentArtistTracks = songs.map(normalizeTrack).filter(track => {
+      if (seen.has(track.id)) return false;
+      seen.add(track.id);
       return true;
     });
-    currentArtistTracks = currentArtistFeaturedTracks.concat(currentArtistLatestTracks, currentArtistOtherTracks);
-    currentArtistOffset = Number.isFinite(Number(artistPage.nextOffset)) ? Number(artistPage.nextOffset) : as.length;
+    currentArtistFeaturedTracks = currentArtistTracks.slice(0, 6);
+    currentArtistLatestTracks = currentArtistTracks.slice(6, 14);
+    currentArtistOtherTracks = currentArtistTracks.slice(14);
+    currentArtistOffset = Number.isFinite(Number(artistPage.nextOffset)) ? Number(artistPage.nextOffset) : songs.length;
     currentArtistHasMore = artistPage.hasMore === true;
     document.getElementById('artistDetailMeta').textContent = '';
     // 后台加载头像和简介（不阻塞歌曲列表）
-    loadArtistPhoto(artistName, currentArtistTracks);
-    loadArtistBio(artistName, currentArtistTracks);
+    loadArtistPhoto(artistName, currentArtistTracks, generation);
+    loadArtistBio(artistName, currentArtistTracks, generation);
     if (!currentArtistTracks.length) {
       renderArtistSections();
       return;
@@ -4648,10 +4680,13 @@ async function openArtistPage(artistName) {
       addLoadMoreButton();
     }
   } catch(e) {
+    if (generation !== currentArtistGeneration) return;
     console.error('[Artist] Error:',e.message);
     document.getElementById('artistFeaturedList').innerHTML = '<p class="empty-state">加载失败</p>';
     document.getElementById('artistLatestList').innerHTML = '';
     document.getElementById('artistOtherList').innerHTML = '';
+  } finally {
+    if (generation === currentArtistGeneration) currentArtistLoading = false;
   }
 }
 
@@ -4675,7 +4710,11 @@ function addLoadMoreButton() {
 
 // 加载更多艺人歌曲
 async function loadMoreArtistSongs() {
-  if (!currentArtistHasMore || !currentArtistName) return;
+  if (currentArtistLoading || !currentArtistHasMore || !currentArtistName) return;
+  const generation = currentArtistGeneration;
+  const artistName = currentArtistName;
+  const offset = currentArtistOffset;
+  currentArtistLoading = true;
   
   var btn = document.getElementById('loadMoreArtistBtn');
   if (btn) {
@@ -4684,9 +4723,10 @@ async function loadMoreArtistSongs() {
   }
   
   try {
-    var data = await fetch('/api/music/artist?name='+encodeURIComponent(currentArtistName)+'&source=netease&limit='+ARTIST_PAGE_SIZE+'&offset='+currentArtistOffset).then(r=>r.json()).catch(()=>({ songs: [], hasMore: false }));
+    var data = await fetch('/api/music/search?keywords='+encodeURIComponent(artistName)+'&limit='+ARTIST_PAGE_SIZE+'&offset='+offset, { cache: 'no-store', signal: AbortSignal.timeout(15000) }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    if (generation !== currentArtistGeneration) return;
     var newSongs = data.songs || [];
-    currentArtistOffset = Number.isFinite(Number(data.nextOffset)) ? Number(data.nextOffset) : currentArtistOffset + newSongs.length;
+    currentArtistOffset = Number.isFinite(Number(data.nextOffset)) ? Number(data.nextOffset) : offset + newSongs.length;
     currentArtistHasMore = data.hasMore === true;
     
     if (!newSongs.length) {
@@ -4699,11 +4739,10 @@ async function loadMoreArtistSongs() {
     var seen = new Set(currentArtistTracks.map(function(t) { return t.id; }));
     var newTracks = [];
     newSongs.forEach(function(s) {
-      if (!seen.has(s.id)) {
-        seen.add(s.id);
-        s.source = 'netease';
-        s.picId = s.picId || '';
-        newTracks.push(normalizeTrack(s));
+      const track = normalizeTrack(s);
+      if (!seen.has(track.id)) {
+        seen.add(track.id);
+        newTracks.push(track);
       }
     });
     
@@ -4713,7 +4752,7 @@ async function loadMoreArtistSongs() {
       return;
     }
     
-    // 新分页结果属于“其他歌曲”，代表作和最新歌曲保持稳定。
+    // 新分页结果属于“其他歌曲”，首页分组保持稳定。
     currentArtistOtherTracks = currentArtistOtherTracks.concat(newTracks);
     currentArtistTracks = currentArtistFeaturedTracks.concat(currentArtistLatestTracks, currentArtistOtherTracks);
     document.getElementById('artistDetailMeta').textContent = '';
@@ -4729,27 +4768,31 @@ async function loadMoreArtistSongs() {
       addLoadMoreButton();
     }
   } catch(e) {
+    if (generation !== currentArtistGeneration) return;
     console.error('[Artist] Load more error:', e.message);
     if (btn) {
       btn.querySelector('button').textContent = '加载失败，点击重试';
       btn.querySelector('button').disabled = false;
     }
+  } finally {
+    if (generation === currentArtistGeneration) currentArtistLoading = false;
   }
 }
 
-async function loadArtistPhoto(artistName, tracks) {
+async function loadArtistPhoto(artistName, tracks, generation = currentArtistGeneration) {
   var ai = document.getElementById('artistAvatar'), af = document.getElementById('artistAvatarFallback'), bg = document.getElementById('artistBg');
   // 优先通过网易云艺人详情 API 获取真实头像和背景
   try {
     var res = await fetch('/api/music/artist-info?name=' + encodeURIComponent(artistName));
     if (res.ok) {
       var info = await res.json();
+      if (generation !== currentArtistGeneration) return;
       if (info.avatar && ai) {
         ai.src = info.avatar; ai.style.display = 'block';
-        ai.onload = function(){if(af)af.style.display='none';};
-        ai.onerror = function(){ai.style.display='none';if(af)af.style.display='flex';};
+        ai.onload = function(){if(generation !== currentArtistGeneration)return;if(af)af.style.display='none';};
+        ai.onerror = function(){if(generation !== currentArtistGeneration)return;ai.style.display='none';if(af)af.style.display='flex';};
         var colorSource = '/api/cover?size=1000&url=' + encodeURIComponent(info.avatar);
-        extractAlbumColors(colorSource, applyArtistPageColors);
+        extractAlbumColors(colorSource, colors => { if (generation === currentArtistGeneration) applyArtistPageColors(colors); });
       }
       // 背景使用网易云艺人艺术大图，回退到头像；它只存在于奶油白 hero 层内。
       var bgUrl = '/api/artist-photo?name=' + encodeURIComponent(artistName);
@@ -4760,19 +4803,20 @@ async function loadArtistPhoto(artistName, tracks) {
       if (info.avatar && ai) return;
     }
   } catch(e) {}
+  if (generation !== currentArtistGeneration) return;
   // 降级：用第一首歌封面
   if (tracks.length && ai) {
     var cover = tracks[0].coverSmall || tracks[0].cover || '';
       if (cover) {
         ai.src = cover; ai.style.display = 'block';
-        extractAlbumColors(cover, applyArtistPageColors);
-        ai.onload = function(){if(af)af.style.display='none';if(bg){bg.style.backgroundImage='url('+cover+')';bg.style.display='block';}};
-      ai.onerror = function(){ai.style.display='none';if(af)af.style.display='flex';};
+        extractAlbumColors(cover, colors => { if (generation === currentArtistGeneration) applyArtistPageColors(colors); });
+        ai.onload = function(){if(generation !== currentArtistGeneration)return;if(af)af.style.display='none';if(bg){bg.style.backgroundImage='url('+cover+')';bg.style.display='block';}};
+      ai.onerror = function(){if(generation !== currentArtistGeneration)return;ai.style.display='none';if(af)af.style.display='flex';};
     }
   }
 }
 
-async function loadArtistBio(artistName, tracks) {
+async function loadArtistBio(artistName, tracks, generation = currentArtistGeneration) {
   try {
     var bioParts = [];
     // 网易云简介通常较短，但能保证中文歌手有准确的一手描述。
@@ -4784,6 +4828,7 @@ async function loadArtistBio(artistName, tracks) {
       }
     } catch(e) {}
 
+    if (generation !== currentArtistGeneration) return;
     // 使用 Wikipedia 完整 extract，不再只取一段导语。
     var ac = new AbortController(), t = setTimeout(function(){ac.abort();}, 8000), bio = null;
     try {
@@ -4798,6 +4843,7 @@ async function loadArtistBio(artistName, tracks) {
       bioParts.push(artistName + '的代表作品包括《' + titles + '》。');
     }
 
+    if (generation !== currentArtistGeneration) return;
     var summary = bioParts[0].replace(/\s+/g, ' ').trim();
     var summaryEl = document.getElementById('artistBioSummary');
     var contentEl = document.getElementById('artistBioContent');
@@ -4810,6 +4856,7 @@ async function loadArtistBio(artistName, tracks) {
     var detailsEl = document.getElementById('artistBioDetails');
     if (detailsEl && contentEl && contentEl.textContent.trim()) detailsEl.open = true;
   } catch(e) {
+    if (generation !== currentArtistGeneration) return;
     var summaryFallback = document.getElementById('artistBioSummary');
     if (summaryFallback) summaryFallback.textContent = '暂无简介';
   }

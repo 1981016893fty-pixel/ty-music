@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Color, Mesh, Program, Renderer, Triangle } from 'ogl';
 import './SpecularButton.css';
 
@@ -30,6 +30,13 @@ void main() {
 }
 `;
 
+const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
+const subscribeMotion = listener => {
+  motionPreference.addEventListener('change', listener);
+  return () => motionPreference.removeEventListener('change', listener);
+};
+const motionSnapshot = () => motionPreference.matches;
+
 export default function SpecularButton({
   children = '播放', onClick, className = '', size = 'lg', radius = 18,
   tint = 'rgba(255,255,255,0.08)', tintOpacity = 0, blur = 0, textColor = '#f5f5f5',
@@ -37,6 +44,7 @@ export default function SpecularButton({
   shineSize = 10, shineFade = 40, thickness = 1, speed = 0.35,
   followMouse = true, proximity = 250, autoAnimate = false
 }) {
+  const reducedMotion = useSyncExternalStore(subscribeMotion, motionSnapshot);
   const buttonRef = useRef(null);
   const effectRef = useRef(null);
   const propsRef = useRef({ radius, lineColor, baseColor, intensity, shineSize, shineFade, thickness, speed, followMouse, proximity, autoAnimate });
@@ -45,7 +53,7 @@ export default function SpecularButton({
   useEffect(() => {
     const button = buttonRef.current;
     const effect = effectRef.current;
-    if (!button || !effect) return undefined;
+    if (!button || !effect || reducedMotion) return undefined;
     const dpr = window.devicePixelRatio || 1;
     const renderer = new Renderer({ alpha: true, premultipliedAlpha: true, antialias: true, dpr });
     const gl = renderer.gl;
@@ -103,7 +111,7 @@ export default function SpecularButton({
     };
     frame = requestAnimationFrame(update);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('pointermove', onPointerMove); if (gl.canvas.parentNode === effect) effect.removeChild(gl.canvas); gl.getExtension('WEBGL_lose_context')?.loseContext(); };
-  }, []);
+  }, [reducedMotion]);
 
   return <button ref={buttonRef} type="button" className={`specular-button specular-button--${size}${className ? ` ${className}` : ''}`} onClick={onClick}
     style={{ '--sb-radius': `${radius}px`, '--sb-tint': tint, '--sb-tint-opacity': tintOpacity, '--sb-blur': `${blur}px`, '--sb-text-color': textColor }}>

@@ -1,21 +1,16 @@
 /**
  * TY Music - Service Worker
  * PWA 离线缓存 + 桌面安装支持
- * 策略：JS/CSS 用 Cache First（快速启动），HTML/API 用 Network First
+ * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v39-fullscreen-syncfix';
-const API_WARMUP = [
-  '/api/discover/featured?limit=6',
-  '/api/discover/hot?limit=6',
-  '/api/music/hot?source=netease&limit=6'
-];
+const CACHE_NAME = 'ty-music-v43-embeat';
 const STATIC_ASSETS = [
-  '/index.html?v=20260817-fullscreen-syncfix-v39',
-  '/style.css?v=20260817-fullscreen-syncfix-v39',
-  '/player.js?v=20260817-fullscreen-syncfix-v39',
-  '/soft-aurora-react.js?v=20260817-fullscreen-syncfix-v39',
-  '/soft-aurora-react.css?v=20260817-fullscreen-syncfix-v39',
+  '/index.html?v=20261116-embeat-v43',
+  '/style.css?v=20261116-embeat-v43',
+  '/player.js?v=20261116-embeat-v43',
+  '/soft-aurora-react.js?v=20261116-embeat-v43',
+  '/soft-aurora-react.css?v=20261116-embeat-v43',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -25,25 +20,22 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v39...');
+  console.log('[SW] Installing v43...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache => {
       console.log('[SW] Precaching static assets');
-      return cache.addAll(STATIC_ASSETS).then(() => Promise.allSettled(API_WARMUP.map(async url => {
-        const response = await fetch(url, { credentials: 'same-origin' });
-        if (response.ok) await cache.put(url, response.clone());
-      })));
+      return cache.addAll(STATIC_ASSETS);
     }).then(() => self.skipWaiting())
   );
 });
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v39');
+  console.log('[SW] Activated v43');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
-        if (name !== CACHE_NAME) {
+        if (name.startsWith('ty-music-') && name !== CACHE_NAME) {
           console.log('[SW] Deleting old cache:', name);
           return caches.delete(name);
         }
@@ -58,7 +50,7 @@ self.addEventListener('fetch', event => {
 
   // Audio and lyric streams must remain network-only. Catalog JSON can use
   // stale-while-revalidate so a page switch is instant after first load.
-  const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric)$/.test(url.pathname);
+  const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search)$/.test(url.pathname);
   if (url.pathname.startsWith('/api/') && !networkOnlyApi && event.request.method === 'GET') {
     event.respondWith(caches.match(event.request).then(cached => {
       const refresh = fetch(event.request).then(response => {
