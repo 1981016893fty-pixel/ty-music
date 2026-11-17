@@ -29,10 +29,9 @@ assert.equal(new URLSearchParams(context.musicResourceQuery(missing, 'url')).get
 const old = context.normalizeTrack({ id: 123, source: 'netease', name: 'Old' });
 assert.equal(old.id, '123');
 assert.equal(new URLSearchParams(context.musicResourceQuery(old, 'url')).get('id'), '123');
-assert.match(source, /const SEARCH_PAGE_SIZE = 20;/);
-assert.doesNotMatch(between('async function fetchAutocomplete(', 'function renderAutocomplete('), /source=netease/);
-assert.doesNotMatch(between('async function loadMoreSearchResults(', 'function fixCoverUrl('), /source=netease/);
-console.log('Verified Embeat identity, resource routing, cache/recent round trip and default search.');
+assert.match(between('async function fetchAutocomplete(', 'function renderAutocomplete('), /source=netease/);
+assert.match(between('function loadMoreSearchResults(', 'function fixCoverUrl('), /searchSession.loadMore/);
+console.log('Verified Embeat identity, resource routing, cache/recent round trip and base autocomplete.');
 // Execute the actual recent-write expression, not a parallel implementation.
 context.track = track;
 context.state.recentPlays = [];
@@ -67,16 +66,16 @@ assert.equal(lyricRequest.searchParams.get('id'), 'lyric-id');
 assert.equal(lyricRequest.searchParams.get('trackId'), raw.id);
 console.log('Verified actual recent serialization, Embeat download/album capability guards and lyric request.');
 const requests = [];
-context.fetch = async (url, init) => { requests.push({ url, init }); return { ok: true, json: async () => ({ songs: [raw], total: null }) }; };
+context.fetch = async (url, init) => { requests.push({ url, init }); return { ok: true, json: async () => ({ songs: [{ id: '123', source: 'netease', name: 'Base song' }], total: 1 }) }; };
 context.showToast = () => {};
 vm.runInContext(between('async function searchNetease(', '// 新音源热门推荐') + between('async function universalSearch(', '// ========== Helpers'), context);
 const searched = await context.universalSearch('Artist', 80, 'netease');
 const query = new URL(requests[0].url, 'https://local.test').searchParams;
-assert.equal(query.get('source'), null, 'universal text search cannot manually override the default provider');
+assert.equal(query.get('source'), null, 'universal text search uses the base catalog default');
 assert.equal(query.get('limit'), '20');
-assert.equal(searched[0].source, 'embeat');
-assert.equal(searched[0].id, track.id);
-console.log('Verified default integrated universal search preserves provider identity and caps the first page at 20.');
+assert.equal(searched[0].source, 'netease');
+assert.equal(searched[0].id, '123');
+console.log('Verified base universal search preserves provider identity and caps the first page at 20.');
 // Timer adapters let the real loadLyrics implementation prove cleanup without sleeping.
 let lyricTimerId = 0;
 const lyricTimers = new Map();

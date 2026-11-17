@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 import { test } from 'node:test';
+import { setImmediate } from 'node:timers/promises';
 
 const source = await readFile(new URL('../player.js', import.meta.url), 'utf8');
+const sessionSource = await readFile(new URL('../search-session.js', import.meta.url), 'utf8');
 
 function playerSearch(fetch, timers = {}) {
   const elements = new Map();
@@ -15,23 +17,28 @@ function playerSearch(fetch, timers = {}) {
     return elements.get(selector);
   };
   const context = vm.createContext({
-    fetch, AbortController, setTimeout, clearTimeout, ...timers, URL, console,
+    fetch: (url, options) => url.includes('source=embeat')
+      ? Promise.resolve({ ok: true, json: async () => ({ songs: [], nextOffset: 0, hasMore: false }) }) : fetch(url, options),
+    AbortController, setTimeout, clearTimeout, ...timers, URL, URLSearchParams, console,
     $: element, state: { currentSource: 'netease' },
     SOURCE_LABELS: { netease: '全网搜索' }, browseResultTitleOverride: '',
-    normalizeTrack: song => ({ ...song, title: song.name }),
+    window: {}, document: { createElement: () => ({ setAttribute() {} }) },
+    resolveMusicResource: value => value,
+    esc: value => value,
     addToQueue() {},
     // A minimal DOM adapter: the real search/pagination functions select
     // which tracks are rendered; this only makes that output observable.
     renderTrackList: (container, tracks) => { container.innerHTML = tracks.map(t => t.title).join('|'); },
     hideAutocomplete() {},
   });
-  vm.runInContext(source.slice(source.indexOf('let searchTimeout;'), source.indexOf("$('#searchInput').addEventListener('input'")) +
+  vm.runInContext(sessionSource + source.slice(source.indexOf('function resizeCoverUrl'), source.indexOf('// 通过本地服务器搜索')) +
+    source.slice(source.indexOf('let searchTimeout;'), source.indexOf("$('#searchInput').addEventListener('input'")) +
     source.slice(source.indexOf('async function performSearch('), source.indexOf('function fixCoverUrl(')), context);
-  return { search: query => context.performSearch(query), cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };
+  return { search: async query => { await context.performSearch(query); await setImmediate(); }, cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };
 }
 
 function response(name) {
-  return { ok: true, json: async () => ({ songs: [{ id: name, name }], hasMore: false }) };
+  return { ok: true, json: async () => ({ songs: [{ id: name, name, source: 'netease' }], nextOffset: 1, hasMore: false }) };
 }
 
 test('a later query wins even if an earlier server ignores cancellation', async () => {
@@ -58,7 +65,7 @@ test('an upstream failure is visible and a retry can recover', async () => {
 });
 
 test('a valid empty search is distinct from an upstream failure', async () => {
-  const player = playerSearch(async () => ({ ok: true, json: async () => ({ songs: [], hasMore: false }) }));
+  const player = playerSearch(async () => ({ ok: true, json: async () => ({ songs: [], nextOffset: 0, hasMore: false }) }));
   await player.search('no match');
   assert.match(player.output(), /没有找到相关歌曲/);
 });
@@ -69,7 +76,7 @@ test('a timed out request ends loading and the next search can recover', async (
   const player = playerSearch((url, { signal }) => ++count === 1 ? new Promise((resolve, reject) => {
     signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
   }) : Promise.resolve(response('recovered')), {
-    setTimeout: callback => { fireTimeout = callback; return 1; }, clearTimeout() {},
+    setTimeout: callback => { fireTimeout ||= callback; return 1; }, clearTimeout() {},
   });
   const pending = player.search('timeout');
   fireTimeout(); await pending;

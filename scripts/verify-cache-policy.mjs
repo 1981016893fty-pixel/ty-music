@@ -20,6 +20,7 @@ test('install precaches the complete eager ESM graph and rejects off-site module
     if (valid) {
       await installing;
       assert.ok(cached.includes('/assets/aurora/chunk-ABC123.js'));
+      assert.ok(cached.some(path => path.startsWith('/search-session.js?')), 'cached player requires its search session dependency');
       assert.equal(skipped, true);
     } else {
       await assert.rejects(installing, /Invalid UI module manifest/);

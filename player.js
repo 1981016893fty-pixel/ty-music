@@ -162,7 +162,7 @@ const state = {
   shuffledQueue: [],
   recentPlays: [],
   _discoverLoaded: false,
-  currentSource: 'embeat',
+  currentSource: 'netease',
   // Dynamic lyrics
   lyrics: { lines: [], activeIndex: -1, expanded: false },
   // Album favorites
@@ -2088,22 +2088,27 @@ if (browseQuickGrid) {
 let searchTimeout;
 let autoAbortCtrl = null;
 let autoIndex = -1;
-const SEARCH_PAGE_SIZE = 20;
 const SEARCH_REQUEST_TIMEOUT = 15000;
-let activeSearchQuery = '';
 let activeSearchTracks = [];
-let activeSearchOffset = 0;
 let activeSearchHasMore = false;
-let activeSearchLoading = false;
 let searchResultsObserver = null;
-let activeSearchGeneration = 0;
-let activeSearchController = null;
+let activeSearchStatus = null;
+const searchSession = createMusicSearchSession({
+  onChange(page) {
+    activeSearchStatus = page;
+    activeSearchTracks = page.songs.map(normalizeTrack);
+    activeSearchHasMore = page.hasMore;
+    const hasEmbeat = activeSearchTracks.some(track => track.source === 'embeat');
+    const hasNetease = activeSearchTracks.some(track => track.source === 'netease');
+    $('#searchSourceLabel').textContent = hasEmbeat
+      ? (hasNetease ? '音源：网易云 + Embeat' : '音源：Embeat 补充结果') : '音源：网易云 · Embeat 可用时补充';
+    if (page.added.length) addToQueue(page.added.map(normalizeTrack));
+    renderPaginatedSearchResults();
+  },
+});
 
 function cancelSearch() {
-  activeSearchGeneration++;
-  activeSearchController?.abort();
-  activeSearchController = null;
-  activeSearchLoading = false;
+  searchSession.cancel();
   activeSearchHasMore = false;
   searchResultsObserver?.disconnect();
   searchResultsObserver = null;
@@ -2203,7 +2208,7 @@ async function fetchAutocomplete(query) {
   const timer = setTimeout(() => controller.abort(), SEARCH_REQUEST_TIMEOUT);
   
   try {
-    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(query) + '&limit=8', { signal: controller.signal, cache: 'no-store' });
+    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(query) + '&limit=8&source=netease', { signal: controller.signal, cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
     if (controller.signal.aborted || autoAbortCtrl !== controller || $('#searchInput').value.trim() !== query) return;
@@ -2260,20 +2265,23 @@ async function performSearch(query, resultTitle = '') {
   if (quickStart) quickStart.style.display = 'none';
   $('#searchResultTitle').textContent = resultTitle || '搜索结果';
   $('#searchResults').innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
-  activeSearchQuery = query;
   activeSearchTracks = [];
-  activeSearchOffset = 0;
-  activeSearchHasMore = true;
   if (searchResultsObserver) { searchResultsObserver.disconnect(); searchResultsObserver = null; }
-
-  await loadMoreSearchResults();
+  searchSession.search(query);
 }
 
 function renderPaginatedSearchResults() {
   const container = $('#searchResults');
   if (!container) return;
+  searchResultsObserver?.disconnect();
+  searchResultsObserver = null;
   if (!activeSearchTracks.length) {
-    container.innerHTML = '<p class="empty-state">没有找到相关歌曲</p>';
+    if (activeSearchStatus?.loading) container.innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
+    else {
+      const message = activeSearchStatus?.supplementLoading ? '正在尝试补充搜索…'
+        : activeSearchStatus?.error || '没有找到相关歌曲';
+      container.innerHTML = '<p class="empty-state">' + esc(message) + '</p>';
+    }
     return;
   }
 
@@ -2293,54 +2301,8 @@ function renderPaginatedSearchResults() {
   searchResultsObserver.observe(sentinel);
 }
 
-async function loadMoreSearchResults() {
-  if (activeSearchLoading || !activeSearchQuery || !activeSearchHasMore) return;
-  activeSearchLoading = true;
-  const generation = activeSearchGeneration;
-  const controller = new AbortController();
-  activeSearchController = controller;
-  const timer = setTimeout(() => controller.abort(), SEARCH_REQUEST_TIMEOUT);
-
-  try {
-    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(activeSearchQuery) +
-      '&limit=' + SEARCH_PAGE_SIZE + '&offset=' + activeSearchOffset,
-      { signal: controller.signal, cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (generation !== activeSearchGeneration || controller.signal.aborted) return;
-    const incoming = (data.songs || []).map(function(song) { return normalizeTrack(song); });
-    const seen = new Set(activeSearchTracks.map(function(track) { return track.id; }));
-    const additions = incoming.filter(function(track) {
-      if (!track.id || seen.has(track.id)) return false;
-      seen.add(track.id);
-      return true;
-    });
-    activeSearchTracks = activeSearchTracks.concat(additions);
-    activeSearchOffset = Number.isFinite(Number(data.nextOffset)) ? Number(data.nextOffset) : activeSearchOffset + incoming.length;
-    activeSearchHasMore = data.hasMore === true;
-
-    $('#searchResultTitle').textContent = browseResultTitleOverride || '搜索结果';
-    $('#searchSourceLabel').textContent = '音源：Embeat 综合搜索';
-    if (additions.length) addToQueue(additions);
-    renderPaginatedSearchResults();
-  } catch (e) {
-    if (generation !== activeSearchGeneration) return;
-    if (!activeSearchTracks.length) $('#searchResults').innerHTML = '<p class="empty-state">' +
-      (controller.signal.aborted ? '搜索超时，请稍后重试' : '搜索失败，请稍后重试') + '</p>';
-    else {
-      const notice = document.createElement('p');
-      notice.className = 'empty-state';
-      notice.textContent = '后续歌曲加载失败，请重新搜索';
-      $('#searchResults').appendChild(notice);
-    }
-    activeSearchHasMore = false;
-  } finally {
-    clearTimeout(timer);
-    if (generation === activeSearchGeneration) {
-      activeSearchLoading = false;
-      activeSearchController = null;
-    }
-  }
+function loadMoreSearchResults() {
+  searchSession.loadMore();
 }
 
 

@@ -31,13 +31,16 @@ test('real application respects gzip refusal and emits a cache variation header'
   child.stdout.resume(); child.stderr.resume();
   try {
     const [{ port }] = await once(child, 'message', { signal: AbortSignal.timeout(5000) });
-    for (const path of ['/player.js', '/vendor/font-awesome/css/all.min.css']) {
+    for (const path of ['/player.js', '/search-session.js', '/vendor/font-awesome/css/all.min.css']) {
       const response = await request(port, path, { headers: { 'accept-encoding': 'gzip;q=0, identity' } });
       assert.equal(response.status, 200);
       assert.equal(response.headers['content-encoding'], undefined, path);
       assert.match(response.headers.vary, /Accept-Encoding/i);
     }
-    assert.equal(JSON.parse((await request(port, '/api/health')).body).status, 'ok');
+    const health = JSON.parse((await request(port, '/api/health')).body);
+    assert.equal(health.status, 'ok');
+    assert.equal(health.searchSource, 'netease');
+    assert.equal(health.supplementalSearchSource, 'embeat');
   } finally {
     if (child.exitCode === null && child.signalCode === null) { const done = once(child, 'exit'); child.kill(); await done; }
   }
