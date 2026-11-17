@@ -5,7 +5,7 @@
 ## 构建和发布
 
 1. 使用 Node.js 22，本地运行 `npm ci --include=dev`、`npm test`、`npm run build:aurora`，确认生成资源无遗漏。
-2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。部署分支为 `codex/deploy-embeat-search`，动效 PR #1 与双源 PR #2 已合并，浏览器直连修复单独提交 PR；用户已授权验收后合并及部署。核对远端真实状态，不能把本地提交当作已推送或已合并。
+2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。部署分支为 `codex/deploy-embeat-search`，动效 PR #1、双源 PR #2 与浏览器直连 PR #3 均已合并；用户已授权验收后合并及部署。核对远端真实状态，不能把本地提交当作已推送或已合并。
 3. 在既有 Render 服务的 Settings 核对仓库、部署分支与启动命令；环境变量设置 `NODE_VERSION=22.22.2`。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`，启动命令为 `node server-simple.js`。`esbuild` 是构建所需开发依赖，不能在构建前省略。
 4. 网络无法直连音乐台时，可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz`。该选项只启用到 GD 官方主机的 HTTP/2 连接路由，网站 authority 与签名仍为 `music.gdstudio.xyz`，来源仍为 Embeat；公开 API 自身不支持 Embeat。该路由依赖 GD 当前托管配置，不能保证未来稳定。本地与 Render 的出口和 CDN 节点不同，不应直接照搬本地连接设置；最后确认的 Render 配置为空值（标准 fetch）；网站主机 HTTP/2 已实测校时403，其他方式仍返回校时失败。具体阻塞与控制台恢复后的核对步骤见维护指南。未设置时使用网站默认连接方式；不支持任意代理主机，不禁用 TLS 校验。
 5. 当前既有服务 Auto-Deploy 为 Off，按此流程手动发布，避免未经验收的任务分支更新自动替换线上。部署已通过检查的具体提交，等待 Render 显示 Live，并对照实际提交哈希。不要把推送、触发构建或健康检查成功当成完整上线验收。
@@ -17,6 +17,8 @@
 网页由访问者网络直连 GD，服务端搜索为兼容与基础回退入口。不能仅用 curl 服务端接口判断网页搜索是否恢复；须验证真实页面基础结果、补充失败隔离和媒体。浏览器直连无法消除 Render Free 首次打开页面的冷启动。
 
 新版本沿用已合并的动效修复，双源搜索使用 `20261117-direct-v48` 资源标记与 `ty-music-v48-direct` worker；发布状态见维护指南。2026-11-17 控制台恢复后重新读到实际 Start Command 为 `node server-simple.js`、Auto-Deploy 为 Off。动效的像素预算、按需调度和本地测量见[维护指南](docs/maintenance.md#场景与流畅度)。
+
+2026-11-17 18:48:41 GMT+8，[Render 部署](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbu31e0u01pc73dh6gp0) 已 Live，应用提交为 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`。[PR #3](https://github.com/1981016893fty-pixel/ty-music/pull/3) 已通过两项 CI 并合并。真实线上页面已验证网易云20首＋Embeat20首、Embeat原曲起播／封面／39行歌词、拖动及补充源阻断后基础20首保底；具体证据与尚未验证项见维护指南。后续仅文档状态提交无需再次部署应用。
 
 ```sh
 curl 'https://ty-music.onrender.com/api/health'
