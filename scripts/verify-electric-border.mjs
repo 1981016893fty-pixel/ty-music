@@ -1,5 +1,4 @@
-import fs from 'node:fs/promises';
-import { loopNoise } from '../src/electricBorderNoise.mjs';
+import { loopNoise, createLoopNoiseSampler } from '../src/electricBorderNoise.mjs';
 import { roundedRectPerimeter, roundedRectPoint } from '../src/electricBorderGeometry.mjs';
 
 const sample = value => Math.sin(value * 17.31) * 0.8 + Math.cos(value * 5.7) * 0.25;
@@ -10,9 +9,15 @@ if (Math.abs(start - end) > 1e-12) {
   throw new Error(`Electric border noise does not close continuously: ${start} !== ${end}`);
 }
 
-const component = await fs.readFile(new URL('../src/ElectricBorder.jsx', import.meta.url), 'utf8');
-if (!component.includes('loopNoise(progress')) {
-  throw new Error('ElectricBorder is not using the periodic noise seam guard');
+for (const count of [64, 285, 640]) {
+  const sampleNoise = createLoopNoiseSampler(count, 8, 0.12);
+  for (const time of [0, 0.03, 1, 12, -3, 0.5]) {
+    const noise = sampleNoise(time);
+    if (noise.x.length !== count + 1 || noise.y.length !== count + 1 ||
+        Math.abs(noise.x[0] - noise.x[count]) > 1e-12 || Math.abs(noise.y[0] - noise.y[count]) > 1e-12) {
+      throw new Error(`Cached border noise must preserve sample density and close at time ${time}`);
+    }
+  }
 }
 
 const width = 1200;

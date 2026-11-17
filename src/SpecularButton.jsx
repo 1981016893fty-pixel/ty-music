@@ -1,5 +1,6 @@
 import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { Color, Mesh, Program, Renderer, Triangle } from 'ogl';
+import { createRenderLoop } from './renderLoop.mjs';
 import './SpecularButton.css';
 
 const PAD = 20;
@@ -47,6 +48,7 @@ export default function SpecularButton({
   const reducedMotion = useSyncExternalStore(subscribeMotion, motionSnapshot);
   const buttonRef = useRef(null);
   const effectRef = useRef(null);
+  const invalidateRef = useRef(null);
   const propsRef = useRef({ radius, lineColor, baseColor, intensity, shineSize, shineFade, thickness, speed, followMouse, proximity, autoAnimate });
   propsRef.current = { radius, lineColor, baseColor, intensity, shineSize, shineFade, thickness, speed, followMouse, proximity, autoAnimate };
 
@@ -69,18 +71,33 @@ export default function SpecularButton({
     }});
     const mesh = new Mesh(gl, { geometry, program });
     effect.appendChild(gl.canvas);
+    let loop;
     const sizeRef = { width: 1, height: 1 };
+    const line = new Color(); const base = new Color();
+    const updateUniforms = () => {
+      const props = propsRef.current;
+      line.set(props.lineColor); base.set(props.baseColor);
+      program.uniforms.uRadius.value = Math.min(props.radius, Math.min(sizeRef.width, sizeRef.height) / 2) * dpr;
+      program.uniforms.uLineColor.value = [line.r, line.g, line.b];
+      program.uniforms.uBaseColor.value = [base.r, base.g, base.b];
+      program.uniforms.uShineSize.value = (props.shineSize * Math.PI) / 180;
+      program.uniforms.uShineFade.value = (props.shineFade * Math.PI) / 180;
+      program.uniforms.uThickness.value = props.thickness * dpr;
+      loop?.request();
+    };
     const resize = () => {
       const rect = button.getBoundingClientRect();
       sizeRef.width = rect.width; sizeRef.height = rect.height;
       renderer.setSize(rect.width + PAD * 2, rect.height + PAD * 2);
       program.uniforms.uCenter.value = [(PAD + rect.width / 2) * dpr, (PAD + rect.height / 2) * dpr];
       program.uniforms.uHalfSize.value = [(rect.width / 2) * dpr, (rect.height / 2) * dpr];
+      updateUniforms();
     };
     const observer = new ResizeObserver(resize);
     observer.observe(button); resize();
     let pointerAngle = null; let proximityT = 0;
     const onPointerMove = event => {
+      if (document.hidden) return;
       const rect = button.getBoundingClientRect();
       const cx = rect.left + rect.width / 2; const cy = rect.top + rect.height / 2;
       const dx = Math.max(rect.left - event.clientX, 0, event.clientX - rect.right);
@@ -89,12 +106,14 @@ export default function SpecularButton({
       pointerAngle = distance === 0 ? Math.atan2(2 / rect.height, -2 / rect.width) + ((event.clientX - cx) / (rect.width / 2)) * 0.3 + ((cy - event.clientY) / (rect.height / 2)) * 0.15 : Math.atan2(cy - event.clientY, event.clientX - cx);
       const t = Math.max(0, 1 - distance / Math.max(propsRef.current.proximity, 1));
       proximityT = t * t * (3 - 2 * t);
+      loop?.request();
     };
-    window.addEventListener('pointermove', onPointerMove);
-    let angle = 2.4; let idleAngle = 2.4; let brightness = 0; let last = performance.now(); let frame = 0;
-    const line = new Color(); const base = new Color();
+    const onLeave = () => { pointerAngle = null; proximityT = 0; loop?.request(); };
+    window.addEventListener('pointermove', onPointerMove, { passive: true });
+    window.addEventListener('blur', onLeave);
+    window.addEventListener('mouseleave', onLeave);
+    let angle = 2.4; let idleAngle = 2.4; let brightness = 0; let last = performance.now();
     const update = now => {
-      frame = requestAnimationFrame(update);
       const dt = Math.min((now - last) / 1000, 0.05); last = now; const props = propsRef.current;
       idleAngle += props.speed * dt;
       const target = props.followMouse && pointerAngle !== null && (!props.autoAnimate || proximityT > 0) ? pointerAngle : idleAngle;
@@ -102,16 +121,27 @@ export default function SpecularButton({
       angle += diff * (1 - Math.exp(-dt * 7));
       const brightTarget = props.autoAnimate ? 1 : proximityT;
       brightness += (brightTarget - brightness) * (1 - Math.exp(-dt * 8));
-      line.set(props.lineColor); base.set(props.baseColor);
-      program.uniforms.uAngle.value = angle; program.uniforms.uRadius.value = Math.min(props.radius, Math.min(sizeRef.width, sizeRef.height) / 2) * dpr;
-      program.uniforms.uLineColor.value = [line.r, line.g, line.b]; program.uniforms.uBaseColor.value = [base.r, base.g, base.b];
-      program.uniforms.uIntensity.value = props.intensity * brightness; program.uniforms.uShineSize.value = (props.shineSize * Math.PI) / 180;
-      program.uniforms.uShineFade.value = (props.shineFade * Math.PI) / 180; program.uniforms.uThickness.value = props.thickness * dpr;
+      if (brightTarget === 0 && brightness < 1e-4) brightness = 0;
+      program.uniforms.uAngle.value = angle;
+      program.uniforms.uIntensity.value = props.intensity * brightness;
       renderer.render({ scene: mesh });
+      return (props.autoAnimate && props.speed !== 0) || Math.abs(brightTarget - brightness) > 1e-4 || (brightness > 0 && Math.abs(diff) > 1e-4);
     };
-    frame = requestAnimationFrame(update);
-    return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('pointermove', onPointerMove); if (gl.canvas.parentNode === effect) effect.removeChild(gl.canvas); gl.getExtension('WEBGL_lose_context')?.loseContext(); };
+    loop = createRenderLoop(button, update);
+    invalidateRef.current = updateUniforms;
+    loop.request();
+    return () => {
+      invalidateRef.current = null;
+      loop.dispose(); observer.disconnect();
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('blur', onLeave);
+      window.removeEventListener('mouseleave', onLeave);
+      if (gl.canvas.parentNode === effect) effect.removeChild(gl.canvas);
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    };
   }, [reducedMotion]);
+
+  useEffect(() => { invalidateRef.current?.(); }, [radius, lineColor, baseColor, intensity, shineSize, shineFade, thickness, speed, followMouse, proximity, autoAnimate]);
 
   return <button ref={buttonRef} type="button" className={`specular-button specular-button--${size}${className ? ` ${className}` : ''}`} onClick={onClick}
     style={{ '--sb-radius': `${radius}px`, '--sb-tint': tint, '--sb-tint-opacity': tintOpacity, '--sb-blur': `${blur}px`, '--sb-text-color': textColor }}>

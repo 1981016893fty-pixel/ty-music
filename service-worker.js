@@ -4,17 +4,17 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v48-direct';
-const APP_SHELL = '/index.html?v=20261117-direct-v48';
+const CACHE_NAME = 'ty-music-v49-thermal';
+const APP_SHELL = '/index.html?v=20261117-thermal-v49';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261117-direct-v48',
-  '/player.js?v=20261117-direct-v48',
-  '/gd-embeat-core.js?v=20261117-direct-v48',
-  '/browser-provider.js?v=20261117-direct-v48',
-  '/search-session.js?v=20261117-direct-v48',
-  '/soft-aurora-react.js?v=20261117-direct-v48',
-  '/soft-aurora-react.css?v=20261117-direct-v48',
+  '/style.css?v=20261117-thermal-v49',
+  '/player.js?v=20261117-thermal-v49',
+  '/gd-embeat-core.js?v=20261117-thermal-v49',
+  '/browser-provider.js?v=20261117-thermal-v49',
+  '/search-session.js?v=20261117-thermal-v49',
+  '/soft-aurora-react.js?v=20261117-thermal-v49',
+  '/soft-aurora-react.css?v=20261117-thermal-v49',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
