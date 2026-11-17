@@ -55,7 +55,7 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 自动测试能验证状态切换和资源循环边界，不能代替实际设备上的视觉或帧率测量；本次文档不承诺 60fps。以下为切换 Embeat 前的 2026-11-16 历史 ego lite 实测（1060×708、DPR 2），其中 60 条结果/截图不能作为新 Embeat 20 条搜索验收：首页隐藏的 GridScan/全屏背景已无画布或 draw call；此前 GridScan 约 2538 次 draw/5 秒。边框回调从约 15.4ms/次降至约 2.2ms/次（6 秒合计约 364ms）；浮动线条与 aurora 背景限制为 1× 像素密度、最高 30 次绘制/秒；aurora 仅用于收藏/详情页，首页原本由 CSS 隐藏此图层，因此不挂载。搜索“周杰伦”显示 60 首，连续切词不被旧响应覆盖；搜索时隐藏探索介绍区，结果直接出现在输入框下方。开启减少动态效果后画布为零，关闭后恢复。最终独立审查发现并修正了 aurora 场景与 CSS 可见性不匹配，浏览器复核确认首页没有该画布、收藏页背景可见、搜索仍返回 60 首。修复复审未发现新的可执行问题。
 
-本机首页总体 rAF 多次测量约 26–29 次/秒、p95 间隔约 50ms，未验证到总体帧率提高；暂停全部脚本动画、画布及滤镜的隔离测量仍约 29 次/秒，空白页约 60 次/秒，但仅有一个 CSS 旋转色块的独立对照页也约 29.8 次/秒，显示当前验收环境对有视觉更新页面存在约 30 帧限制；不能从该环境认证 Safari 的实际帧率。3 秒追踪中主线程帧回调合计约 239ms，合成 Draw 合计约 1079ms；这只用于指明下一轮分析方向，不等于证明某一滤镜是根因。不可用局部 CPU 改善宣称卡顿完全解决。用户主要使用 Safari，本次只有 Chromium/ego lite 浏览器验证，Safari 实机帧率与线上效果尚未验证。
+本机首页总体 rAF 多次测量约 26–29 次/秒、p95 间隔约 50ms，未验证到总体帧率提高；暂停全部脚本动画、画布及滤镜的隔离测量仍约 29 次/秒，空白页约 60 次/秒，但仅有一个 CSS 旋转色块的独立对照页也约 29.8 次/秒，显示当前验收环境对有视觉更新页面存在约 30 帧限制；不能从该环境认证 Safari 的实际帧率。3 秒追踪中主线程帧回调合计约 239ms，合成 Draw 合计约 1079ms；这只用于指明下一轮分析方向，不等于证明某一滤镜是根因。不可用局部 CPU 改善宣称卡顿完全解决。用户主要使用 Safari，本次只有 Chromium/ego lite 浏览器验证，Safari 实机帧率与线上完整交互效果尚未验证。
 
 ## 数据、备份与删除边界
 
@@ -81,8 +81,14 @@ Embeat 默认搜索与资源路由已在本地实现；2026-11-16 完整 `npm te
 
 本次 Embeat 版本另经 ego lite 页面检查：本地页面可打开，搜索请求超时时结束加载并显示失败，不显示为零结果；探索区正确收起，默认标签为 Embeat，无手动切源控件。一次刷新报告渲染器无响应，关闭该任务页并在同一 Space 新建页面后，正常动效模式加载/刷新成功，尚未确定单次异常根因。这不能替代真实成功结果、音频、歌词或 Safari 流畅度验收。独立审查发现的问题由主代理修复并回归验证，审查范围限本次改动与直接调用方。
 
-本轮任务分支为 `codex/deploy-embeat-search`，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 保持未合并。初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，该隔离问题已修复。性能提交 `a4e8dfa250aa049087e224810351951433a1a912` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 已通过，2026-11-17 Render 部署 `dep-dbtu882fngtc73a8g7p0` 已 Live，随后配置部署 `dep-dbtuascipgvc73a67q30` 也成功，健康检查确认 Node 22.22.2 和 Embeat 默认源。然而生产搜索仍返回 `GD_CLOCK_ERROR`，不能视为搜索验收通过。本地同代码返回20首；改生产连接主机为网站域名仍失败。当前进一步修复 HTTP/2 压缩响应解码和失败响应流释放，并增加不含正文的校时诊断，以区别上游 HTTP 拒绝与时间格式异常；线上根因尚待新部署日志确认。该传输补丁已通过77个 node:test 用例、播放器／动效检查和生产构建，独立复审未发现阻止提交的问题。
+本轮任务分支为 `codex/deploy-embeat-search`，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 保持未合并。初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，该隔离问题已修复。性能提交 `a4e8dfa` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 与部署已通过；进一步的传输修复 `4f513a0582b60c8ffde4f447e7694af6d4a0be13` 已通过 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44024742320)，Render 部署 `dep-dbtue1m7bikc73fp4rp0` 已 Live。2026-11-17 后续标准 fetch 配置部署 `dep-dbtugb3l550s739d6mu0` 也已 Live，健康检查确认同一提交、Node 22.22.2 和默认 Embeat。
 
-既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2`、`GD_EMBEAT_CONNECT_HOST=music.gdstudio.xyz` 已保存。生产连接入口需在生产环境单独验证，不可直接套用本机网络绕行配置。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
+**生产搜索仍未通过验收。** 本地同代码返回20首；Render 经网站主机 HTTP/2 的校时日志明确为 HTTP 403、`text/html; charset=UTF-8`、无内容编码。切换 API 连接主机及标准 fetch 后仍有 `GD_CLOCK_ERROR`；不能把这一错误解释为 Render 冷启动、压缩错误或无歌曲。已确认并修复的压缩处理与失败响应流释放问题是独立缺陷，77个 node:test、播放器／动效检查和生产构建均通过，独立复审未发现阻止提交的问题，但并未消除生产上游拒绝。
+
+线上静态清单及3个核心模块、v45 worker 均可访问；hash 分块为 JavaScript MIME 和 immutable 缓存，条件请求返回304。浏览器搜索失败会结束加载并显示错误，不伪装为空结果。线上原曲播放、拖动和歌词同步因搜索阻塞尚未完成本轮验收，本地成功证据不能替代生产结果。
+
+当前可确认的阻塞是 GD 网站校时对该 Render 运行环境的 HTTP 拒绝；是否连带拒绝网站 `/api.php` 尚未取得运行时探针结果，不能扩大为“GD 封禁所有 Render IP”。曾准备一次只把校时请求映射到 GD 官方 API 主机、搜索仍请求原网站的短探针；Render 控制台保存启动配置报 `Failed to fetch (api.render.com)`，重启也失败，随后控制台无法加载服务设置。未确认该临时启动配置写入，也未取得探针结果。控制台恢复后先核对 Start Command，若含 `node -e` 诊断前缀，恢复为 `node server-simple.js`，再继续验证；不重复执行未知状态的配置写入。网站健康端点仍正常。下一步需要可访问 GD 网站的既有运行出口或由上游确认访问规则；不得默认换源、引入第三方代理、升级付费或新建资源。
+
+既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2` 已保存；最后确认上线的 `GD_EMBEAT_CONNECT_HOST` 为空，使用标准 fetch。生产连接入口需在生产环境单独验证，不可直接套用本机网络绕行配置。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
 
 回退时由维护者使用 `git revert <本次PR提交>` 保留历史，再运行测试和构建、提交生成资源；部署所有者按既有授权流程重新部署并核对健康、搜索、播放和个人曲库。不要使用强推或硬重置覆盖其他改动。第三方服务、媒体及依赖的授权/分发条件需要各自核实，当前没有替代权利人的许可声明。
