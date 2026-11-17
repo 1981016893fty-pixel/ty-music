@@ -38,6 +38,8 @@ npm run build:aurora
 
 `npm test` 覆盖搜索 HTTP 边界、客户端请求竞态、缓存策略、场景生命周期和已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 
+动效采用按场景加载和按需绘制：封面网格收敛后停止，离屏或隐藏的局部动效暂停；浏览页柔光背景设有独立于 Retina 密度的 50 万像素上限。`scripts/verify-effect-lifecycle.mjs` 检查静置、指针／尺寸唤醒、离屏、隐藏和卸载行为，实际设备表现及测量边界见[维护指南](docs/maintenance.md#场景与流畅度)。
+
 修改 `src/` 后运行 `npm run build:aurora`，一同提交 `soft-aurora-react.js`、`soft-aurora-react.css` 和整个 `assets/aurora/` 生成目录。重型动效仅在对应页面打开时加载，构建清单用于离线外壳预缓存核心模块；不可只上传入口脚本。桌面端命令见 `package.json` 的 `desktop:*` 入口及 `.github/workflows/` 中现有平台工作流；本次搜索修复未验证桌面安装包。
 
 ## 数据与限制

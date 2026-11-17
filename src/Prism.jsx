@@ -1,6 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { Renderer, Triangle, Program, Mesh } from 'ogl';
+import { createRenderLoop } from './renderLoop.mjs';
 import './Prism.css';
+
+// This soft fullscreen background ray-marches 100 steps per fragment. Bound
+// fragment work independently of Retina density and external-monitor size.
+const MAX_BACKGROUND_PIXELS = 500000;
 
 const Prism = ({
   height = 3.5,
@@ -24,6 +29,7 @@ const Prism = ({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+    let loop;
 
     const H = Math.max(0.001, height);
     const BW = Math.max(0.001, baseWidth);
@@ -40,13 +46,12 @@ const Prism = ({
     const RSX = 1;
     const RSY = 1;
     const RSZ = 1;
-    const TS = Math.max(0, timeScale || 1);
+    const TS = Math.max(0, timeScale ?? 1);
     const HOVSTR = Math.max(0, hoverStrength || 1);
     const INERT = Math.max(0, Math.min(1, inertia || 0.12));
 
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
     const renderer = new Renderer({
-      dpr,
+      dpr: 1,
       alpha: transparent,
       antialias: false
     });
@@ -225,12 +230,15 @@ const Prism = ({
     const resize = () => {
       const w = container.clientWidth || 1;
       const h = container.clientHeight || 1;
+      const dpr = Math.min(window.devicePixelRatio || 1, 1, Math.sqrt(MAX_BACKGROUND_PIXELS / (w * h)));
+      renderer.dpr = dpr;
       renderer.setSize(w, h);
       iResBuf[0] = gl.drawingBufferWidth;
       iResBuf[1] = gl.drawingBufferHeight;
       offsetPxBuf[0] = offX * dpr;
       offsetPxBuf[1] = offY * dpr;
       program.uniforms.uPxScale.value = 1 / ((gl.drawingBufferHeight || 1) * 0.1 * SCALE);
+      loop?.request();
     };
     const ro = new ResizeObserver(resize);
     ro.observe(container);
@@ -269,17 +277,8 @@ const Prism = ({
     };
 
     const NOISE_IS_ZERO = NOISE < 1e-6;
-    let raf = 0;
     const t0 = performance.now();
-    const startRAF = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(render);
-    };
-    const stopRAF = () => {
-      if (!raf) return;
-      cancelAnimationFrame(raf);
-      raf = 0;
-    };
+    const startRAF = () => loop?.request();
 
     const rnd = () => Math.random();
     const wX = (0.3 + rnd() * 0.6) * RSX;
@@ -376,38 +375,19 @@ const Prism = ({
       }
 
       renderer.render({ scene: mesh });
-      if (continueRAF) {
-        raf = requestAnimationFrame(render);
-      } else {
-        raf = 0;
-      }
+      return continueRAF;
     };
 
-    if (suspendWhenOffscreen) {
-      const io = new IntersectionObserver(entries => {
-        const vis = entries.some(e => e.isIntersecting);
-        if (vis) startRAF();
-        else stopRAF();
-      });
-      io.observe(container);
-      startRAF();
-      container.__prismIO = io;
-    } else {
-      startRAF();
-    }
+    loop = createRenderLoop(container, render, { observe: suspendWhenOffscreen });
+    startRAF();
 
     return () => {
-      stopRAF();
+      loop.dispose();
       ro.disconnect();
       if (animationType === 'hover') {
         if (onPointerMove) window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('mouseleave', onLeave);
         window.removeEventListener('blur', onBlur);
-      }
-      if (suspendWhenOffscreen) {
-        const io = container.__prismIO;
-        if (io) io.disconnect();
-        delete container.__prismIO;
       }
       if (gl.canvas.parentElement === container) container.removeChild(gl.canvas);
       gl.getExtension('WEBGL_lose_context')?.loseContext();

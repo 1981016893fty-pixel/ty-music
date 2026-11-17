@@ -14,7 +14,7 @@
     "test:player": "node scripts/verify-player-data.mjs",
     "test:electric-border": "node scripts/verify-electric-border.mjs",
     "test:grid": "node scripts/verify-grid-distortion.mjs",
-    "test": "node --test scripts/verify-search-server.mjs scripts/verify-search-client.mjs scripts/verify-cache-policy.mjs scripts/verify-scenes.mjs scripts/verify-embeat-provider.mjs scripts/verify-embeat-transport.mjs scripts/verify-embeat-server.mjs scripts/verify-static-files.mjs scripts/verify-browser-build.mjs && node scripts/verify-embeat-player.mjs && node scripts/verify-embeat-interactions.mjs && npm run test:player && npm run test:electric-border && npm run test:grid"
+    "test": "node --test scripts/verify-search-server.mjs scripts/verify-search-client.mjs scripts/verify-cache-policy.mjs scripts/verify-scenes.mjs scripts/verify-effect-lifecycle.mjs scripts/verify-embeat-provider.mjs scripts/verify-embeat-transport.mjs scripts/verify-embeat-server.mjs scripts/verify-static-files.mjs scripts/verify-browser-build.mjs && node scripts/verify-embeat-player.mjs && node scripts/verify-embeat-interactions.mjs && npm run test:player && npm run test:electric-border && npm run test:grid"
   },
   "engines": {
     "node": ">=22.0.0"

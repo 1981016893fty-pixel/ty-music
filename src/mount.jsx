@@ -298,7 +298,7 @@ if (homeFloatingLinesHost) {
     <FloatingLines
       interactive={!coarsePointer && !reducedMotion}
       parallax={!coarsePointer && !reducedMotion}
-      lineCount={compactViewport ? [4] : [6]}
+      lineCount={compactViewport ? 4 : 6}
       animationSpeed={reducedMotion ? 0 : compactViewport ? 0.55 : 1}
       maxFps={30}
     />

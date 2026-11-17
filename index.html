@@ -16,10 +16,10 @@
     .welcome-screen.is-dismissed { opacity: 0; visibility: hidden; pointer-events: none; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260814">
-  <link rel="preload" href="style.css?v=20261117-performance-v45" as="style">
-  <link rel="preload" href="player.js?v=20261117-performance-v45" as="script">
+  <link rel="preload" href="style.css?v=20261117-motion-v46" as="style">
+  <link rel="preload" href="player.js?v=20261117-motion-v46" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20261117-performance-v45">
+  <link rel="stylesheet" href="style.css?v=20261117-motion-v46">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -32,7 +32,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-      navigator.serviceWorker.register('/service-worker.js?v=20261117-performance-v45').then(function(reg) {
+      navigator.serviceWorker.register('/service-worker.js?v=20261117-motion-v46').then(function(reg) {
           console.log('[SW] Registered:', reg.scope);
         }).catch(function(err) {
           console.log('[SW] Failed:', err);
@@ -751,9 +751,9 @@
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20261117-performance-v45">
-  <script type="module" src="soft-aurora-react.js?v=20261117-performance-v45" fetchpriority="low"></script>
-  <script src="player.js?v=20261117-performance-v45" defer></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20261117-motion-v46">
+  <script type="module" src="soft-aurora-react.js?v=20261117-motion-v46" fetchpriority="low"></script>
+  <script src="player.js?v=20261117-motion-v46" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>
