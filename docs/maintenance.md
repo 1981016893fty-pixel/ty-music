@@ -27,6 +27,12 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 `scripts/verify-scenes.mjs` 执行真实挂载入口及分类组件，检查12个分类、切页／隐藏后恢复、减少动态效果下保留入口及详情回调；回归先出现0／12失败，修复后通过。完整 `npm test` 为126项node:test、Pages构建检查及既有播放器／动效脚本通过。缓存版本同步为 `20261118-genres-v51`／`ty-music-v51-genres`，升级后正常刷新即可，不清除个人曲库。PR和线上发布状态以本次交付链接及 `/api/health` 的实际提交为准，不能仅凭构建通过声称生产恢复。
 
+## 正式入口导航修复（v52）
+
+正式域名复现浏览器导航 `ERR_FAILED`，绕过Service Worker后HTTP首页正常。Pages将旧预缓存地址 `/index.html?v=…` 308到根路径，缓存实际 `redirected=true`；导航请求使用manual模式时，该响应会被浏览器拒绝。`service-worker.js` 改为预存canonical根路径、仅读取当前版本缓存、跳过已重定向响应，并在缓存或网络不可用时保留网络／离线HTML兜底。不清理localStorage、IndexedDB或用户曲库。
+
+`verify-cache-policy.mjs` 检查重定向缓存、缓存不可用、网络不可用和双方不可用；`verify-deployment.mjs` 检查线上预缓存URL必须直接200。回归已先验证旧代码失败，再验证修复通过；浏览器旧版本升级及正式域名验收以本次交付结果为准。操作入口和回退边界见 [部署与排障](../DEPLOY-GUIDE.md#验收与排障)。
+
 ## 入口与修改位置
 
 默认 HTTP 服务为 `server-simple.js`，监听 `PORT`（默认 8899）。本地与其他服务隔离可用 `PORT=18899 npm start`。`npm start` 先运行 `build.mjs`，再启动服务；直接运行 `node server-simple.js` 只适合已经完成构建的场景。静态资源由 `static-files.cjs` 按需异步读取／压缩，不再于启动前同步预载。小文件原始字节与 gzip 共用 8 MiB LRU，上限 2 MiB 的单文件可进入缓存，较大文件带背压流式发送；相同文件首次并发请求合并，stat 版本变化会失效缓存。服务端源码修改后重启，前端源码修改后重新构建。
@@ -57,7 +63,7 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-genres-v51`，service worker 名称是 `ty-music-v51-genres`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-navigation-v52`，service worker 名称是 `ty-music-v52-navigation`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
 遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；分别核对 Workers 响应与上游状态。确认部署提交与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 
