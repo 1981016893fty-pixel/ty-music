@@ -2,7 +2,26 @@
 
 ## 工程质量审查入口
 
-[2026-11-18 工程质量审查与最小整改候选](quality-audit.md)记录基线 `e109377` 的已复现缺陷、维护风险、验证边界及候选 A–E。当前仅完成审查；候选修复尚未实施，须经用户选择后分别验证、交付。不能把现有测试通过表述为全仓库认证。
+[2026-11-18 工程质量审查与最小整改候选](quality-audit.md)记录基线 `e109377` 的已复现缺陷、维护风险、验证边界及候选 A–E。候选 A–D 已按用户授权实施并通过本地验证；候选 E（F10 发布／页面契约）仍是后续维护风险。不能把局部审查和测试通过表述为全仓库认证。
+
+## 工程质量修复（v53）
+
+本轮实施审查候选 A–D（F1–F9），保留原首页 12 个分类、网易云保底＋Embeat 自动补充和原有动效参数，无新增依赖。
+
+- 曲库：`player.js#libraryTrackSnapshot` 保护收藏／歌单引用元数据，仅裁剪最近 500 条非引用浏览资料；存储额度不足时仅重试必要资料，仍失败保留原快照并提示先导出。沿用旧 localStorage 格式，不清空或迁移用户数据；不能恢复已不存在的历史元数据。
+- 播放：`beginPlaybackSelection` 统一取消、代次和音频所有权；本地数据库和播放 Promise 迟到不能覆盖新选择。探测、切歌、结束、错误和删除提交成功时释放 Blob，单曲循环／权限重试保留正在使用的资源。播放本地曲目追加而不覆盖既有队列，删除后同步移除普通及随机队列；切换随机后以当前歌曲 ID 定位。
+- 本地资料：自动封面使用内嵌占位图，自动歌词不向在线服务发送文件名、歌手或专辑；手动点击歌手／专辑入口仍可能发起在线查询，不将其宣称为全离线模式。
+- 传输：`buffered-request.cjs` 承担响应头、重定向和完整 body 的总截止时间，最多 5 次相对／绝对跳转，JSON 4 MiB、封面 8 MiB；超时、取消、截断及时销毁。长音频保持独立流式和 Range 路径。封面只接收受支持图片类型（含上游实际 `image/jpg`）及非空响应；歌词业务错误不缓存为空歌词，明确空歌词仍成功。
+- 缓存：`bounded-cache.cjs` 仅缓存已完成值，LRU 最多 500 条；Workers 仍不共享跨请求进行中 I/O。
+- Cover Flow：原弹簧／几何／倒影保留，收敛停 RAF，拖动／键盘／尺寸／数据／可见性变化唤醒；缓存脊节点，只更新可见及刚离开范围，退出释放监听和指针捕获。
+
+维护这些入口后运行 `npm test`、`npm run build:pages`；本地真实 Worker 启动后执行 `node scripts/verify-deployment.mjs http://localhost:8788 --network`。后者联网检查并发搜索、封面、302 和 Range 206，受第三方网络影响；故障夹具不访问真实音源。新增回归入口为 `scripts/verify-player-lifecycle.mjs`、`verify-coverflow-lifecycle.mjs`、`verify-upstream-resilience.mjs`（后两者同目录）。缓存标记为 `20261118-quality-v53`／`ty-music-v53-quality`。
+
+本地完整 `npm test` 通过 164 项 node:test、另 1 项 Pages 构建检查及既有播放器／动效脚本；真实 Workers 网络检查通过。独立复审发现并修正本地自动封面查询、队列覆盖与删除残留，补齐无 Content-Length 大响应和合法类型空图片夹具；聚焦复审 42 项通过且无新阻塞项。ego lite 通过首页 12 分类与网易云 Blinding Lights 实际起播（200.046 秒）。欢迎入口高层点击仍受工具节点失效影响，使用 DOM click 进入，不记作物理点击验收。
+
+发布进度以 [PR #7](https://github.com/1981016893fty-pixel/ty-music/pull/7)、[Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/workflows/checks.yml) 和生产 `/api/health` 的提交为准；本段不预先声明 CI、合并或部署完成。部署后仍需在正式域名验收普通刷新、搜索和播放；回退可使用此前 v52 部署 `d9c14ce5`，步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md#回退)。
+
+剩余范围：F10 清单／HTML 场景契约及桌面 CI 输入尚未统一；Safari 个人曲库迁移、真机帧率／温升和全部第三方目录未验证。Cover Flow 静止零调度是计算边界证据，不能据此保证整站零发热。Render 保留至 Safari 资料迁移验收完成，不将旧服务留存当作新站仍依赖 Render。
 
 ## Cloudflare 迁移（2026-11-18）
 
@@ -69,7 +88,7 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-navigation-v52`，service worker 名称是 `ty-music-v52-navigation`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-quality-v53`，service worker 名称是 `ty-music-v53-quality`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
 遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；分别核对 Workers 响应与上游状态。确认部署提交与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 

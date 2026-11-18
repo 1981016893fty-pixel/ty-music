@@ -9,7 +9,7 @@ assert.equal((await get('/api/health', { method: 'OPTIONS' })).status, 204);
 assert.equal((await get('/api/health', { method: 'POST' })).status, 405);
 assert.equal((await get('/api/missing')).status, 404);
 const index = await get('/');
-assert.match(await index.text(), /20261118-navigation-v52/);
+assert.match(await index.text(), /20261118-quality-v53/);
 // Browsers reject a redirected cached response for manual navigation.
 const sw = await get('/service-worker.js').then(r => r.text());
 const shellPath = sw.match(/const APP_SHELL = '([^']+)'/)?.[1];

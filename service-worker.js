@@ -4,19 +4,19 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v52-navigation';
+const CACHE_NAME = 'ty-music-v53-quality';
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261118-navigation-v52';
+const APP_SHELL = '/?v=20261118-quality-v53';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261118-navigation-v52',
-  '/player.js?v=20261118-navigation-v52',
-  '/gd-embeat-core.js?v=20261118-navigation-v52',
-  '/browser-provider.js?v=20261118-navigation-v52',
-  '/search-session.js?v=20261118-navigation-v52',
-  '/soft-aurora-react.js?v=20261118-navigation-v52',
-  '/soft-aurora-react.css?v=20261118-navigation-v52',
+  '/style.css?v=20261118-quality-v53',
+  '/player.js?v=20261118-quality-v53',
+  '/gd-embeat-core.js?v=20261118-quality-v53',
+  '/browser-provider.js?v=20261118-quality-v53',
+  '/search-session.js?v=20261118-quality-v53',
+  '/soft-aurora-react.js?v=20261118-quality-v53',
+  '/soft-aurora-react.css?v=20261118-quality-v53',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -26,7 +26,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v52...');
+  console.log('[SW] Installing v53...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
@@ -41,7 +41,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v52');
+  console.log('[SW] Activated v53');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
