@@ -21,6 +21,12 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 新运行时不再有 Render 的闲置休眠唤醒，但不能承诺零延迟、无限额度或所有音源均可用。当前迁移沿用v49动效修复，未新增整机温度或Safari帧率结论。已安装的旧桌面包仍引用旧 API，源码更新只影响后续构建。
 
+## 首页流派入口修复（v51）
+
+此前场景生命周期优化把 `chromaGridMount` 错绑到 `search`，而实际容器位于 `page-discover`，因此首页只显示“BROWSE BY GENRE”标题、12个分类被卸载。`src/mount.jsx` 已将该入口改回 `discover`，保留原有分类、视觉及 `loadGenreDetail` 回调，不将功能入口标为装饰元素。其余固定场景绑定已对照 HTML 所属页面复核，未发现第二处同类错配。
+
+`scripts/verify-scenes.mjs` 执行真实挂载入口及分类组件，检查12个分类、切页／隐藏后恢复、减少动态效果下保留入口及详情回调；回归先出现0／12失败，修复后通过。完整 `npm test` 为126项node:test、Pages构建检查及既有播放器／动效脚本通过。缓存版本同步为 `20261118-genres-v51`／`ty-music-v51-genres`，升级后正常刷新即可，不清除个人曲库。PR和线上发布状态以本次交付链接及 `/api/health` 的实际提交为准，不能仅凭构建通过声称生产恢复。
+
 ## 入口与修改位置
 
 默认 HTTP 服务为 `server-simple.js`，监听 `PORT`（默认 8899）。本地与其他服务隔离可用 `PORT=18899 npm start`。`npm start` 先运行 `build.mjs`，再启动服务；直接运行 `node server-simple.js` 只适合已经完成构建的场景。静态资源由 `static-files.cjs` 按需异步读取／压缩，不再于启动前同步预载。小文件原始字节与 gzip 共用 8 MiB LRU，上限 2 MiB 的单文件可进入缓存，较大文件带背压流式发送；相同文件首次并发请求合并，stat 版本变化会失效缓存。服务端源码修改后重启，前端源码修改后重新构建。
@@ -51,7 +57,7 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-cloudflare-v50`，service worker 名称是 `ty-music-v50-cloudflare`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-genres-v51`，service worker 名称是 `ty-music-v51-genres`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
 遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；分别核对 Workers 响应与上游状态。确认部署提交与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 

@@ -42,7 +42,7 @@ npm test
 npm run build:aurora
 ```
 
-`npm test` 覆盖搜索 HTTP 边界、客户端请求竞态、缓存策略、场景生命周期和已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
+`npm test` 覆盖搜索 HTTP 边界、客户端请求竞态、缓存策略、场景生命周期、首页12个流派入口的显示与详情回调，以及已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 
 双源游标、取消和超时集中在 `search-session.js`；`browser-provider.js` 负责浏览器搜索和资源解析，`gd-embeat-core.js` 与 Node 共用签名协议，`player.js` 负责显示及播放。脚本必须随静态路由、service worker 与桌面复制清单一起更新。网页直接使用访问者网络请求 GD 网易云目录与 Embeat 网站，网易直连失败才回退服务端；VPN 可能改变补充结果，无需手动切源或检测 VPN。只有服务端回退使用 Workers 出口。
 

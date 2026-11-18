@@ -247,7 +247,7 @@ if (playerBubbleHost) {
 
 const chromaGridHost = document.getElementById('chromaGridMount');
 if (chromaGridHost) {
-  sceneRoot(chromaGridHost, 'search').render(<ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
+  sceneRoot(chromaGridHost, 'discover').render(<ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
 }
 
 const browseScrollHost = document.getElementById('browseScrollExpandMount');

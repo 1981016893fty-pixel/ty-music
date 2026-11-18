@@ -9,7 +9,7 @@ assert.equal((await get('/api/health', { method: 'OPTIONS' })).status, 204);
 assert.equal((await get('/api/health', { method: 'POST' })).status, 405);
 assert.equal((await get('/api/missing')).status, 404);
 const index = await get('/');
-assert.match(await index.text(), /20261118-cloudflare-v50/);
+assert.match(await index.text(), /20261118-genres-v51/);
 assert.equal((await get('/library-transfer.html')).status, 200);
 for (const path of ['/server-simple.js', '/users.json', '/.env']) {
   const text = await get(path).then(r => r.text());
