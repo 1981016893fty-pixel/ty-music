@@ -1,15 +1,23 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 const base = new URL(process.argv[2] || 'http://localhost:8788');
+const expectedCommit = process.argv.slice(3).find(arg => arg.startsWith('--commit='))?.slice(9)
+  ?? execFileSync('git', ['rev-parse', 'HEAD'], { cwd: new URL('../', import.meta.url), encoding: 'utf8' }).trim();
+assert.match(expectedCommit, /^[a-f0-9]{40}$/, 'Expected a full Git commit SHA');
 const get = (path, options) => fetch(new URL(path, base), { signal: AbortSignal.timeout(30000), ...options });
 const health = await get('/api/health');
 assert.equal(health.status, 200);
-assert.equal((await health.json()).runtime, 'cloudflare');
+const { runtime, commit } = await health.json();
+assert.equal(runtime, 'cloudflare');
+assert.equal(commit, expectedCommit, 'API must serve the expected Git commit');
 assert.match(health.headers.get('cache-control'), /no-store/);
 assert.equal((await get('/api/health', { method: 'OPTIONS' })).status, 204);
 assert.equal((await get('/api/health', { method: 'POST' })).status, 405);
 assert.equal((await get('/api/missing')).status, 404);
 const index = await get('/');
-assert.match(await index.text(), /20261118-quality-v53/);
+assert.equal(index.status, 200);
+const releaseTag = `<meta name="ty-music-commit" content="${expectedCommit}">`;
+assert.ok((await index.text()).includes(releaseTag), 'Homepage must serve the expected Git commit');
 // Browsers reject a redirected cached response for manual navigation.
 const sw = await get('/service-worker.js').then(r => r.text());
 const shellPath = sw.match(/const APP_SHELL = '([^']+)'/)?.[1];
@@ -17,7 +25,7 @@ assert.ok(shellPath, 'service worker declares its cached shell');
 const shell = await get(shellPath, { redirect: 'manual' });
 assert.equal(shell.status, 200, 'precache URL must not redirect');
 assert.match(shell.headers.get('content-type'), /text\/html/);
-await shell.arrayBuffer();
+assert.ok((await shell.text()).includes(releaseTag), 'Precached homepage must serve the expected Git commit');
 assert.equal((await get('/library-transfer.html')).status, 200);
 for (const path of ['/server-simple.js', '/users.json', '/.env']) {
   const text = await get(path).then(r => r.text());

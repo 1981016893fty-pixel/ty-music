@@ -31,6 +31,11 @@ for (const file of [...publicFiles, 'assets', 'vendor']) {
 }
 
 const commit = process.env.TY_MUSIC_COMMIT || execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('TY_MUSIC_COMMIT must be a full Git commit SHA');
+const indexPath = path.join(out, 'index.html');
+const index = await readFile(indexPath, 'utf8');
+if (!index.includes('</head>')) throw new Error('Unable to stamp Pages HTML without a head element');
+await writeFile(indexPath, index.replace('</head>', `  <meta name="ty-music-commit" content="${commit}">\n</head>`));
 await build({
   entryPoints: ['cloudflare/worker.mjs'],
   bundle: true,

@@ -9,16 +9,22 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const out = path.join(root, 'pages-dist');
 
 test('Pages publishes only public assets, a complete module graph and the API worker', async () => {
-  execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root, stdio: 'pipe' });
+  const release = '17843d6b1a8f97f9d72e34aabb5ebe7c633cf673';
+  execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root, stdio: 'pipe', env: { ...process.env, TY_MUSIC_COMMIT: release } });
   const publicFiles = [
     'index.html', 'library-transfer.html', 'library-transfer.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
     'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css', 'liquid-glass.js',
     'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
   ];
   assert.deepEqual((await readdir(out)).sort(), [...publicFiles, 'assets', 'vendor', '_worker.js', '_headers', '_routes.json'].sort());
-  for (const name of publicFiles) assert.deepEqual(await readFile(path.join(out, name)), await readFile(path.join(root, name)), name);
+  for (const name of publicFiles.filter(name => name !== 'index.html')) assert.deepEqual(await readFile(path.join(out, name)), await readFile(path.join(root, name)), name);
+  const homepage = await readFile(path.join(out, 'index.html'), 'utf8');
+  const releaseTag = `  <meta name="ty-music-commit" content="${release}">\n`;
+  assert.ok(homepage.includes(releaseTag + '</head>'));
+  assert.equal(homepage.replace(releaseTag, ''), await readFile(path.join(root, 'index.html'), 'utf8'));
   assert.deepEqual(JSON.parse(await readFile(path.join(out, '_routes.json'), 'utf8')), { version: 1, include: ['/api/*'], exclude: [] });
   const worker = await readFile(path.join(out, '_worker.js'), 'utf8');
+  assert.ok(worker.includes(release), 'Worker embeds the same release commit as the homepage');
   assert.match(worker, /cloudflare:node/);
   assert.doesNotMatch(worker, /(?:from\s*|require\s*\()\s*["'](?:node:)?(?:fs|http2)["']/);
   assert.doesNotMatch(worker, /createStaticHandler|createEmbeatTransport/);
