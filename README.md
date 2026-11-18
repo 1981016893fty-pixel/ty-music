@@ -41,8 +41,11 @@ GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz PORT=18899 npm start
 
 ```sh
 npm test
+npm run test:genre
 npm run build:aurora
 ```
+
+流派详情使用网易云目录，先展示最早返回的一批歌曲，再去重追加。流派回归覆盖首批显示、切换时取消旧请求及失败重试；发布时核对 API、主页和离线预缓存首页的构建提交。
 
 `npm test` 覆盖曲库保留与存储额度、播放／随机队列／本地 Blob 生命周期、上游慢流／断流／体积及缓存上限、Cover Flow 静止停帧，以及搜索 HTTP 边界、客户端请求竞态、封面缓存命中与失败兜底、艺人照片尺寸与 Worker 边缘缓存、缓存策略（含 Pages 重定向与导航失败兜底）、场景生命周期、首页 12 个流派入口显示与详情回调，以及已有播放器／动效回归检查；外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 

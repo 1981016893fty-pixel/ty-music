@@ -43,7 +43,7 @@ node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 
 若浏览器提示“无法打开页面”而 HTTP 首页为200，核对 Service Worker 的预缓存导航响应。Pages 会把 `/index.html?v=…` 308到 `/?v=…`，缓存中的 `redirected=true` 响应不能直接用于手动重定向模式的顶层导航。v52使用 `/?v=20261118-navigation-v52` 直接预存200首页，只读取当前版本缓存并跳过重定向响应；缓存读取失败时走网络，二者均失败时显示离线提示。正常刷新会检查新 Worker，不以清空站点数据作为修复步骤。发布后须在正式域名验证旧Worker升级、普通刷新及带查询参数的导航，不能只验证独立部署网址。`verify-deployment.mjs` 同时检查实际预缓存URL无重定向。
 
-健康检查应返回 `runtime=cloudflare`、目标 `commit`、`searchSource=netease`、`supplementalSearchSource=embeat`。CI 检查路由、私有文件边界和 Worker 加载，联网验收另测相同搜索并发、封面、音频跳转、Range 206 和1024字节响应。真实浏览器还需搜索、播放、拖动、歌词、补充失败隔离及刷新资源。
+验收脚本核对 API、首页和 Service Worker 预缓存首页是否属于同一目标提交，默认使用当前 checkout 的完整 SHA。若构建时用 `TY_MUSIC_COMMIT` 指定提交，验收应传入相同的 `--commit=<完整SHA>`。旧版首页没有构建标记，不能用新版检查脚本验收旧版回退；回退时按目标版本的说明复核。联网验收另测并发搜索、封面、音频跳转和 Range 206；真实浏览器还需检查首页 12 个流派、首批歌曲可点播、搜索、歌词及正常刷新。
 
 网页仍由访问者网络直连 GD 网易云与 Embeat，基础失败才回退同源 API。Embeat 可达时自动补充，不能保证任意网络都可达。服务端 Workers 出口也可能被音源限流；`GD_CLOCK_ERROR`、`GD_TIMEOUT` 不等于曲库无歌曲。不检测 VPN，不跨来源模糊替歌。
 

@@ -539,9 +539,12 @@ async function fetchPlaylistSongs(limit) {
 }
 
 // 新音源搜索（通过 GD Studio API）
-async function searchNetease(keywords, limit, source) {
+async function searchNetease(keywords, limit, source, signal) {
   limit = Math.min(limit || 20, 20);
   var ctrl = new AbortController();
+  const cancel = () => ctrl.abort();
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener('abort', cancel, { once: true });
   var timer = setTimeout(function() { ctrl.abort(); }, 15000);
   try {
     var url = '/api/music/search?keywords=' + encodeURIComponent(keywords) + '&limit=' + limit;
@@ -554,10 +557,11 @@ async function searchNetease(keywords, limit, source) {
     }
     return data.songs.map(function(s) { return normalizeTrack(s); });
   } catch (e) {
-    console.error('[Search] Failed:', e.message);
+    if (!signal?.aborted) console.error('[Search] Failed:', e.message);
     throw e; // 抛出错误，让调用方处理
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
   }
 }
 
@@ -740,6 +744,7 @@ function updateDynamicGradient(track) {
 
 // ========== Navigation ==========
 function navigateTo(page) {
+  if (state.currentPage === 'discover' && page !== 'discover') hideGenreDetail();
   // 关闭专辑详情侧面板
   const albumPanel = document.getElementById('albumDetailPanel');
   if (albumPanel) {
@@ -792,6 +797,7 @@ function navigateTo(page) {
 function goBack() {
   if (state.navHistory.length === 0) return;
   const prev = state.navHistory.pop();
+  if (state.currentPage === 'discover' && prev !== 'discover') hideGenreDetail();
   // 跳过当前页检测，直接切回去
   if (state.currentPage === 'album-favorites') cfStop();
   state.currentPage = prev;
@@ -2085,70 +2091,93 @@ function setShinyText(id, text) {
 }
 
 // Genre detail
-let genreDetailCache = {};
+const genreDetailCache = new Map();
+let activeGenreLoad = null;
+let genreScrollTimer;
 async function loadGenreDetail(genreId) {
   const genreSection = $('#genreSection');
-  if (!genreSection) return;
+  const row = $('#genreTracks');
+  if (!genreSection || !row || activeGenreLoad?.id === genreId) return;
+  hideGenreDetail();
   genreSection.style.display = 'block';
   const genreNames = { pop: '流行乐', rock: '摇滚', electronic: '电子', hiphop: '嘻哈', jazz: '爵士', classical: '古典', rnb: 'R&B', country: '乡村', kpop: 'K-Pop', chinese: '华语', latin: '拉丁', anime: '动漫' };
   const genreTitle = genreNames[genreId] || genreId;
   const genrePixelNames = { pop: 'POP', rock: 'ROCK', electronic: 'ELECTRONIC', hiphop: 'HIP HOP', jazz: 'JAZZ', classical: 'CLASSICAL', rnb: 'R&B', country: 'COUNTRY', kpop: 'K-POP', chinese: 'CHINESE', latin: 'LATIN', anime: 'ANIME' };
   window.genreShuffleTitle = genrePixelNames[genreId] || genreTitle.toUpperCase();
   window.setGenreShuffleTitle?.(window.genreShuffleTitle);
-  setTimeout(() => genreSection.scrollIntoView({ behavior: 'smooth' }), 100);
+  genreScrollTimer = setTimeout(() => genreSection.scrollIntoView({ behavior: 'smooth' }), 100);
 
-  if (genreDetailCache[genreId]) { renderScrollRow('#genreTracks', genreDetailCache[genreId]); return; }
+  if (genreDetailCache.has(genreId)) { renderScrollRow('#genreTracks', genreDetailCache.get(genreId)); return; }
 
-  $('#genreTracks').innerHTML = '<div class="scroll-loading" aria-label="内容加载中"></div>';
-  try {
-    // Search with canonical genre terms plus well-known artists. The public
-    // catalog search can rank broad genre phrases unpredictably, so artist
-    // seeds keep the first viewport recognizable while retaining variety.
-    const genreSearches = {
-      pop: ['流行音乐', 'Taylor Swift', 'The Weeknd', 'Adele', 'Bruno Mars'],
-      rock: ['摇滚音乐', 'Queen', 'Oasis', 'Coldplay', 'Linkin Park'],
-      electronic: ['电子音乐', 'Avicii', 'Daft Punk', 'Calvin Harris', 'Alan Walker'],
-      hiphop: ['嘻哈说唱', 'Eminem', 'Drake', 'Kendrick Lamar', 'Travis Scott'],
-      jazz: ['爵士音乐', 'Miles Davis', 'Ella Fitzgerald', 'Louis Armstrong', 'Norah Jones'],
-      classical: ['古典音乐', 'Beethoven', 'Mozart', 'Chopin', 'Tchaikovsky'],
-      rnb: ['R&B', 'Beyonce', 'Usher', 'Frank Ocean', 'SZA'],
-      country: ['乡村音乐', 'John Denver', 'Johnny Cash', 'Dolly Parton', 'Luke Combs'],
-      kpop: ['K-pop', 'BTS', 'BLACKPINK', 'NewJeans', 'IU'],
-      chinese: ['华语流行', '周杰伦', '陈奕迅', '邓丽君', '王菲'],
-      latin: ['拉丁音乐', 'Shakira', 'Bad Bunny', 'Luis Fonsi', 'J Balvin'],
-      anime: ['动漫歌曲', 'Anime songs', 'LiSA', 'Aimer', 'YOASOBI']
-    };
-    const queries = genreSearches[genreId] || [genreId];
-    const merged = [];
-    const seen = new Set();
-    for (const query of queries) {
-      if (merged.length >= 80) break;
+  const controller = new AbortController();
+  activeGenreLoad = { id: genreId, controller };
+  const { signal } = controller;
+  row.innerHTML = '<div class="scroll-loading" aria-label="内容加载中"></div>';
+  // Combine a broad genre query with artist seeds to keep the results varied.
+  const genreSearches = {
+    pop: ['流行音乐', 'Taylor Swift', 'The Weeknd', 'Adele', 'Bruno Mars'],
+    rock: ['摇滚音乐', 'Queen', 'Oasis', 'Coldplay', 'Linkin Park'],
+    electronic: ['电子音乐', 'Avicii', 'Daft Punk', 'Calvin Harris', 'Alan Walker'],
+    hiphop: ['嘻哈说唱', 'Eminem', 'Drake', 'Kendrick Lamar', 'Travis Scott'],
+    jazz: ['爵士音乐', 'Miles Davis', 'Ella Fitzgerald', 'Louis Armstrong', 'Norah Jones'],
+    classical: ['古典音乐', 'Beethoven', 'Mozart', 'Chopin', 'Tchaikovsky'],
+    rnb: ['R&B', 'Beyonce', 'Usher', 'Frank Ocean', 'SZA'],
+    country: ['乡村音乐', 'John Denver', 'Johnny Cash', 'Dolly Parton', 'Luke Combs'],
+    kpop: ['K-pop', 'BTS', 'BLACKPINK', 'NewJeans', 'IU'],
+    chinese: ['华语流行', '周杰伦', '陈奕迅', '邓丽君', '王菲'],
+    latin: ['拉丁音乐', 'Shakira', 'Bad Bunny', 'Luis Fonsi', 'J Balvin'],
+    anime: ['动漫歌曲', 'Anime songs', 'LiSA', 'Aimer', 'YOASOBI']
+  };
+  const queries = genreSearches[genreId] || [genreId];
+  const tracks = [];
+  const seen = new Set();
+  let next = 0;
+  let failed = false;
+  async function loadBatches() {
+    while (!signal.aborted && next < queries.length && tracks.length < 80) {
+      const query = queries[next++];
+      let batch;
       try {
-        const batch = await universalSearch(query, Math.min(24, 80 - merged.length), 'netease');
-        for (const track of batch || []) {
-          const key = String(track.id || `${track.title}-${track.artist}`).toLowerCase();
-          if (seen.has(key)) continue;
-          seen.add(key);
-          merged.push(track);
-          if (merged.length >= 80) break;
-        }
-      } catch (queryError) {
-        console.warn('[Genre] query failed:', genreId, query, queryError.message);
+        batch = await searchNetease(query, 20, 'netease', signal);
+      } catch (error) {
+        if (signal.aborted) return;
+        failed = true;
+        continue;
       }
+      if (signal.aborted || tracks.length >= 80) return;
+      const fresh = [];
+      for (const track of batch) {
+        const key = String(track.id || `${track.title}-${track.artist}`).toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        fresh.push(track);
+        if (tracks.length + fresh.length === 80) break;
+      }
+      if (!fresh.length) continue;
+      addToQueue(fresh);
+      if (!tracks.length) renderScrollRow('#genreTracks', fresh);
+      else row.insertAdjacentHTML('beforeend', fresh.map(track => createAMCard(track)).join(''));
+      tracks.push(...fresh);
     }
-    const visibleTracks = merged;
-    genreDetailCache[genreId] = visibleTracks;
-    addToQueue(visibleTracks);
-    renderScrollRow('#genreTracks', visibleTracks);
-  } catch (e) {
-    console.error('[Genre] load failed:', genreId, e);
-    genreDetailCache[genreId] = [];
-    renderScrollRow('#genreTracks', []);
-    showToast('该流派暂时没有可用数据');
+  }
+  try {
+    await Promise.all([loadBatches(), loadBatches()]);
+    if (signal.aborted) return;
+    if (!failed || tracks.length === 80) genreDetailCache.set(genreId, tracks);
+    if (!tracks.length) renderScrollRow('#genreTracks', []);
+    if (failed && !tracks.length) showToast('该流派暂时无法加载，请重试');
+  } finally {
+    if (activeGenreLoad?.controller === controller) activeGenreLoad = null;
   }
 }
 
-function hideGenreDetail() { $('#genreSection').style.display = 'none'; }
+function hideGenreDetail() {
+  activeGenreLoad?.controller.abort();
+  activeGenreLoad = null;
+  clearTimeout(genreScrollTimer);
+  const section = $('#genreSection');
+  if (section) section.style.display = 'none';
+}
 
 // 主页"热门排行榜" → 显示全部列表
 function showHotList() {

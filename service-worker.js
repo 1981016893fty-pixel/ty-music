@@ -11,7 +11,7 @@ const APP_SHELL = '/?v=20261118-quality-v53';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/style.css?v=20261118-quality-v53',
-  '/player.js?v=20261118-quality-v53',
+  '/player.js?v=20261118-genre-v55',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261118-quality-v53',
   '/search-session.js?v=20261118-quality-v53',
