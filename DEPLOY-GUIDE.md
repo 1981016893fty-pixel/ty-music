@@ -1,47 +1,58 @@
 # TY Music 部署与排障
 
-当前网站是已有 Render Web Service，入口为 `https://ty-music.onrender.com`。沿用该服务，不新建付费资源。源码、测试与运行时约定见 [README](README.md)，数据、协议与回退风险见[维护指南](docs/maintenance.md)。
+目标部署为 [Cloudflare Pages](https://ty-music.pages.dev)，前端静态文件与 `/api/*` Worker 同源。无需 InsForge、Render、账号数据库或独立常驻服务器；收藏与歌单仍保存在浏览器，本地音频在 IndexedDB。选型、免费额度与边界见 [hosting-choice](docs/hosting-choice.md)，实施状态见[维护指南](docs/maintenance.md#cloudflare-迁移2026-11-18)。
 
-## 构建和发布
+## 本地与发布
 
-1. 使用 Node.js 22，本地运行 `npm ci --include=dev`、`npm test`、`npm run build:aurora`，确认生成资源无遗漏。
-2. 将修复提交至独立任务分支，创建 PR，等待 `Web checks` 完成。部署分支为 `codex/deploy-embeat-search`，动效 PR #1、双源 PR #2 与浏览器直连 PR #3 均已合并；用户已授权验收后合并及部署。核对远端真实状态，不能把本地提交当作已推送或已合并。
-3. 在既有 Render 服务的 Settings 核对仓库、部署分支与启动命令；环境变量设置 `NODE_VERSION=22.22.2`。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`，启动命令为 `node server-simple.js`。`esbuild` 是构建所需开发依赖，不能在构建前省略。
-4. 网络无法直连音乐台时，可设置 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz`。该选项只启用到 GD 官方主机的 HTTP/2 连接路由，网站 authority 与签名仍为 `music.gdstudio.xyz`，来源仍为 Embeat；公开 API 自身不支持 Embeat。该路由依赖 GD 当前托管配置，不能保证未来稳定。本地与 Render 的出口和 CDN 节点不同，不应直接照搬本地连接设置；最后确认的 Render 配置为空值（标准 fetch）；网站主机 HTTP/2 已实测校时403，其他方式仍返回校时失败。具体阻塞与控制台恢复后的核对步骤见维护指南。未设置时使用网站默认连接方式；不支持任意代理主机，不禁用 TLS 校验。
-5. 当前既有服务 Auto-Deploy 为 Off，按此流程手动发布，避免未经验收的任务分支更新自动替换线上。部署已通过检查的具体提交，等待 Render 显示 Live，并对照实际提交哈希。不要把推送、触发构建或健康检查成功当成完整上线验收。
-
-仅修改 `render.yaml` 不会自动更改所有既有手动创建服务的设置，必须在控制台核对实际值。回退前保留原分支、运行时和部署提交，不覆盖其他项目或环境变量。
-
-## 上线验收
-
-网页由访问者网络直连 GD，服务端搜索为兼容与基础回退入口。不能仅用 curl 服务端接口判断网页搜索是否恢复；须验证真实页面基础结果、补充失败隔离和媒体。浏览器直连无法消除 Render Free 首次打开页面的冷启动。
-
-新版本沿用已合并的动效修复，双源搜索使用 `20261117-direct-v48` 资源标记与 `ty-music-v48-direct` worker；发布状态见维护指南。2026-11-17 控制台恢复后重新读到实际 Start Command 为 `node server-simple.js`、Auto-Deploy 为 Off。动效的像素预算、按需调度和本地测量见[维护指南](docs/maintenance.md#场景与流畅度)。
-
-2026-11-17 18:48:41 GMT+8，[Render 部署](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbu31e0u01pc73dh6gp0) 已 Live，应用提交为 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`。[PR #3](https://github.com/1981016893fty-pixel/ty-music/pull/3) 已通过两项 CI 并合并。真实线上页面已验证网易云20首＋Embeat20首、Embeat原曲起播／封面／39行歌词、拖动及补充源阻断后基础20首保底；具体证据与尚未验证项见维护指南。后续仅文档状态提交无需再次部署应用。
+使用 Node.js 22，构建时保留开发依赖：
 
 ```sh
-curl 'https://ty-music.onrender.com/api/health'
-curl --get 'https://ty-music.onrender.com/api/music/search' \
-  --data-urlencode 'keywords=晴天 周杰伦' --data 'limit=20'
+npm ci
+npm test
+npm run build:pages
+npx --yes wrangler@4.164.0 pages dev pages-dist --port 8788 --inspector-port 0
 ```
 
-健康响应的 `commit` 应与目标部署一致，`node` 应为 Node 22，`searchSource` 为 `netease`、`supplementalSearchSource` 为 `embeat`；非 Render 本地环境 `commit` 可以为 `null`。默认搜索应返回真实网易云目录；显式请求 `source=embeat` 单独核对补充可用性。浏览器验证基础列表能在补充挂起、403 或超时时先显示并继续分页，可用补充在基础首批后追加。然后播放并核对歌名/歌手、封面、歌词、音频起播与拖动；失败、无结果、连续切词和再次搜索应正常结束加载。不要删除真实收藏、歌单或浏览器站点数据来完成验收。
-
-Render 控制台已确认当前为 Free 实例，明确提示闲置休眠后的请求可能延迟 50 秒以上。代码无法关闭平台休眠；本轮仅确认该机制，未测一次完整闲置→唤醒耗时。新 service worker 让已有完整缓存的返访外壳先显示，但搜索／音频仍需网络。首次访客无缓存时仍会等待唤醒；本任务不升级付费、不添加后台保活。
-
-## 本地搜索失败
-
-服务默认监听 `8899`，隔离预览使用 `18899`。网站直连超时的网络可用：
+另一个终端运行：
 
 ```sh
-GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz PORT=18899 npm start
+node scripts/verify-deployment.mjs http://localhost:8788
+# 可选的真实联网验收，受上游可用性影响
+node scripts/verify-deployment.mjs http://localhost:8788 --network
 ```
 
-排查顺序：本地健康检查 → 搜索 HTTP 状态与 `code` → GD 校时/连接 → 网站签名或限流。校时同时支持秒和毫秒，不能写死为 13 位；单次请求总预算 12 秒，含最多 4 秒校时。`GD_TIMEOUT` 是超时，不能解释成无歌曲或账号授权失败。搜索不走缓存；静态资源按需异步加载，前端 `src/` 修改后重新构建并同步上传入口脚本、样式与整个 `assets/aurora/` 生成目录。服务端源码修改后重启。
+普通 Node 本地预览仍可 `PORT=18899 npm start`。Workers 由 `cloudflare/worker.mjs` 调用 API-only server factory；不会加载文件系统静态服务，也不使用 Node HTTP/2 特殊连接。`wrangler.jsonc` 固定兼容日期和 Node HTTP 标志。Pages 打包器当前会把直接 Node HTTP 导入替换为不完整的 shim，构建脚本通过官方 `process.getBuiltinModule()` 加载原生模块；改打包方式后务必跑真实 runtime 检查。
 
-HTTP 测试子进程必须清空 `GD_EMBEAT_CONNECT_HOST`，由夹具控制传输；否则继承生产变量会绕过夹具，CI 可通过而 Render 构建测试失败。发布前运行 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz npm test`；不要删测试或绕过构建门禁。
+已登录且有 Pages 权限的账号发布预览：
+
+```sh
+npx --yes wrangler@4.164.0 pages deploy pages-dist --project-name ty-music --branch codex/cloudflare-migration --commit-dirty false
+```
+
+首次项目已建立，不重复创建。仅首次创建旧版 Pages 项目时需要 `pages project create ty-music --production-branch main --force`；不要把 `--force` 用在后续发布。独立任务分支 → PR → CI → 已授权合并后，重新从目标提交构建并发布生产：
+
+```sh
+npm run build:pages
+npx --yes wrangler@4.164.0 pages deploy pages-dist --project-name ty-music --branch main --commit-dirty false
+node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
+```
+
+构建把 `git rev-parse HEAD` 写入健康检查 `commit`。工作树未提交时此值仅是基点，不证明改动已经提交；正式部署前核对工作区及哈希。发布不需要提交 `pages-dist/`。不能上传仓库根目录，其中含服务端及用户数据文件。构建显式白名单发布，`_routes.json` 仅让 `/api/*` 进入 Worker，静态文件不占用函数调用额度；无哈希入口重新验证，哈希分块长期缓存。
+
+## 验收与排障
+
+健康检查应返回 `runtime=cloudflare`、目标 `commit`、`searchSource=netease`、`supplementalSearchSource=embeat`。CI 检查路由、私有文件边界和 Worker 加载，联网验收另测相同搜索并发、封面、音频跳转、Range 206 和1024字节响应。真实浏览器还需搜索、播放、拖动、歌词、补充失败隔离及刷新资源。
+
+网页仍由访问者网络直连 GD 网易云与 Embeat，基础失败才回退同源 API。Embeat 可达时自动补充，不能保证任意网络都可达。服务端 Workers 出口也可能被音源限流；`GD_CLOCK_ERROR`、`GD_TIMEOUT` 不等于曲库无歌曲。不检测 VPN，不跨来源模糊替歌。
+
+Pages 首次新域名或预览证书可能需要等待；握手失败时先核对部署状态再重试，不能禁用 TLS。Workers 没有 Render Free 的闲置休眠唤醒流程，但初始化、网络与上游仍会带来延迟。免费额度属于账号共享，有请求及 CPU 上限；音频默认302让浏览器访问提供方，不作为无限媒体中转服务。详情见选型说明。
+
+## 曲库迁移与 Render 退出
+
+新旧域名不共享 localStorage／IndexedDB。用原来收藏音乐的同一浏览器（用户主要为 Safari），在旧站 `/library-transfer.html` 下载完整备份，再到新站同名页面预览并合并导入，最后重载播放器检查。现有条目优先保留，音频只追加，文件与存储上限、部分失败见工具页面。备份包含个人曲库及完整音频，不能提交到 Git。
+
+`render.yaml` 从当前部署配置移除，桌面新构建改用 Pages API；已安装的旧桌面包仍需重建更新。旧 Render 服务仅在迁移验收前作为数据导出入口保留：先把带迁移工具的提交发布到旧服务，确认 Safari 备份已落盘且新站收藏、本地音频正常，再暂停/删除原服务。不删除浏览器资料、不清理旧站数据来完成迁移。不得把新站上线写成个人曲库已迁移或旧服务已停。
 
 ## 回退
 
-部署前记录 Render 当前 Live 提交。若新版本搜索、播放或资源出现回归，在该服务的 Deploys 中重新部署已记录的上一个成功提交，并复核健康和核心流程。需要撤销代码时使用 `git revert` 保留历史，不强推、不硬重置或清空浏览器个人数据。先在控制台核对回退提交支持的 Node 版本，再决定是否恢复原运行时配置。
+保留上一个成功 Pages deployment ID 与提交。生产回归时在 Cloudflare Pages 的 Deployments 选择已验证的生产版本回退，或从已记录的提交重建后 `pages deploy --branch main`；随后重新验证 `/api/health` 与核心流程。代码用 `git revert` 保留历史。不要删除或覆盖个人曲库，功能回退不等于数据回滚。

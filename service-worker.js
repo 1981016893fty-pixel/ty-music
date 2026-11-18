@@ -4,17 +4,17 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v49-thermal';
-const APP_SHELL = '/index.html?v=20261117-thermal-v49';
+const CACHE_NAME = 'ty-music-v50-cloudflare';
+const APP_SHELL = '/index.html?v=20261118-cloudflare-v50';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261117-thermal-v49',
-  '/player.js?v=20261117-thermal-v49',
-  '/gd-embeat-core.js?v=20261117-thermal-v49',
-  '/browser-provider.js?v=20261117-thermal-v49',
-  '/search-session.js?v=20261117-thermal-v49',
-  '/soft-aurora-react.js?v=20261117-thermal-v49',
-  '/soft-aurora-react.css?v=20261117-thermal-v49',
+  '/style.css?v=20261118-cloudflare-v50',
+  '/player.js?v=20261118-cloudflare-v50',
+  '/gd-embeat-core.js?v=20261118-cloudflare-v50',
+  '/browser-provider.js?v=20261118-cloudflare-v50',
+  '/search-session.js?v=20261118-cloudflare-v50',
+  '/soft-aurora-react.js?v=20261118-cloudflare-v50',
+  '/soft-aurora-react.css?v=20261118-cloudflare-v50',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -24,7 +24,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v48...');
+  console.log('[SW] Installing v50...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
@@ -39,7 +39,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v48');
+  console.log('[SW] Activated v50');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {

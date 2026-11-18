@@ -1,5 +1,23 @@
 # TY Music 维护指南
 
+## Cloudflare 迁移（2026-11-18）
+
+当前方案：Pages 静态前端＋同源 API Worker，不接入 InsForge，无服务端数据库。`scripts/build-pages.mjs` → `pages-dist/`，仅白名单公开文件，`cloudflare/worker.mjs` 复用 `server-simple.js#createServer({staticFiles:false})`。本地 Node 启动方式保留。部署、数据迁移与回退的权威步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md)。
+
+Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embeat clock client 按独立操作创建。普通 Node 继续复用已有去重。音频默认302，`stream=1`保留 Range，断连销毁上游。构建使用 `process.getBuiltinModule` 避免 Pages 打包器的 HTTP shim，并以真实 runtime CI 防回归。此适配未引入新的运行时依赖。
+
+`library-transfer.html/js` 为独立曲库备份入口，覆盖 localStorage 收藏／歌单／近期／专辑／歌曲来源元数据，以及 IndexedDB 中的本地音频。只读导出，导入预览后合并；旧条目优先，音频事务只添加。文件最多512MiB；大曲库保留原音频重新添加。localStorage 与音频数据库不是一个事务，部分失败会明确报告，不能声称全库原子迁移。各用户仍需在原浏览器执行迁移，ego lite 验收不代表 Safari 个人数据已迁移。
+
+| 阶段 | 状态 |
+| --- | --- |
+| 已实现 | API-only 工厂、Worker、Pages 白名单构建、桌面 API 地址、迁移工具、v50 缓存标记 |
+| 本地验证 | npm test 通过；workerd 真实搜索、302、Range206通过；新增 runtime CI 待远端执行 |
+| 预览部署 | [Cloudflare preview](https://codex-cloudflare-migration.ty-music.pages.dev)，健康检查及真实网易云搜索通过；完整浏览器验收进行中 |
+| CI／合并／正式部署 | 待完成，不能用预览替代生产验收 |
+| Render 服务与 Safari 曲库 | 旧服务尚保留；个人数据未自动迁移，待同浏览器导出／导入验收后退役 |
+
+新运行时不再有 Render 的闲置休眠唤醒，但不能承诺零延迟、无限额度或所有音源均可用。当前迁移沿用v49动效修复，未新增整机温度或Safari帧率结论。已安装的旧桌面包仍引用旧 API，源码更新只影响后续构建。
+
 ## 入口与修改位置
 
 默认 HTTP 服务为 `server-simple.js`，监听 `PORT`（默认 8899）。本地与其他服务隔离可用 `PORT=18899 npm start`。`npm start` 先运行 `build.mjs`，再启动服务；直接运行 `node server-simple.js` 只适合已经完成构建的场景。静态资源由 `static-files.cjs` 按需异步读取／压缩，不再于启动前同步预载。小文件原始字节与 gzip 共用 8 MiB LRU，上限 2 MiB 的单文件可进入缓存，较大文件带背压流式发送；相同文件首次并发请求合并，stat 版本变化会失效缓存。服务端源码修改后重启，前端源码修改后重新构建。

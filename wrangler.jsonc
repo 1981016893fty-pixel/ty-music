@@ -1,0 +1,6 @@
+{
+  "name": "ty-music",
+  "pages_build_output_dir": "pages-dist",
+  "compatibility_date": "2026-11-11",
+  "compatibility_flags": ["nodejs_compat", "enable_nodejs_http_modules", "enable_nodejs_http_server_modules"]
+}
