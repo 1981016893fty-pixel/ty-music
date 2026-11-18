@@ -15,8 +15,11 @@
 | 阶段 | 状态 |
 | --- | --- |
 | 实现与本地验证 | 完成；`npm test` 175 项及真实 Wrangler 网络、ego lite 页面检查通过 |
-| GitHub 分支／PR 与 CI | 待提交 |
-| 合并、生产部署与线上复测 | 待 PR 合并后按既有授权执行 |
+| GitHub PR 与 CI | [PR #8](https://github.com/1981016893fty-pixel/ty-music/pull/8) 的 Web checks（push 和 pull_request）均通过，合并提交为 `4e406d0` |
+| 生产发布 | 2026-11-18 已部署至 [ty-music.pages.dev](https://ty-music.pages.dev)，部署 ID 为 `97845808-f7ef-4e13-b7e3-13c355b190e8` |
+| 线上验证 | 健康检查、并发网易云搜索、封面和音频 Range 206 通过。LAX 边缘实测艺人图 302 与封面 200 均命中缓存。ego lite 从旧版缓存刷新后进入主页，12 张流派图均以 640px 解码。Safari 实测待补。 |
+
+生产回退版本为 v53，Pages 部署 ID 为 `ffec1ee8-a47b-4a20-a2e5-94dcbe501712`。按 [部署指南](../DEPLOY-GUIDE.md#回退) 操作。
 
 ## 工程质量审查入口
 
