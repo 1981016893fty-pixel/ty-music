@@ -1,5 +1,9 @@
 # TY Music 维护指南
 
+## 工程质量审查入口
+
+[2026-11-18 工程质量审查与最小整改候选](quality-audit.md)记录基线 `e109377` 的已复现缺陷、维护风险、验证边界及候选 A–E。当前仅完成审查；候选修复尚未实施，须经用户选择后分别验证、交付。不能把现有测试通过表述为全仓库认证。
+
 ## Cloudflare 迁移（2026-11-18）
 
 当前方案：Pages 静态前端＋同源 API Worker，不接入 InsForge，无服务端数据库。`scripts/build-pages.mjs` → `pages-dist/`，仅白名单公开文件，`cloudflare/worker.mjs` 复用 `server-simple.js#createServer({staticFiles:false})`。本地 Node 启动方式保留。部署、数据迁移与回退的权威步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md)。

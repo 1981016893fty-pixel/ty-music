@@ -37,6 +37,8 @@ GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz PORT=18899 npm start
 
 ## 验证与开发
 
+当前已确认的曲库恢复、播放竞态、旧请求生命周期及静止绘制问题，见[工程质量审查与待实施方案](docs/quality-audit.md)。审查记录不代表其中方案已修复或上线。
+
 ```sh
 npm test
 npm run build:aurora
