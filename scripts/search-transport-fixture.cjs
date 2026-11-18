@@ -37,7 +37,7 @@ global.fetch = async (url, options) => {
     return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true }));
   }
   if (mode === 'transport') throw new Error('external network failed');
-  return { ok: mode !== 'http', status: mode === 'http' ? 503 : 200, json: async () => reply(url) };
+  return new Response(JSON.stringify(reply(url)), { status: mode === 'http' ? 503 : 200, headers: { 'Content-Type': 'application/json' } });
 };
 https.get = (options, callback) => {
   const req = new EventEmitter();

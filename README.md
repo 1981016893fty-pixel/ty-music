@@ -6,7 +6,7 @@
 
 ## 部署
 
-目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度，不引入 InsForge 或数据库。构建 `npm run build:pages`，完整运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)；实时交付状态见[维护指南](docs/maintenance.md#cloudflare-迁移2026-11-18)。
+目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度，不引入 InsForge 或数据库。构建 `npm run build:pages`，完整运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)；实时交付状态见[维护指南](docs/maintenance.md#工程质量修复v53)。
 
 换域名不会自动迁移个人曲库。请在原浏览器旧站打开 `/library-transfer.html` 导出，再在新站同名页面预览合并；音频与收藏留在本机，迁移工具不上传资料。旧服务退役以数据导出和新站验收完成为条件。
 
@@ -37,12 +37,14 @@ GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz PORT=18899 npm start
 
 ## 验证与开发
 
+本轮已修复曲库引用元数据裁剪、远端／本地播放竞态、旧请求生命周期与 Cover Flow 静止绘制问题。范围、回归证据和后续发布契约风险见[工程质量审查](docs/quality-audit.md)及[维护指南](docs/maintenance.md#工程质量修复v53)。
+
 ```sh
 npm test
 npm run build:aurora
 ```
 
-`npm test` 覆盖搜索 HTTP 边界、客户端请求竞态、缓存策略、场景生命周期和已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
+`npm test` 覆盖曲库保留与存储额度、播放／随机队列／本地 Blob 生命周期、上游慢流／断流／体积及缓存上限、Cover Flow 静止停帧，以及搜索 HTTP 边界、客户端请求竞态、缓存策略（含Pages重定向与导航失败兜底）、场景生命周期、首页12个流派入口的显示与详情回调，以及已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 
 双源游标、取消和超时集中在 `search-session.js`；`browser-provider.js` 负责浏览器搜索和资源解析，`gd-embeat-core.js` 与 Node 共用签名协议，`player.js` 负责显示及播放。脚本必须随静态路由、service worker 与桌面复制清单一起更新。网页直接使用访问者网络请求 GD 网易云目录与 Embeat 网站，网易直连失败才回退服务端；VPN 可能改变补充结果，无需手动切源或检测 VPN。只有服务端回退使用 Workers 出口。
 

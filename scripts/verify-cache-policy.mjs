@@ -54,7 +54,7 @@ test('shell refresh stays alive until its cache write finishes', async () => {
     self: { location: { origin: 'https://example.test' }, addEventListener: (name, handler) => { handlers[name] = handler; } },
     URL, console, Response,
     fetch: async () => ({ status: 200, type: 'basic', clone: () => new Response('fresh-shell') }),
-    caches: { match: async () => new Response('cached-shell'), open: async () => ({ put: () => writing }) },
+    caches: { open: async () => ({ match: async () => new Response('cached-shell'), put: () => writing }) },
   });
   let lifetime;
   let response;
@@ -75,10 +75,60 @@ test('returning visitors see the cached shell while a sleeping server is still w
     self: { location: { origin: 'https://example.test' }, addEventListener: (name, handler) => { handlers[name] = handler; } },
     URL, console, Response,
     fetch: () => new Promise(() => {}),
-    caches: { match: async () => new Response('cached-shell') },
+    caches: { open: async () => ({ match: async () => new Response('cached-shell') }) },
   });
   let response;
   handlers.fetch({ request: { url: 'https://example.test/', method: 'GET', mode: 'navigate' }, respondWith(value) { response = value; }, waitUntil() {} });
   const result = await Promise.race([response.then(value => value.text()), new Promise(resolve => setTimeout(() => resolve('blocked-by-upstream'), 50))]);
   assert.equal(result, 'cached-shell');
+});
+
+test('navigation never returns a redirected cached shell and survives cache/network failures', async () => {
+  for (const scenario of ['redirected', 'cache-failed', 'offline', 'cached-offline']) {
+    const handlers = {};
+    const redirected = new Response('redirected-shell');
+    Object.defineProperty(redirected, 'redirected', { value: true });
+    const match = async () => {
+      if (scenario === 'cache-failed') throw new Error('cache unavailable');
+      if (scenario === 'redirected') return redirected;
+      if (scenario === 'cached-offline') return new Response('cached-shell');
+    };
+    vm.runInNewContext(source, {
+      self: { location: { origin: 'https://example.test' }, addEventListener: (name, handler) => { handlers[name] = handler; } },
+      URL, console, Response,
+      fetch: async () => {
+        if (scenario.endsWith('offline')) throw new Error('network unavailable');
+        return new Response('fresh-shell');
+      },
+      caches: { match, open: async () => ({ match, put: async () => {} }) },
+    });
+    let response;
+    const lifetimes = [];
+    handlers.fetch({ request: { url: 'https://example.test/?launch=1', method: 'GET', mode: 'navigate', redirect: 'manual' }, respondWith(value) { response = value; }, waitUntil(value) { lifetimes.push(value); } });
+    const result = await response;
+    assert.equal(result.redirected, false, `${scenario}: browsers reject redirected responses for manual navigation`);
+    if (scenario === 'offline') {
+      assert.match(result.headers.get('content-type'), /text\/html/);
+      assert.match(await result.text(), /离线/);
+    } else {
+      assert.equal(await result.text(), scenario === 'cached-offline' ? 'cached-shell' : 'fresh-shell', scenario);
+    }
+    await Promise.all(lifetimes);
+  }
+});
+
+test('the precached shell uses the canonical root without the Pages index redirect', async () => {
+  const handlers = {};
+  let paths;
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; }, skipWaiting() {} },
+    console,
+    fetch: async () => ({ ok: true, json: async () => [] }),
+    caches: { open: async () => ({ addAll: async values => { paths = values; } }) },
+  });
+  let installation;
+  handlers.install({ waitUntil: value => { installation = value; } });
+  await installation;
+  assert.ok(paths.some(path => /^\/\?v=/.test(path)), 'cache canonical root');
+  assert.ok(!paths.some(path => path.startsWith('/index.html')), 'Pages redirects index.html');
 });

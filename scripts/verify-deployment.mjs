@@ -9,7 +9,15 @@ assert.equal((await get('/api/health', { method: 'OPTIONS' })).status, 204);
 assert.equal((await get('/api/health', { method: 'POST' })).status, 405);
 assert.equal((await get('/api/missing')).status, 404);
 const index = await get('/');
-assert.match(await index.text(), /20261118-cloudflare-v50/);
+assert.match(await index.text(), /20261118-quality-v53/);
+// Browsers reject a redirected cached response for manual navigation.
+const sw = await get('/service-worker.js').then(r => r.text());
+const shellPath = sw.match(/const APP_SHELL = '([^']+)'/)?.[1];
+assert.ok(shellPath, 'service worker declares its cached shell');
+const shell = await get(shellPath, { redirect: 'manual' });
+assert.equal(shell.status, 200, 'precache URL must not redirect');
+assert.match(shell.headers.get('content-type'), /text\/html/);
+await shell.arrayBuffer();
 assert.equal((await get('/library-transfer.html')).status, 200);
 for (const path of ['/server-simple.js', '/users.json', '/.env']) {
   const text = await get(path).then(r => r.text());

@@ -91,7 +91,8 @@ test('late audio resolution cannot replace a later choice or reset its lyrics, e
     updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
     ampLyricsRequestId: 0, ampLyricsRenderedFor: null, ampIsShowing: false, playTimeout: null,
   });
-  vm.runInContext(source.slice(source.indexOf('let playbackRequestId ='), source.indexOf('// ========== Play/Pause')), context);
+  vm.runInContext(source.slice(source.indexOf('let playbackRequestId ='), source.indexOf('// ========== Play/Pause')) +
+    source.slice(source.indexOf('function syncQueueOrder()'), source.indexOf('function playNext()')), context);
   const track = { id: 'embeat:same', source: 'embeat', title: 'Song', artist: 'Artist' };
   context.playTrack(track, 0, true);
   assert.equal(playCalls, 1, 'Safari receives a play call synchronously in the click handler');

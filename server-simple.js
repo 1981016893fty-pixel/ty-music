@@ -7,6 +7,8 @@ const http = require('http');
 const https = require('https');
 const { URL } = require('url');
 const { createEmbeatClient } = require('./gd-embeat.cjs');
+const { createBufferedRequester, readFetchBody } = require('./buffered-request.cjs');
+const { createBoundedCache } = require('./bounded-cache.cjs');
 // Workers request I/O cannot be shared across unrelated request contexts.
 const sharePendingIO = process.env.TY_MUSIC_RUNTIME !== 'cloudflare';
 const sharedEmbeat = sharePendingIO ? createEmbeatClient() : null;
@@ -16,6 +18,8 @@ const embeatClient = () => sharedEmbeat || createEmbeatClient();
 // 复用 TCP 连接，避免每次请求都重新握手（对 GD API 延迟高的情况尤其重要）
 const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 50, timeout: 30000 });
 const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 50, timeout: 30000 });
+const requestBuffered = createBufferedRequester({ http, https, httpAgent, httpsAgent });
+const MAX_JSON_BYTES = 4 * 1024 * 1024;
 
 // =========================== 请求去重 ===========================
 // 同一 URL 同时只请求一次，避免并发时重复调用 GD API
@@ -42,7 +46,7 @@ const FEATURED_THE_WEEKND = Object.freeze([
 
 // =========================== API 结果缓存 ===========================
 // 缓存搜索/热门结果，避免重复请求 GD API（公网访问延迟高，缓存很重要）
-const apiCache = new Map(); // key → { data, expiry }
+const apiCache = createBoundedCache(500);
 const CACHE_TTL = {
   search: 5 * 60 * 1000,   // 搜索结果缓存 5 分钟
   hot: 10 * 60 * 1000,     // 热门缓存 10 分钟
@@ -53,76 +57,30 @@ const CACHE_TTL = {
   audio: 60 * 60 * 1000,   // 音频 URL 缓存 1 小时
 };
 
-function cacheGet(key) {
-  const entry = apiCache.get(key);
-  if (!entry) return null;
-  if (Date.now() > entry.expiry) { apiCache.delete(key); return null; }
-  return entry.data;
-}
-function cacheSet(key, data, ttl) {
-  apiCache.set(key, { data, expiry: Date.now() + ttl });
-  // 定期清理过期条目（超过 500 条时）
-  if (apiCache.size > 500) {
-    const now = Date.now();
-    for (const [k, v] of apiCache) { if (now > v.expiry) apiCache.delete(k); }
-  }
-}
+const cacheGet = key => apiCache.get(key);
+const cacheSet = (key, data, ttl) => apiCache.set(key, data, ttl);
 
 // =========================== 工具函数 ===========================
 
 // HTTPS GET JSON（带自动重试，使用 keep-alive）
 async function httpsGetJSON(url, timeout = 10000, retries = 2) {
-  for (let i = 0; i <= retries; i++) {
+  const deadline = Date.now() + timeout;
+  for (let attempt = 0; ; attempt++) {
     try {
-      const data = await _httpsGetJSONOnce(url, timeout);
-      return data;
-    } catch (e) {
-      if (i < retries) {
-        console.log(`[HTTPS] Retry ${i+1}/${retries} for ${url.substring(0, 60)}... (${e.message})`);
-        await new Promise(r => setTimeout(r, 1000 * (i + 1)));
-      } else {
-        throw e;
-      }
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw mediaFault(504, 'Upstream timed out', 'UPSTREAM_TIMEOUT');
+      const { body } = await requestBuffered(url, {
+        timeout: remaining, maxBytes: MAX_JSON_BYTES,
+        headers: { 'User-Agent': UA, Referer: 'https://music.163.com/', Accept: 'application/json' },
+      });
+      try { return JSON.parse(body.toString('utf8')); }
+      catch { throw mediaFault(502, 'Invalid upstream JSON', 'UPSTREAM_INVALID_JSON'); }
+    } catch (error) {
+      const delay = 1000 * (attempt + 1);
+      if (attempt >= retries || Date.now() + delay >= deadline || error.statusCode || error.upstreamStatus) throw error;
+      await new Promise(resolve => setTimeout(resolve, delay));
     }
   }
-}
-
-function _httpsGetJSONOnce(url, timeout) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const isHttps = parsed.protocol === 'https:';
-    const client = isHttps ? https : http;
-    const opts = {
-      hostname: parsed.hostname,
-      port: parsed.port || (isHttps ? 443 : 80),
-      path: parsed.pathname + parsed.search,
-      headers: {
-        'User-Agent': UA,
-        'Referer': 'https://music.163.com/',
-        'Accept': 'application/json',
-        'Connection': 'keep-alive',
-      },
-      agent: isHttps ? httpsAgent : httpAgent,
-    };
-    const req = client.get(opts, (res) => {
-      // 处理重定向
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        resolve(_httpsGetJSONOnce(res.headers.location, timeout));
-        return;
-      }
-      const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        try {
-          const data = Buffer.concat(chunks).toString('utf8');
-          resolve(JSON.parse(data));
-        }
-        catch (e) { reject(new Error('JSON parse error: ' + (Buffer.concat(chunks).toString('utf8')).slice(0, 100))); }
-      });
-    });
-    req.on('error', reject);
-    req.setTimeout(timeout, () => { req.destroy(); reject(new Error('timeout')); });
-  });
 }
 
 // Render's outbound network can handle the GD API more reliably through
@@ -133,20 +91,25 @@ async function fetchJSONWithFetch(url, timeout = 10000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': UA,
-        'Referer': 'https://music.163.com/',
-        'Accept': 'application/json',
-      },
-      redirect: 'follow',
-      signal: controller.signal,
-    });
-    if (!response.ok) {
-      response.body?.cancel().catch(() => {});
-      throw Object.assign(new Error(`HTTP ${response.status}`), { upstreamStatus: response.status });
+    let current = url;
+    for (let redirects = 0; ; redirects++) {
+      const response = await fetch(current, {
+        headers: { 'User-Agent': UA, Referer: 'https://music.163.com/', Accept: 'application/json' },
+        redirect: 'manual', signal: controller.signal,
+      });
+      if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+        response.body?.cancel().catch(() => {});
+        if (redirects >= 5) throw mediaFault(502, 'Too many upstream redirects', 'UPSTREAM_REDIRECT_LIMIT');
+        current = new URL(response.headers.get('location'), current).href;
+        if (!['http:', 'https:'].includes(new URL(current).protocol)) throw mediaFault(502, 'Unsupported upstream protocol');
+        continue;
+      }
+      if (!response.ok) {
+        response.body?.cancel().catch(() => {});
+        throw Object.assign(new Error(`HTTP ${response.status}`), { upstreamStatus: response.status });
+      }
+      return JSON.parse((await readFetchBody(response, MAX_JSON_BYTES)).toString('utf8'));
     }
-    return await response.json();
   } finally {
     clearTimeout(timer);
   }
@@ -169,48 +132,6 @@ async function gdGetJSON(url, timeout = 10000, isUsable = data => Boolean(data))
   }
   if (lastError) console.warn(`[GD API] Request failed: ${lastError.message}`);
   return null;
-}
-
-// HTTP/HTTPS GET (支持重定向，使用 keep-alive 连接复用)
-// timeout 仅用于连接阶段，流式传输不设超时
-function smartGet(url, headers, timeout = 15000) {
-  return new Promise((resolve, reject) => {
-    const parsed = new URL(url);
-    const isHttps = parsed.protocol === 'https:';
-    const client = isHttps ? https : http;
-    const opts = {
-      hostname: parsed.hostname,
-      port: parsed.port || (isHttps ? 443 : 80),
-      path: parsed.pathname + parsed.search,
-      headers: headers || {},
-      agent: isHttps ? httpsAgent : httpAgent,
-    };
-    let resolved = false;
-    const req = client.get(opts, (res) => {
-      // 处理重定向
-      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        resolved = true;
-        smartGet(res.headers.location, headers, timeout).then(resolve).catch(reject);
-        return;
-      }
-      // 流式响应直接返回
-      resolved = true;
-      resolve(res);
-    });
-    req.on('error', (err) => {
-      if (!resolved) { resolved = true; reject(err); }
-    });
-    // 只设置连接超时
-    req.setTimeout(timeout, function() {
-      if (!resolved) { resolved = true; req.destroy(); reject(new Error('connection timeout')); }
-    });
-    // 连接建立后取消超时，后续由流自行管理
-    req.once('socket', function(socket) {
-      socket.once('connect', function() {
-        if (!resolved) req.setTimeout(0);
-      });
-    });
-  });
 }
 
 // 请求去重包装：同一 URL 同时只请求一次
@@ -718,18 +639,18 @@ async function gdGetLyric(id) {
   const cached = cacheGet(cacheKey);
   if (cached) return cached;
 
-  try {
-    const url = `${GD_API}?types=lyric&id=${id}&source=netease`;
-    const data = await dedupedGetJSON(url, 15000);
-    const result = {
-      lrc: (data && data.lyric) || '',
-      tlyric: (data && data.tlyric) || ''
-    };
-    cacheSet(cacheKey, result, CACHE_TTL.lyric);
-    return result;
-  } catch (e) {
-    return { lrc: '', tlyric: '' };
+  const url = `${GD_API}?types=lyric&id=${id}&source=netease`;
+  const data = await dedupedGetJSON(url, 15000);
+  // An explicitly empty lyric is valid; an error object is not "no lyrics".
+  if (!data || typeof data !== 'object' || Array.isArray(data) ||
+      typeof data.lyric !== 'string' ||
+      (data.tlyric !== undefined && typeof data.tlyric !== 'string') ||
+      (data.code !== undefined && data.code !== 200)) {
+    throw mediaFault(502, 'Invalid lyric response');
   }
+  const result = { lrc: data.lyric, tlyric: data.tlyric || '' };
+  cacheSet(cacheKey, result, CACHE_TTL.lyric);
+  return result;
 }
 
 // GD Studio API 获取封面 URL
@@ -775,7 +696,7 @@ async function embeatCover(picId, size) {
   try {
     const response = await fetch(url, { redirect: 'error', signal: controller.signal });
     const contentType = response.headers.get('content-type') || '';
-    if (!response.ok || !/^image\/(jpeg|png|webp|avif)(?:;|$)/i.test(contentType) || Number(response.headers.get('content-length')) > 8 * 1024 * 1024 || !response.body) {
+    if (!response.ok || !/^image\/(jpe?g|png|webp|avif)(?:;|$)/i.test(contentType) || Number(response.headers.get('content-length')) > 8 * 1024 * 1024 || !response.body) {
       response.body?.cancel().catch(() => {});
       throw mediaFault(502, 'Invalid cover response');
     }
@@ -1384,13 +1305,22 @@ async function handleRequest(req, res) {
       if (!sourceUrl) coverUrl = sizedNeteaseCoverUrl(coverUrl, size);
       // 中转图片内容，不能 302 到 CDN：页面截图会因此变成跨域污染，
       // FluidGlass 无法把精选卡片上传到 WebGL 纹理。
-      const upstream = await smartGet(coverUrl, { 'User-Agent': UA, Referer: 'https://music.163.com/' }, 15000);
-      const chunks = [];
-      for await (const chunk of upstream) chunks.push(chunk);
-      const image = Buffer.concat(chunks);
-      if (!image.length) throw new Error('Empty cover response');
+      const controller = new AbortController();
+      const abort = () => controller.abort();
+      res.once('close', abort);
+      let image, contentType;
+      try {
+        const upstream = await requestBuffered(coverUrl, {
+          headers: { 'User-Agent': UA, Referer: 'https://music.163.com/' },
+          timeout: 15000, maxBytes: 8 * 1024 * 1024, signal: controller.signal,
+          acceptType: type => /^image\/(jpe?g|png|webp|avif)(?:;|$)/i.test(type),
+        });
+        image = upstream.body;
+        contentType = upstream.headers['content-type'];
+        if (!image.length) throw mediaFault(502, 'Empty cover response');
+      } finally { res.off('close', abort); }
       res.statusCode = 200;
-      res.setHeader('Content-Type', upstream.headers['content-type'] || 'image/jpeg');
+      res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=604800');
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.end(image);

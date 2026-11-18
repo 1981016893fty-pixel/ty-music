@@ -288,6 +288,21 @@ function loadData() {
   console.log('[Storage]   AlbumFavorites:', state.albumFavorites.size, 'items');
 }
 
+// User references are durable data; only unreferenced browsing metadata is a cache.
+// Keep the existing storage shape so old libraries and exports remain readable.
+function libraryTrackSnapshot(browsingLimit = 500) {
+  const referenced = new Set([...state.favorites].map(String));
+  state.playlists.forEach(playlist => (playlist.tracks || []).forEach(id => referenced.add(String(id))));
+  const available = new Map([...state.trackCache].map(([id, track]) => [String(id), track]));
+  for (const entry of [...state.queue, ...state.recentPlays]) {
+    const id = String(entry.id);
+    if (referenced.has(id) && !available.has(id)) available.set(id, trackFromRecentEntry(entry));
+  }
+  const durable = [...available].filter(([id]) => referenced.has(id));
+  const browsing = [...available].filter(([id]) => !referenced.has(id));
+  return Object.fromEntries([...durable, ...(browsingLimit ? browsing.slice(-browsingLimit) : [])]);
+}
+
 function saveAll() {
   var errors = [];
 
@@ -308,22 +323,20 @@ function saveAll() {
     localStorage.setItem('melodybox_album_fav', JSON.stringify([...state.albumFavorites]));
   } catch(e) { errors.push('albumFavs:' + e.message); }
 
-  // 保存歌曲数据缓存（持久化歌曲标题、歌手、封面等信息）
-  // 限制最大 500 首，防止超出 localStorage 5MB 限额
+  // Never evict metadata still referenced by a favorite or playlist.
   try {
-    var cacheObj = Object.fromEntries(state.trackCache);
-    var keys = Object.keys(cacheObj);
-    if (keys.length > 500) {
-      var trimmed = {};
-      keys.slice(-500).forEach(function(k) { trimmed[k] = cacheObj[k]; });
-      cacheObj = trimmed;
+    try {
+      localStorage.setItem('melodybox_tracks', JSON.stringify(libraryTrackSnapshot()));
+    } catch (error) {
+      if (error.name !== 'QuotaExceededError') throw error;
+      // A smaller snapshot may fit, but it must still include every user reference.
+      localStorage.setItem('melodybox_tracks', JSON.stringify(libraryTrackSnapshot(0)));
     }
-    localStorage.setItem('melodybox_tracks', JSON.stringify(cacheObj));
   } catch(e) {
     errors.push('tracks:' + e.message);
     // localStorage 可能满了
     if (e.name === 'QuotaExceededError') {
-      showToast('存储空间不足，请清理部分数据');
+      showToast('曲库保存失败：存储空间不足，请先导出备份');
     }
   }
 
@@ -960,59 +973,36 @@ function displayAlbumInfo(albumId, albumName) {
 let playbackRequestId = 0;
 let playbackAbortController = null;
 let pendingAudioResolution = 0;
-function playTrack(track, index, skipRecentUpdate) {
-  if (!track) return;
-  const playbackId = ++playbackRequestId;
+let localPlaybackUrl = null;
+const LOCAL_TRACK_COVER = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="200" height="200"%3E%3Crect width="200" height="200" fill="%231a1a1a"/%3E%3Ctext x="50%25" y="55%25" text-anchor="middle" fill="%23666" font-size="80"%3E%E2%99%AB%3C/text%3E%3C/svg%3E';
+function releaseLocalAudio() {
+  if (!localPlaybackUrl) return;
+  URL.revokeObjectURL(localPlaybackUrl);
+  localPlaybackUrl = null;
+}
+
+// Every source crosses the same selection seam before any asynchronous work.
+function beginPlaybackSelection() {
+  const id = ++playbackRequestId;
   playbackAbortController?.abort();
-  const playbackController = new AbortController();
-  playbackAbortController = playbackController;
+  playbackAbortController = new AbortController();
+  pendingAudioResolution = 0;
   audio.pause();
   audio.removeAttribute('src');
   audio.load();
+  releaseLocalAudio();
   state.isPlaying = false;
   clearTimeout(playTimeout);
-  if (index !== undefined) state.queueIndex = index;
-  else if (state.queueIndex < 0) state.queueIndex = state.queue.indexOf(track);
+  return id;
+}
 
-  // 当前播放项始终要切换；skipRecentUpdate 只控制是否写入最近播放记录。
+function presentPlaybackTrack(track) {
+  // Remote and local selections publish the same metadata and lyric reset.
   state.currentTrack = track;
   // 切歌立即废弃上一首的歌词请求和渲染快照，避免异步回调串歌。
   state.lyrics = { lines: [], activeIndex: -1, expanded: false };
   ampLyricsRequestId += 1;
   ampLyricsRenderedFor = null;
-  
-  // 只有 skipRecentUpdate 为 true 时（切歌），才跳过 recentPlays 更新
-  if (!skipRecentUpdate) {
-  
-  // 调试：显示即将播放的歌曲
-  console.log('[PlayTrack] Playing:', track.title, 'by', track.artist, 'album:', track.album);
-  
-  // 关键：在用户手势最前端初始化 AudioContext，确保 resume() 在手势中生效
-  // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
-  cacheTrack(track);
-
-  // Record recent play，最多 30 首，超出清空
-  if (state.recentPlays.length >= 30) state.recentPlays = [];
-  state.recentPlays = state.recentPlays.filter(r => r.id !== track.id);
-  state.recentPlays.unshift({
-    id: track.id, title: track.title, artist: track.artist,
-    album: track.album || '',
-    cover: track.cover || track.coverSmall || '', source: track.source,
-    picId: track.picId || '',
-    providerId: providerTrackId(track),
-    urlId: track.urlId || '',
-    lyricId: track.lyricId || '',
-    albumId: track.albumId || '',
-    isrc: track.isrc || '',
-    previewUrl: track.previewUrl,
-  });
-
-  // 【关键修复】立即同步保存，不依赖异步回调。防止页面关闭时数据丢失
-  saveAll();
-
-  // 实时刷新最近播放列表 UI（如果当前在主页，立刻能看到新歌加到顶部）
-  refreshRecentTracksUI();
-  } // end if (!skipRecentUpdate)
 
   // Update UI
   const coverSrc = track.coverSmall || track.cover || '';
@@ -1023,7 +1013,7 @@ function playTrack(track, index, skipRecentUpdate) {
   playerCoverImg.dataset.name = track.title || '';
   if (coverSrc) {
     playerCoverImg.src = coverSrc;
-    playerCoverImg.onerror = function() { fallbackCover(this); };
+    playerCoverImg.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
   } else {
     // 封面为空，立即触发 fallback
     playerCoverImg.src = '';
@@ -1054,7 +1044,7 @@ function playTrack(track, index, skipRecentUpdate) {
   miniCoverImg.dataset.name = track.title || '';
   if (coverSrc) {
     miniCoverImg.src = coverSrc;
-    miniCoverImg.onerror = function() { fallbackCover(this); };
+    miniCoverImg.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
   } else {
     miniCoverImg.src = '';
     fallbackCover(miniCoverImg);
@@ -1119,6 +1109,56 @@ function playTrack(track, index, skipRecentUpdate) {
   setSliderValue('#progressBar', 0);
   $('#currentTime').textContent = '0:00';
 
+  updateLikeUI();
+  updatePlayBtn();
+  updateQueueHighlight();
+}
+
+function playTrack(track, index, skipRecentUpdate) {
+  if (!track) return;
+  if (track.source === 'local' || String(track.id).startsWith('local_')) {
+    playLocalTrack(track.id);
+    return;
+  }
+  const playbackId = beginPlaybackSelection();
+  const playbackController = playbackAbortController;
+  selectQueueTrack(track);
+
+  presentPlaybackTrack(track);
+
+  // 只有 skipRecentUpdate 为 true 时（切歌），才跳过 recentPlays 更新
+  if (!skipRecentUpdate) {
+
+  // 调试：显示即将播放的歌曲
+  console.log('[PlayTrack] Playing:', track.title, 'by', track.artist, 'album:', track.album);
+
+  // 关键：在用户手势最前端初始化 AudioContext，确保 resume() 在手势中生效
+  // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
+  cacheTrack(track);
+
+  // Record recent play，最多 30 首，超出清空
+  if (state.recentPlays.length >= 30) state.recentPlays = [];
+  state.recentPlays = state.recentPlays.filter(r => r.id !== track.id);
+  state.recentPlays.unshift({
+    id: track.id, title: track.title, artist: track.artist,
+    album: track.album || '',
+    cover: track.cover || track.coverSmall || '', source: track.source,
+    picId: track.picId || '',
+    providerId: providerTrackId(track),
+    urlId: track.urlId || '',
+    lyricId: track.lyricId || '',
+    albumId: track.albumId || '',
+    isrc: track.isrc || '',
+    previewUrl: track.previewUrl,
+  });
+
+  // 【关键修复】立即同步保存，不依赖异步回调。防止页面关闭时数据丢失
+  saveAll();
+
+  // 实时刷新最近播放列表 UI（如果当前在主页，立刻能看到新歌加到顶部）
+  refreshRecentTracksUI();
+  } // end if (!skipRecentUpdate)
+
   if (!track.previewUrl && !track.id) {
     showToast('暂无可用音源');
     return;
@@ -1177,9 +1217,11 @@ function playTrack(track, index, skipRecentUpdate) {
     audio.src = resolveMusicResource(track.previewUrl);
     audio.load();
     audio.play().then(() => {
+      if (playbackId !== playbackRequestId) return;
       state.isPlaying = true;
       updatePlayBtn();
     }).catch((e) => {
+      if (playbackId !== playbackRequestId) return;
       console.warn('Play failed:', e.message);
       showToast('播放失败，请换一首试试');
     });
@@ -1223,15 +1265,21 @@ function updateQueueHighlight() {
 
 function togglePlay() {
   if (!state.currentTrack) return;
+  if (state.currentTrack.source === 'local' && !localPlaybackUrl) {
+    playLocalTrack(state.currentTrack.id);
+    return;
+  }
   if (state.isPlaying) {
     audio.pause();
     state.isPlaying = false;
     updatePlayBtn();
   } else {
+    const playbackId = playbackRequestId;
     audio.play().then(() => {
+      if (playbackId !== playbackRequestId) return;
       state.isPlaying = true;
       updatePlayBtn();
-    }).catch(() => showToast('播放失败'));
+    }).catch(() => { if (playbackId === playbackRequestId) showToast('播放失败'); });
   }
 }
 
@@ -1250,7 +1298,15 @@ audio.addEventListener('play', () => {
 audio.addEventListener('pause', () => { state.isPlaying = false; updatePlayBtn(); syncNativeNowPlaying(); if (ampIsShowing) updateAmpPlayBtn(); });
 audio.addEventListener('ended', () => {
   if (state.repeatMode === 2) { audio.currentTime = 0; audio.play(); }
-  else playNext();
+  else {
+    const endedPlaybackId = playbackRequestId;
+    playNext();
+    if (endedPlaybackId === playbackRequestId) {
+      if (localPlaybackUrl) beginPlaybackSelection();
+      state.isPlaying = false;
+      updatePlayBtn();
+    }
+  }
 });
 
 // Audio progress
@@ -1298,6 +1354,7 @@ audio.addEventListener('error', () => {
   if (!state.currentTrack) return;
   if (pendingAudioResolution === playbackRequestId) return;
   const err = audio.error;
+  if (localPlaybackUrl) beginPlaybackSelection();
   console.warn('Audio error:', err?.code, err?.message, 'track:', state.currentTrack.title);
   if (state.queue.length > 1) {
     showToast('播放失败，自动切换下一首');
@@ -1463,7 +1520,47 @@ $('#volumeBtn').addEventListener('click', () => {
 setVolume(0.7);
 
 // ========== Queue Navigation ==========
-function getQueue() { return state.isShuffled ? state.shuffledQueue : state.queue; }
+function syncQueueOrder() {
+  if (state.isShuffled) {
+    const byId = new Map(state.queue.map(track => [track.id, track]));
+    const order = state.shuffledQueue.filter(track => byId.has(track.id)).map(track => {
+      const current = byId.get(track.id);
+      byId.delete(track.id);
+      return current;
+    });
+    const added = [...byId.values()];
+    for (let i = added.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [added[i], added[j]] = [added[j], added[i]];
+    }
+    state.shuffledQueue = [...order, ...added];
+  }
+  const queue = state.isShuffled ? state.shuffledQueue : state.queue;
+  state.queueIndex = queue.findIndex(track => track.id === state.currentTrack?.id);
+  return queue;
+}
+
+function selectQueueTrack(track) {
+  state.currentTrack = track;
+  syncQueueOrder();
+}
+
+function replaceQueue(tracks) {
+  state.queue = [...tracks];
+  state.shuffledQueue = [];
+  syncQueueOrder();
+}
+
+function toggleShuffle() {
+  state.isShuffled = !state.isShuffled;
+  state.shuffledQueue = [];
+  syncQueueOrder();
+  $('#shuffleBtn')?.classList.toggle('active', state.isShuffled);
+  $('#ampShuffleBtn')?.classList.toggle('active', state.isShuffled);
+  showToast(state.isShuffled ? '随机播放已开启' : '顺序播放');
+}
+
+function getQueue() { return syncQueueOrder(); }
 
 function playNext() {
   var q = getQueue();
@@ -1472,9 +1569,6 @@ function playNext() {
   state.queueIndex = newIdx;
   const nextTrack = q[newIdx];
   playTrack(nextTrack, newIdx, true);
-  if (ampIsShowing) {
-    requestAnimationFrame(() => updateAmpFullscreenPlayer(nextTrack));
-  }
 }
 
 function playPrev() {
@@ -1484,26 +1578,13 @@ function playPrev() {
   state.queueIndex = newIdx;
   const prevTrack = q[newIdx];
   playTrack(prevTrack, newIdx, true);
-  if (ampIsShowing) {
-    requestAnimationFrame(() => updateAmpFullscreenPlayer(prevTrack));
-  }
 }
 
 $('#nextBtn').addEventListener('click', playNext);
 $('#prevBtn').addEventListener('click', playPrev);
 
 // Shuffle
-$('#shuffleBtn').addEventListener('click', () => {
-  state.isShuffled = !state.isShuffled;
-  if (state.isShuffled) {
-    state.shuffledQueue = [...state.queue].sort(() => Math.random() - 0.5);
-    $('#shuffleBtn').classList.add('active');
-    showToast('随机播放已开启');
-  } else {
-    $('#shuffleBtn').classList.remove('active');
-    showToast('顺序播放');
-  }
-});
+$('#shuffleBtn').addEventListener('click', toggleShuffle);
 
 // Repeat
 $('#repeatBtn').addEventListener('click', () => {
@@ -1648,6 +1729,7 @@ function parsePlainLyrics(text, duration) {
 
 // Load lyrics for a track
 async function loadLyrics(track, callback) {
+  if (track.source === 'local') { if (callback) callback([]); return; }
   let lrcText = null;
   let tlyricText = null;
 
@@ -2556,9 +2638,8 @@ function renderFavorites() {
       var id = el.dataset.id;
       var track = state.queue.find(function(t) { return t.id === id; }) || state.trackCache.get(id);
       if (track) {
+        replaceQueue(favs);
         playTrack(track);
-        state.queue = favs;
-        state.queueIndex = favs.indexOf(track);
       }
     });
   });
@@ -2585,7 +2666,7 @@ if (playFavoritesButton) playFavoritesButton.addEventListener('click', function(
     if (track) favoriteTracks.push(track);
   });
   if (!favoriteTracks.length) return;
-  state.queue = favoriteTracks;
+  replaceQueue(favoriteTracks);
   state.queueIndex = 0;
   playTrack(favoriteTracks[0], 0);
 });
@@ -3098,7 +3179,7 @@ function openAmpFullscreenPlayer() {
 window.openNowPlaying = openAmpFullscreenPlayer;
 
 function getActiveTrack() {
-  return state.currentTrack || (state.queueIndex >= 0 ? state.queue[state.queueIndex] : null) || state.queue[0] || null;
+  return state.currentTrack || getQueue()[0] || null;
 }
 
 function closeAmpFullscreenPlayer() {
@@ -3124,7 +3205,7 @@ function updateAmpFullscreenPlayer(trackOverride) {
   
   // 封面 URL（全屏用大图 track.cover，小图用 coverSmall）
   const ampCoverUrl = track.cover || track.coverSmall || '';
-  const primaryArtist = (track.artist || '').split(',')[0].trim();
+  const primaryArtist = track.source === 'local' ? '' : (track.artist || '').split(',')[0].trim();
   const artistPhotoUrl = primaryArtist ? '/api/artist-photo?name=' + encodeURIComponent(primaryArtist) : '';
   // 无直接封面时，优先尝试专辑封面搜索，再退到歌手照片
   const albumCoverUrl = (primaryArtist && track.album) ? '/api/album-cover?artist=' + encodeURIComponent(primaryArtist) + '&album=' + encodeURIComponent(track.album) : '';
@@ -3502,14 +3583,7 @@ function initAmpFullscreenPlayer() {
   // 随机播放
   const shuffleBtn = $('#ampShuffleBtn');
   if (shuffleBtn) {
-    shuffleBtn.addEventListener('click', () => {
-      state.isShuffled = !state.isShuffled;
-      if (state.isShuffled) {
-        state.shuffledQueue = [...state.queue].sort(() => Math.random() - 0.5);
-      }
-      shuffleBtn.classList.toggle('active', state.isShuffled);
-      showToast(state.isShuffled ? '随机播放已开启' : '随机播放已关闭');
-    });
+    shuffleBtn.addEventListener('click', toggleShuffle);
   }
   
   // 循环模式
@@ -3532,7 +3606,7 @@ function initAmpFullscreenPlayer() {
   const likeBtn = $('#ampLikeBtn');
   if (likeBtn) {
     likeBtn.addEventListener('click', () => {
-      const track = state.queue[state.queueIndex];
+      const track = getActiveTrack();
       if (track) {
         toggleFavById(track.id);
         // 更新按钮状态
@@ -3747,7 +3821,7 @@ async function init() {
     artistPlayAllBtn.addEventListener('click', function() {
       if (currentArtistTracks.length) {
         playTrack(currentArtistTracks[0], 0);
-        state.queue = currentArtistTracks;
+        replaceQueue(currentArtistTracks);
         state.queueIndex = 0;
       }
     });
@@ -3858,9 +3932,17 @@ function deleteLocalTrack(id) {
   return new Promise((resolve, reject) => {
     const tx = localMusicDB.transaction(['tracks'], 'readwrite');
     const store = tx.objectStore('tracks');
-    const req = store.delete(id);
-    req.onsuccess = () => resolve();
-    req.onerror = (e) => reject(e);
+    store.delete(id);
+    tx.oncomplete = () => {
+      if (state.currentTrack?.source === 'local' && state.currentTrack.id === id) {
+        beginPlaybackSelection();
+        updatePlayBtn();
+      }
+      replaceQueue(state.queue.filter(track => track.id !== id));
+      resolve();
+    };
+    tx.onabort = () => reject(tx.error || new Error('Local track deletion failed'));
+    tx.onerror = () => reject(tx.error || new Error('Local track deletion failed'));
   });
 }
 
@@ -3933,16 +4015,24 @@ async function extractAudioMetadata(file) {
     const blob = new Blob([arrayBuffer], { type: file.type || 'audio/mpeg' });
     const url = URL.createObjectURL(blob);
     const audioEl = new Audio();
-    audioEl.addEventListener('loadedmetadata', () => {
-      metadata.duration = audioEl.duration;
-      metadata.objectURL = url;
+    let finished = false;
+    function finish(duration) {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      audioEl.removeEventListener('loadedmetadata', onMetadata);
+      audioEl.removeEventListener('error', onError);
+      audioEl.removeAttribute('src');
+      audioEl.load();
+      URL.revokeObjectURL(url);
+      metadata.duration = Number.isFinite(duration) ? duration : 0;
       resolve(metadata);
-    });
-    audioEl.addEventListener('error', () => {
-      metadata.duration = 0;
-      metadata.objectURL = url;
-      resolve(metadata);
-    });
+    }
+    const onMetadata = () => finish(audioEl.duration);
+    const onError = () => finish(0);
+    const timer = setTimeout(onError, 10000);
+    audioEl.addEventListener('loadedmetadata', onMetadata);
+    audioEl.addEventListener('error', onError);
     audioEl.src = url;
   });
 }
@@ -4047,63 +4137,53 @@ async function renderLocalTracks() {
 }
 
 function playLocalTrack(id) {
-  if (!localMusicDB) { openLocalMusicDB().then(() => playLocalTrack(id)); return; }
-  const tx = localMusicDB.transaction(['tracks'], 'readonly');
-  const store = tx.objectStore('tracks');
-  store.get(id).onsuccess = (e) => {
-    const track = e.target.result;
-    if (!track) {
-      showToast('歌曲不存在，可能已被删除');
-      return;
-    }
-
-    // 从 audioData 创建 ObjectURL（持久化，刷新页面后仍可播放）
-    if (track.audioData && track.audioData.byteLength > 0) {
-      try {
-        // 将 ArrayBuffer 转换为 Blob
-        const blob = new Blob([track.audioData], { type: track.fileType || 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-
-        // Local files use a Blob URL and cannot go through playTrack(), but
-        // they still need to publish the same track-change contract so the
-        // two-column fullscreen player never keeps the previous song.
-        state.currentTrack = track;
-        state.lyrics = { lines: [], activeIndex: -1, expanded: false };
-        ampLyricsRequestId += 1;
-        ampLyricsRenderedFor = null;
-        $('#playerTitle').textContent = track.title || '';
-        $('#playerArtist').textContent = track.artist || '';
-        window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
-        if (ampIsShowing) updateAmpFullscreenPlayer(track);
-        
-        audio.src = url;
-        audio.load();
-        audio.play().then(() => {
-          state.isPlaying = true;
-          updatePlayBtn();
-          showToast('正在播放: ' + track.title);
-        }).catch((err) => {
-          console.error('播放失败:', err);
-          showToast('播放失败，请重试');
-        });
-        
-        // 播放结束后释放 URL
-        audio.onended = () => {
-          URL.revokeObjectURL(url);
-        };
-      } catch (err) {
-        console.error('播放本地音乐失败:', err);
-        showToast('播放失败：音频数据损坏，请重新上传');
-      }
-    } else {
-      showToast('无法播放：音频数据丢失，请重新上传该文件');
-    }
-  };
-  
-  store.get(id).onerror = (e) => {
-    console.error('读取本地音乐失败:', e);
-    showToast('读取失败，请刷新页面重试');
-  };
+  const playbackId = beginPlaybackSelection();
+  function fail(message) {
+    if (playbackId !== playbackRequestId) return;
+    releaseLocalAudio();
+    state.isPlaying = false;
+    updatePlayBtn();
+    showToast(message);
+  }
+  function readTrack() {
+    if (playbackId !== playbackRequestId) return;
+    try {
+      const tx = localMusicDB.transaction(['tracks'], 'readonly');
+      const request = tx.objectStore('tracks').get(id);
+      request.onsuccess = e => {
+        if (playbackId !== playbackRequestId) return;
+        const stored = e.target.result;
+        if (!stored) { fail('歌曲不存在，可能已被删除'); return; }
+        if (!stored.audioData?.byteLength) { fail('无法播放：音频数据丢失，请重新上传该文件'); return; }
+        try {
+          const { audioData, ...metadata } = stored;
+          const track = { ...metadata, source: 'local', cover: LOCAL_TRACK_COVER, coverSmall: LOCAL_TRACK_COVER };
+          const blob = new Blob([audioData], { type: stored.fileType || 'audio/mpeg' });
+          localPlaybackUrl = URL.createObjectURL(blob);
+          if (!state.queue.some(item => item.id === track.id)) state.queue.push(track);
+          selectQueueTrack(track);
+          presentPlaybackTrack(track);
+          audio.src = localPlaybackUrl;
+          audio.load();
+          audio.play().then(() => {
+            if (playbackId !== playbackRequestId) return;
+            state.isPlaying = true;
+            updatePlayBtn();
+            showToast('正在播放: ' + track.title);
+          }).catch(error => {
+            if (playbackId !== playbackRequestId) return;
+            // Permission rejection is retryable from the play button.
+            if (error.name === 'NotAllowedError') showToast('请点击播放按钮继续播放');
+            else fail('播放失败，请重试');
+          });
+        } catch (_) { fail('播放失败：音频数据损坏，请重新上传'); }
+      };
+      request.onerror = () => fail('读取失败，请刷新页面重试');
+      tx.onabort = () => fail('读取失败，请刷新页面重试');
+    } catch (_) { fail('读取失败，请刷新页面重试'); }
+  }
+  if (localMusicDB) readTrack();
+  else openLocalMusicDB().then(readTrack).catch(() => fail('读取失败，请刷新页面重试'));
 }
 
 // 更新存储信息显示
@@ -4334,7 +4414,7 @@ function renderAlbumTracks(tracks) {
       var track = tracks[idx];
       if (track) {
         playTrack(track, idx);
-        state.queue = tracks;
+        replaceQueue(tracks);
         state.queueIndex = idx;
       }
     });
@@ -4558,7 +4638,7 @@ function playAlbumAll() {
   if (!currentAlbumTracks.length) return;
   var track = currentAlbumTracks[0];
   playTrack(track, 0);
-  state.queue = currentAlbumTracks;
+  replaceQueue(currentAlbumTracks);
   state.queueIndex = 0;
 }
 
@@ -5113,8 +5193,12 @@ let cfDragStartOffset = 0;
 let cfLastX = 0;
 let cfLastTime = 0;
 let cfAnimId = null;
+let cfRunning = false;
 let cfItems = {};
 let cfReflections = {};
+let cfSpines = {};
+let cfVisibleStart = 0;
+let cfVisibleEnd = -1;
 let cfHoverTimer = null;
 let cfActiveIndex = -1;
 let cfCleanupHandlers = [];
@@ -5183,6 +5267,9 @@ function cfBuildStage() {
   hint.style.opacity = '0';
   cfItems = {};
   cfReflections = {};
+  cfSpines = {};
+  cfVisibleStart = 0;
+  cfVisibleEnd = -1;
   cfSnapTarget = null;
   cfSpringVelocity = 0;
   
@@ -5210,6 +5297,7 @@ function cfBuildStage() {
     // ---- 实体专辑封套 (vinyl sleeve) ----
     const item = document.createElement('div');
     item.className = 'cf-item';
+    item.style.display = 'none';
     item.dataset.index = i;
     item.dataset.albumId = albumId;
     item.dataset.coverLarge = coverLarge; // 保存大图 URL
@@ -5262,10 +5350,12 @@ function cfBuildStage() {
     });
     stage.appendChild(item);
     cfItems[i] = item;
+    cfSpines[i] = [spineR, spineL, spineT, spineB];
     
     // 倒影（用高清大图，和正面保持同步）
     const ref = document.createElement('div');
     ref.className = 'cf-reflection-item';
+    ref.style.display = 'none';
     ref.dataset.coverLarge = coverLarge;
     ref.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
     reflection.appendChild(ref);
@@ -5275,6 +5365,7 @@ function cfBuildStage() {
   cfOffset = Math.floor(cfAlbums.length / 2);
   cfActiveIndex = Math.round(cfOffset);
   cfUpdateInfo();
+  cfWake();
 }
 
 function cfOpenAlbum(albumId) {
@@ -5291,6 +5382,7 @@ function cfSnapTo(index) {
   cfSpringVelocity = Math.max(-10, Math.min(10, cfVelocity * 60));
   cfVelocity = 0;
   cfDragging = false;
+  cfWake();
 }
 
 function cfUpdateInfo() {
@@ -5330,19 +5422,22 @@ function cfRender(dt = 1 / 60) {
   }
   if (!cfDragging) cfOffset = Math.max(0, Math.min(cfAlbums.length - 1, cfOffset));
   
-  // 渲染每个 item
-  for (let i = 0; i < cfAlbums.length; i++) {
+  // Only the visible rail and the items leaving it need DOM updates.
+  const first = Math.max(0, Math.ceil(cfOffset - CF_RANGE));
+  const last = Math.min(cfAlbums.length - 1, Math.floor(cfOffset + CF_RANGE));
+  for (let i = cfVisibleStart; i <= cfVisibleEnd; i++) {
+    if (i >= first && i <= last) continue;
+    cfItems[i].style.display = 'none';
+    if (cfReflections[i]) cfReflections[i].style.display = 'none';
+  }
+  cfVisibleStart = first;
+  cfVisibleEnd = last;
+  for (let i = first; i <= last; i++) {
     const dist = i - cfOffset;
     const absDist = Math.abs(dist);
     const item = cfItems[i];
     const ref = cfReflections[i];
     if (!item) continue;
-    
-    if (absDist > CF_RANGE) {
-      item.style.display = 'none';
-      if (ref) ref.style.display = 'none';
-      continue;
-    }
     
     item.style.display = '';
     if (ref) ref.style.display = '';
@@ -5371,8 +5466,7 @@ function cfRender(dt = 1 / 60) {
     
     // 脊的模糊随角度增大，正面完全隐藏
     const spineOpacity = Math.max(0, Math.min(1, (absDist - 0.08) / 0.45));
-    const spines = item.querySelectorAll('.cf-spine');
-    spines.forEach(s => {
+    cfSpines[i].forEach(s => {
       s.style.opacity = spineOpacity.toFixed(3);
     });
     
@@ -5394,26 +5488,40 @@ function cfRender(dt = 1 / 60) {
   cfUpdateInfo();
 }
 
+function cfWake() {
+  // Input/data/resize request one frame; only a moving spring keeps drawing.
+  if (!cfRunning || document.hidden || state.currentPage !== 'album-favorites' || cfAnimId !== null) return;
+  cfAnimId = requestAnimationFrame(cfLoop);
+}
+
 function cfLoop(time) {
+  cfAnimId = null;
+  if (!cfRunning || document.hidden || state.currentPage !== 'album-favorites') return;
   if (!cfLastFrameTime) cfLastFrameTime = time;
   const dt = Math.min(0.032, Math.max(0.001, (time - cfLastFrameTime) / 1000));
   cfLastFrameTime = time;
   cfRender(dt);
-  cfAnimId = requestAnimationFrame(cfLoop);
+  if (cfSnapTarget !== null) cfWake();
+  else cfLastFrameTime = 0;
 }
 
 function cfStart() {
+  cfRunning = true;
   cfLoadAlbums();
   cfBuildStage();
   cfActiveIndex = -1;
   cfLastFrameTime = 0;
-  cfAnimId = requestAnimationFrame(cfLoop);
+  cfWake();
   cfBindMouse();
 }
 
 function cfStop() {
-  if (cfAnimId) { cancelAnimationFrame(cfAnimId); cfAnimId = null; }
+  cfRunning = false;
+  if (cfAnimId !== null) { cancelAnimationFrame(cfAnimId); cfAnimId = null; }
   cfUnbindMouse();
+  const container = document.getElementById('coverFlowContainer');
+  if (cfPointerId !== null && container?.hasPointerCapture?.(cfPointerId)) container.releasePointerCapture(cfPointerId);
+  if (container) container.style.cursor = '';
   cfDragging = false;
   cfPointerId = null;
   cfVelocity = 0;
@@ -5464,6 +5572,7 @@ function cfBindMouse() {
     if (cfOffset > cfAlbums.length - 1) {
       cfOffset = cfAlbums.length - 1 + cfRubberband(cfOffset - (cfAlbums.length - 1), 1, 0.42);
     }
+    cfWake();
     e.preventDefault();
   };
 
@@ -5477,6 +5586,7 @@ function cfBindMouse() {
     cfSnapTarget = Math.max(0, Math.min(cfAlbums.length - 1, Math.round(projected)));
     cfSpringVelocity = Math.max(-10, Math.min(10, cfVelocity * 60));
     cfVelocity = 0;
+    cfWake();
     // 如果几乎没有拖动，触发点击当前居中专辑
     if (!cfDragMoved) {
       const idx = Math.round(cfOffset);
@@ -5489,15 +5599,32 @@ function cfBindMouse() {
   };
 
   const onCancel = onUp;
+  const onVisibility = () => {
+    if (document.hidden) {
+      if (cfAnimId !== null) { cancelAnimationFrame(cfAnimId); cfAnimId = null; }
+      cfLastFrameTime = 0;
+      if (cfDragging) {
+        if (container.hasPointerCapture?.(cfPointerId)) container.releasePointerCapture(cfPointerId);
+        container.style.cursor = '';
+        cfPointerId = null;
+        cfVelocity = 0;
+        cfSnapTo(Math.round(cfOffset));
+      }
+    } else cfWake();
+  };
   container.addEventListener('pointerdown', onDown);
   container.addEventListener('pointermove', onMove);
   container.addEventListener('pointerup', onUp);
   container.addEventListener('pointercancel', onCancel);
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('resize', cfWake);
   cfCleanupHandlers = [
     { el: container, type: 'pointerdown', fn: onDown },
     { el: container, type: 'pointermove', fn: onMove },
     { el: container, type: 'pointerup', fn: onUp },
     { el: container, type: 'pointercancel', fn: onCancel },
+    { el: document, type: 'visibilitychange', fn: onVisibility },
+    { el: window, type: 'resize', fn: cfWake },
   ];
 }
 

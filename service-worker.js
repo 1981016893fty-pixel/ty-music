@@ -4,17 +4,19 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v50-cloudflare';
-const APP_SHELL = '/index.html?v=20261118-cloudflare-v50';
+const CACHE_NAME = 'ty-music-v53-quality';
+// Pages redirects /index.html to /. A redirected cached response is invalid
+// for a browser navigation whose redirect mode is manual.
+const APP_SHELL = '/?v=20261118-quality-v53';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261118-cloudflare-v50',
-  '/player.js?v=20261118-cloudflare-v50',
-  '/gd-embeat-core.js?v=20261118-cloudflare-v50',
-  '/browser-provider.js?v=20261118-cloudflare-v50',
-  '/search-session.js?v=20261118-cloudflare-v50',
-  '/soft-aurora-react.js?v=20261118-cloudflare-v50',
-  '/soft-aurora-react.css?v=20261118-cloudflare-v50',
+  '/style.css?v=20261118-quality-v53',
+  '/player.js?v=20261118-quality-v53',
+  '/gd-embeat-core.js?v=20261118-quality-v53',
+  '/browser-provider.js?v=20261118-quality-v53',
+  '/search-session.js?v=20261118-quality-v53',
+  '/soft-aurora-react.js?v=20261118-quality-v53',
+  '/soft-aurora-react.css?v=20261118-quality-v53',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -24,7 +26,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v50...');
+  console.log('[SW] Installing v53...');
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
@@ -39,7 +41,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v50');
+  console.log('[SW] Activated v53');
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
@@ -61,7 +63,7 @@ self.addEventListener('fetch', event => {
   if (event.request.mode === 'navigate' && url.origin === self.location.origin && ['/', '/index.html'].includes(url.pathname)) {
     const refresh = fetchAndCache(event.request);
     event.waitUntil(refresh.catch(() => {}));
-    event.respondWith(caches.match(event.request).then(cached => cached || caches.match(APP_SHELL)).then(cached => cached || refresh));
+    event.respondWith(navigationResponse(event.request, refresh));
     return;
   }
 
@@ -129,16 +131,31 @@ self.addEventListener('fetch', event => {
         if (cached) return cached;
         // 如果连缓存也没有（离线且没有预缓存），返回离线提示
         if (url.pathname === '/' || url.pathname === '/index.html') {
-          return new Response(
-            '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>离线</title></head><body style="font-family:sans-serif;background:#000;color:#fff;text-align:center;padding:40px 20px"><h1>当前处于离线状态</h1><p>TY Music 需要网络连接才能播放歌曲。</p><button onclick="location.reload()" style="padding:12px 24px;border:none;border-radius:24px;background:linear-gradient(90deg,#b44dff,#ff4da6,#00d4ff);color:#fff;font-size:16px">重新加载</button></body></html>',
-            { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-          );
+          return offlineResponse();
         }
         throw err;
       });
     })
   );
 });
+
+async function navigationResponse(request, refresh) {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    for (const key of [request, APP_SHELL]) {
+      const cached = await cache.match(key);
+      if (cached?.ok && !cached.redirected) return cached;
+    }
+  } catch (_) { /* Cache storage may be unavailable; the network still works. */ }
+  try { return await refresh; } catch (_) { return offlineResponse(); }
+}
+
+function offlineResponse() {
+  return new Response(
+    '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>离线</title></head><body style="font-family:sans-serif;background:#000;color:#fff;text-align:center;padding:40px 20px"><h1>当前处于离线状态</h1><p>TY Music 需要网络连接才能播放歌曲。</p><button onclick="location.reload()" style="padding:12px 24px;border:none;border-radius:24px;background:linear-gradient(90deg,#b44dff,#ff4da6,#00d4ff);color:#fff;font-size:16px">重新加载</button></body></html>',
+    { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+  );
+}
 
 // 辅助函数：获取并更新缓存
 function fetchAndCache(request) {
