@@ -4,7 +4,10 @@ const https = require('node:https');
 let requests = 0;
 const upstream = http.createServer((req, res) => {
   requests++;
-  if (process.env.RESILIENCE_FIXTURE === 'lyric-truncated' && requests === 1) {
+  if (process.env.RESILIENCE_FIXTURE === 'artist-photo') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ result: { artists: [{ picUrl: 'https://p1.music.126.net/photo/artist.jpg' }] } }));
+  } else if (process.env.RESILIENCE_FIXTURE === 'lyric-truncated' && requests === 1) {
     res.write('{"lyric":'); setImmediate(() => res.destroy());
   } else if (['lyric-recover', 'lyric-truncated'].includes(process.env.RESILIENCE_FIXTURE)) {
     res.setHeader('Content-Type', 'application/json');

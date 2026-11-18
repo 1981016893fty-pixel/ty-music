@@ -10,7 +10,7 @@ async function app(mode, run) {
   child.stdout.resume(); child.stderr.resume();
   try {
     const [{ port }] = await once(child, 'message', { signal: AbortSignal.timeout(5000) });
-    await run(path => fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(3000) }));
+    await run((path, init = {}) => fetch(`http://127.0.0.1:${port}${path}`, { signal: AbortSignal.timeout(3000), ...init }));
   } finally {
     if (child.exitCode === null && child.signalCode === null) { const done = once(child, 'exit'); child.kill(); await done; }
   }
@@ -20,6 +20,16 @@ for (const mode of ['lyric-recover', 'lyric-truncated']) test(`${mode}: failed l
   const recovered = await get('/api/music/lyric?id=42');
   assert.equal(recovered.status, 200);
   assert.equal((await recovered.json()).lrc, '[00:01]Recovered');
+}));
+test('artist photos honor card dimensions while unqualified detail photos retain the source resolution', async () => app('artist-photo', async get => {
+  const card = await get('/api/artist-photo?name=IU&size=640', { redirect: 'manual' });
+  assert.equal(card.status, 302);
+  assert.equal(new URL(card.headers.get('location')).searchParams.get('param'), '640y640');
+  assert.equal(card.headers.get('cache-control'), 'public, max-age=604800');
+  const detail = await get('/api/artist-photo?name=IU', { redirect: 'manual' });
+  assert.equal(detail.status, 302);
+  assert.equal(new URL(detail.headers.get('location')).searchParams.has('param'), false);
+  for (const size of ['bad', '640px', '']) assert.equal((await get(`/api/artist-photo?name=IU&size=${size}`, { redirect: 'manual' })).status, 400, size);
 }));
 test('valid explicitly empty lyrics remain a successful empty result', async () => app('lyric-empty', async get => {
   const response = await get('/api/music/lyric?id=42');

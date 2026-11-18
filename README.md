@@ -6,7 +6,7 @@
 
 ## 部署
 
-目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度，不引入 InsForge 或数据库。构建 `npm run build:pages`，完整运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)；实时交付状态见[维护指南](docs/maintenance.md#工程质量修复v53)。
+目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度，不引入 InsForge 或数据库。构建 `npm run build:pages`，完整运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)；当前图片加载修复及交付状态见[维护指南](docs/maintenance.md#封面与图片加载优化v54)。
 
 换域名不会自动迁移个人曲库。请在原浏览器旧站打开 `/library-transfer.html` 导出，再在新站同名页面预览合并；音频与收藏留在本机，迁移工具不上传资料。旧服务退役以数据导出和新站验收完成为条件。
 
@@ -37,14 +37,14 @@ GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz PORT=18899 npm start
 
 ## 验证与开发
 
-本轮已修复曲库引用元数据裁剪、远端／本地播放竞态、旧请求生命周期与 Cover Flow 静止绘制问题。范围、回归证据和后续发布契约风险见[工程质量审查](docs/quality-audit.md)及[维护指南](docs/maintenance.md#工程质量修复v53)。
+本轮已修复曲库引用元数据裁剪、远端／本地播放竞态、旧请求生命周期与 Cover Flow 静止绘制问题。首页分类图改为请求 640px 艺人照片，Workers 显式缓存成功图片响应；Service Worker 对封面缓存优先并按 `max-age` 到期回源，详情页未指定尺寸时保留原分辨率。维护入口、回归证据和当前发布状态见[维护指南](docs/maintenance.md#封面与图片加载优化v54)及[工程质量审查](docs/quality-audit.md)。
 
 ```sh
 npm test
 npm run build:aurora
 ```
 
-`npm test` 覆盖曲库保留与存储额度、播放／随机队列／本地 Blob 生命周期、上游慢流／断流／体积及缓存上限、Cover Flow 静止停帧，以及搜索 HTTP 边界、客户端请求竞态、缓存策略（含Pages重定向与导航失败兜底）、场景生命周期、首页12个流派入口的显示与详情回调，以及已有播放器/动效回归检查，外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
+`npm test` 覆盖曲库保留与存储额度、播放／随机队列／本地 Blob 生命周期、上游慢流／断流／体积及缓存上限、Cover Flow 静止停帧，以及搜索 HTTP 边界、客户端请求竞态、封面缓存命中与失败兜底、艺人照片尺寸与 Worker 边缘缓存、缓存策略（含 Pages 重定向与导航失败兜底）、场景生命周期、首页 12 个流派入口显示与详情回调，以及已有播放器／动效回归检查；外部搜索传输由测试夹具控制。`npm run test:data` 是单独的联网音乐数据检查，会受外部服务限制。CI 使用 Node.js 22，并检查入口脚本、样式及 `assets/aurora/` 分块与已提交文件一致。测试子进程显式隔离生产连接主机变量，避免误请求真实音源。
 
 双源游标、取消和超时集中在 `search-session.js`；`browser-provider.js` 负责浏览器搜索和资源解析，`gd-embeat-core.js` 与 Node 共用签名协议，`player.js` 负责显示及播放。脚本必须随静态路由、service worker 与桌面复制清单一起更新。网页直接使用访问者网络请求 GD 网易云目录与 Embeat 网站，网易直连失败才回退服务端；VPN 可能改变补充结果，无需手动切源或检测 VPN。只有服务端回退使用 Workers 出口。
 
@@ -56,6 +56,6 @@ npm run build:aurora
 
 收藏、歌单和最近播放保存在当前浏览器的本地存储，本地音频保存在 IndexedDB；没有账号同步。清除站点数据会影响这些内容，请先参考[维护说明](docs/maintenance.md)。搜索、歌曲信息和在线播放依赖外部音乐服务，可能受版权、地域、限流、提供方规则及部署平台／网络延迟影响。第三方服务与媒体的分发授权尚未在本仓库建立，本项目不代表对其作出授权承诺；仓库未声明软件开源许可证。
 
-以下为 Render 历史验收记录；当前 Cloudflare 状态以维护指南为准。2026-11-17 v49 动效负载优化已部署，保留现有效果；当次 ego lite 首页动画回调 CPU 约减少39%，不代表整机温度同比下降，详见维护说明的测量边界。此前 v48 已合并并部署至[旧站](https://ty-music.onrender.com)，ego lite 真实页面已验证网易云20首＋Embeat20首、Embeat原曲起播／封面／39行歌词、拖动后歌词高亮，以及补充源阻断时保留20首基础结果。校时和歌曲时长兼容上游秒／毫秒差异；播放不使用同名异曲模糊替换。Render Free 控制台确认存在闲置休眠：缓存过的返访界面优先显示，首次无缓存访问仍可能等待唤醒。此前生产服务端受 GD 校时 HTTP 403 阻塞，v48 网页改从访问者网络直连；上游仍可能波动。最新 PR、CI、部署及验收边界以[维护说明的当前状态](docs/maintenance.md#工程质量修复v53)为准，不据此承诺全目录可用、Safari 60fps 或消除平台冷启动。
+以下为 Render 历史验收记录；当前 Cloudflare 状态以维护指南为准。2026-11-17 v49 动效负载优化已部署，保留现有效果；当次 ego lite 首页动画回调 CPU 约减少39%，不代表整机温度同比下降，详见维护说明的测量边界。此前 v48 已合并并部署至[旧站](https://ty-music.onrender.com)，ego lite 真实页面已验证网易云20首＋Embeat20首、Embeat原曲起播／封面／39行歌词、拖动后歌词高亮，以及补充源阻断时保留20首基础结果。校时和歌曲时长兼容上游秒／毫秒差异；播放不使用同名异曲模糊替换。Render Free 控制台确认存在闲置休眠：缓存过的返访界面优先显示，首次无缓存访问仍可能等待唤醒。此前生产服务端受 GD 校时 HTTP 403 阻塞，v48 网页改从访问者网络直连；上游仍可能波动。最新 PR、CI、部署及验收边界以[维护说明的当前状态](docs/maintenance.md#封面与图片加载优化v54)为准，不据此承诺全目录可用、Safari 60fps 或消除平台冷启动。
 
 详细的接口契约、排障、数据位置、验证状态和回退步骤见[维护说明](docs/maintenance.md)。[API 入口说明](README_API.md)提供常用请求示例。

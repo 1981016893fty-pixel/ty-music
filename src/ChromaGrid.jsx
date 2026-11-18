@@ -22,7 +22,7 @@ export default function ChromaGrid({ onGenreClick }) {
   }, []);
   return <div ref={rootRef} className="chroma-grid" style={{ '--cols': 4, '--r': '220px' }}>
     {GENRES.map(([title, id, borderColor, gradient, artist]) => <article key={id} className="chroma-card" onMouseMove={event => { const r = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mouse-x', `${event.clientX - r.left}px`); event.currentTarget.style.setProperty('--mouse-y', `${event.clientY - r.top}px`); }} onClick={() => onGenreClick?.(id)} style={{ '--card-border': borderColor, '--card-gradient': gradient, cursor: 'pointer' }}>
-      <div className="chroma-img-wrapper" aria-hidden="true"><img src={`/api/artist-photo?name=${encodeURIComponent(artist)}`} alt="" loading="lazy" /></div>
+      <div className="chroma-img-wrapper" aria-hidden="true"><img src={`/api/artist-photo?name=${encodeURIComponent(artist)}&size=640`} alt="" loading="lazy" decoding="async" /></div>
       <footer className="chroma-info"><h3 className="name">{title}</h3><p className="role">探索此流派</p></footer>
     </article>)}
     <div className="chroma-overlay" /><div ref={fadeRef} className="chroma-fade" />

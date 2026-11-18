@@ -1,5 +1,23 @@
 # TY Music 维护指南
 
+## 封面与图片加载优化（v54）
+
+首页 12 个流派卡片此前请求艺人全尺寸原图。同一张 IU 照片的 2500px 原图约 453,907 bytes，网易云 `640y640` 版本约 51,737 bytes，卡片图片字节减少约 88.6%；卡片仍使用原有裁切和样式。详情入口不带 `size` 时继续返回源分辨率。
+
+`src/ChromaGrid.jsx` 为卡片请求 640px 并启用异步解码；`server-simple.js#/api/artist-photo` 只在收到尺寸参数时应用网易云 CDN 尺寸。在线 API 仍以 302 交付艺人图。Cloudflare Cache API 仅缓存白名单图片路由的有效图片响应和发往网易云图片 CDN 的艺人图 302，读写失败时回源。各变体按完整请求 URL 区分；搜索、播放、歌词和目录 JSON 不进入此缓存。
+
+`service-worker.js` 将 `/api/cover`、`/api/music/cover`、`/api/artist-photo` 从目录 stale-while-revalidate 分流，不再命中后后台刷新。CacheStorage 仅保存带正 `public, max-age` 和 `Date` 的同源图片，按期限命中并回源；opaque 艺人图 302 和无期限的默认 SVG 不存入本地缓存，艺人图重复请求由 Worker 边缘缓存处理。冷请求先返回图片，缓存写入失败不会挡住网络响应。`index.html` 更新 Service Worker 注册版本以安装该策略，同时复用既有缓存，不删除本机缓存或个人资料。
+
+本地验证：`npm test`（175 项 Node 测试、Pages 构建检查及播放器／动效脚本）；`node scripts/verify-deployment.mjs http://localhost:8793 --network`；Wrangler 本地 Worker 对同一封面复测显示 111ms→5ms、同一艺人 640px 图片 232ms→7ms，第二次 `CF-Cache-Status: HIT`；搜索连续两次未缓存。ego lite 本地 Pages 页面 12 张流派图全部解码为 640px 宽；CacheStorage 只留有明确期限的图片，艺人图重复加载由边缘缓存命中。这些时间来自本机，不代表生产环境或所有网络的延迟承诺。
+
+后续更改：卡片像素预算从 `src/ChromaGrid.jsx` 的 `size=640` 修改；URL 尺寸上限及 CDN 主机验证在 `server-simple.js#sizedNeteaseCoverUrl`；Worker 缓存路由在 `cloudflare/worker.mjs#artworkPaths`；浏览器策略在 `service-worker.js` 图片 API 分支。运行 `npm test`、`npm run build:pages` 与真实 Wrangler Pages 网络检查。回退可还原这些文件及 `index.html` 注册版本；不需要数据迁移、环境变量或依赖安装。剩余风险：首次下载仍受用户网络、图片 CDN 与 Workers 冷启动影响；Cloudflare 每个边缘位置的缓存需该位置首次请求后预热；Safari 真机尚未单独验收。
+
+| 阶段 | 状态 |
+| --- | --- |
+| 实现与本地验证 | 完成；`npm test` 175 项及真实 Wrangler 网络、ego lite 页面检查通过 |
+| GitHub 分支／PR 与 CI | 待提交 |
+| 合并、生产部署与线上复测 | 待 PR 合并后按既有授权执行 |
+
 ## 工程质量审查入口
 
 [2026-11-18 工程质量审查与最小整改候选](quality-audit.md)记录基线 `e109377` 的已复现缺陷、维护风险、验证边界及候选 A–E。候选 A–D 已按用户授权实施并通过本地验证；候选 E（F10 发布／页面契约）仍是后续维护风险。不能把局部审查和测试通过表述为全仓库认证。
