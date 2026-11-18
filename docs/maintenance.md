@@ -14,7 +14,7 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 | 本地验证 | npm test：125项node:test、1项Pages构建检查与播放器／动效脚本通过；真实workerd搜索、302、Range206通过 |
 | 远端CI | 应用提交2726f89的[Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44239616058)通过，含真实Workers运行检查 |
 | 正式部署 | [ty-music.pages.dev](https://ty-music.pages.dev)，部署502707f8，应用提交2726f89ff3ac1a6b5afb2565a4c08555ae0bd34e；生产并发搜索／封面／302／Range206通过；ego lite真实Blinding Lights起播，时长200.046秒；歌词API返回原词及译词，歌词UI未完成验证 |
-| PR／合并 | 分支codex/cloudflare-migration已推送；GitHub PR创建报错、网络不稳定，尚未建PR或合并；生产直接部署已验证任务提交，不代表main已更新 |
+| PR／合并 | [PR #6](https://github.com/1981016893fty-pixel/ty-music/pull/6) 已建立，合并状态以 PR 为准；文档提交735f463的 [Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44242736241)通过。生产应用提交与文档提交分开记录 |
 | Render／Safari曲库 | 旧站工具已随2726f89发布，[Render部署](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbuitoojo6nc73a84h50)成功；[旧站导出](https://ty-music.onrender.com/library-transfer.html)可用。服务仍保留，AutoDeploy为Off；待Safari导入新站验收后退役 |
 
 独立复审发现并已修复大音频Base64重复正则耗尽栈的问题，5MiB真实字节往返通过。浏览器下载、跨测试origin预览不写入、IndexedDB导入后音频字节一致已验证。Workers生产CPU／内存完整指标、Safari个人曲库和全部第三方目录尚未验证。
@@ -47,13 +47,13 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 基础网易云按两个官方端点→GD 公开网易云目录顺序尝试，共用 12 秒预算、每次最多 4 秒；官方合法空结果直接返回，不以别的歌曲替换。GD 分页将 offset 换算为页与页内偏移，未知总数保持 `null`。Embeat 每次网站请求总预算 12 秒，含最多 4 秒校时与一次 401 后刷新重试；校时兼容 10 位 Unix 秒与 13 位毫秒，用单调时钟推进。新查询与清空同时取消两路，旧响应、异常与 finally 均不得修改新会话。补充失败下一次查询会重新尝试，不把一次不可用永久锁死。
 
-这套规则按实际请求可用性运行，不检测 VPN。网页搜索优先从浏览器直连 GD，使用访问者当前网络；VPN 可能改变补充结果。网易直连失败回退服务端；这条回退仍使用 Render 出口。不能把本地“开 VPN 成功”当作线上可用证据，也不自动添加第三方代理或付费资源。
+这套规则按实际请求可用性运行，不检测 VPN。网页搜索优先从浏览器直连 GD，使用访问者当前网络；VPN 可能改变补充结果。网易直连失败回退服务端；Cloudflare 生产站的回退使用 Workers 出口。不能把本地“开 VPN 成功”当作线上可用证据，也不自动添加第三方代理或付费资源。
 
 成功返回 `{songs,total,hasMore,nextOffset}`；Embeat `total` 保持 `null`，前端使用 `hasMore` 和 `nextOffset`，不能伪造总数。有效空结果为 200；无效参数为 400，上游错误通常为 502，限流可为 429，超时为 504。错误体使用适用的 `error`/`code`，不要绑定旧网易云错误码。封面和时长缺失不应丢弃真实歌曲，也不能把故障伪装成“无歌曲”。
 
-搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261117-thermal-v49`，service worker 名称是 `ty-music-v49-thermal`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
+搜索绕过前端内存缓存、桌面持久 API 缓存以及 service worker 缓存，响应使用 `no-store`。当前资源 URL 标记是 `20261118-cloudflare-v50`，service worker 名称是 `ty-music-v50-cloudflare`；`search-session.js` 在 `player.js` 前 defer 加载，已纳入静态路由、预缓存及桌面复制清单。以后更新须同步这些位置，并运行缓存与真实静态 HTTP 回归检查。
 
-遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；Render 可能冷启动。确认服务重启与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
+遇到故障先查看 `/api/health`，再查看请求状态、部署提交和日志的上游类别/耗时。健康检查通过不代表提供方可访问；分别核对 Workers 响应与上游状态。确认部署提交与 service worker 更新后重试，勿把清空整个浏览器缓存或站点数据作为默认修复。日志和共享材料不要包含原始用户查询、Cookie 或个人曲库。
 
 ## Embeat 协议维护与残余风险
 
@@ -129,7 +129,7 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 当前浏览器 origin 的 `localStorage` 使用 `melodybox_fav`（收藏）、`melodybox_pl`（歌单）、`melodybox_rec`（最近播放）、`melodybox_album_fav`、`melodybox_tracks` 与 `melodybox_album_<ID>`；布局还有 `ty-sidebar-collapsed`、`ty-player-collapsed`。桌面目录缓存前缀为 `ty-music-api-cache:`。本地音频存储在 IndexedDB 数据库 `melodybox_local` 的 `tracks` 对象仓库，不是服务器备份。端口或域名变化会改变浏览器存储 origin。
 
-升级通常保留这些数据；回归测试不应删除真实浏览器资料。清除站点数据、删除 IndexedDB 或卸载桌面端可能丢失个人内容。需要迁移/备份时先保留原始音频，并单独导出/备份相关浏览器存储，再验证恢复；当前没有经本次验证的一键完整备份流程。不得把删除全部浏览器资料当成缓存排障步骤。
+升级通常保留这些数据；回归测试不应删除真实浏览器资料。清除站点数据、删除 IndexedDB 或卸载桌面端可能丢失个人内容。需要迁移/备份时先保留原始音频，并单独导出/备份相关浏览器存储，再验证恢复。当前 `library-transfer.html` 工具可导出上述曲库元数据和完整本地音频，经预览后合并导入；布局、离线缓存及桌面目录缓存不迁移。工具已通过合成曲库与5MiB音频往返测试，个人 Safari 曲库仍需实际验收。不得把删除全部浏览器资料当成缓存排障步骤。
 
 ## 验证与交付状态
 
