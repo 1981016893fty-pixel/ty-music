@@ -1363,10 +1363,21 @@ async function handleRequest(req, res) {
         res.end(Buffer.from(DEFAULT_COVER.split(',')[1], 'base64'));
         return;
       }
-      
-      // 302 重定向到 CDN 直链，不经过服务器中转
+      const rawSize = params.get('size');
+      if (rawSize !== null) {
+        if (!/^\d+$/.test(rawSize)) {
+          res.statusCode = 400;
+          res.end(JSON.stringify({ error: 'Invalid size' }));
+          return;
+        }
+        const requestedSize = Number(rawSize);
+        const size = Math.max(50, Math.min(2000, requestedSize));
+        res.setHeader('Location', sizedNeteaseCoverUrl(photoUrl, size));
+      } else {
+        // 302 重定向到 CDN 直链，不经过服务器中转
+        res.setHeader('Location', photoUrl);
+      }
       res.statusCode = 302;
-      res.setHeader('Location', photoUrl);
       res.setHeader('Cache-Control', 'public, max-age=604800');
       res.end();
     } catch (e) {

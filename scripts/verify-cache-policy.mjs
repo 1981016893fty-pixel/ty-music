@@ -45,6 +45,159 @@ test('search and health bypass even a previously cached response', () => {
   }
 });
 
+test('cached artwork API responses return without a background network refresh', async () => {
+  const handlers = {};
+  let networkCalls = 0;
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => { networkCalls++; return new Response('fresh-image', { headers: { 'content-type': 'image/jpeg' } }); },
+    caches: { open: async () => ({ match: async () => new Response('cached-image', { headers: {
+      'content-type': 'image/jpeg', 'cache-control': 'public, max-age=604800', date: new Date().toUTCString(),
+    } }) }) },
+  });
+  let response;
+  let lifetime;
+  handlers.fetch({
+    request: new Request('https://example.test/api/cover?picId=42'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetime = value; },
+  });
+  assert.equal(await (await response).text(), 'cached-image');
+  await lifetime;
+  assert.equal(networkCalls, 0);
+});
+
+test('artwork cache misses return immediately and write best-effort in the event lifetime', async () => {
+  const handlers = {};
+  let networkCalls = 0;
+  let writes = 0;
+  let finishWrite;
+  const writing = new Promise(resolve => { finishWrite = resolve; });
+  let fetchStarted = false;
+  let lifetimeRegisteredBeforeFetch = false;
+  const lifetimes = [];
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => { fetchStarted = true; networkCalls++; return new Response('first-image', { headers: {
+      'content-type': 'image/webp', 'cache-control': 'public, max-age=604800', date: new Date().toUTCString(),
+    } }); },
+    caches: {
+      open: async () => ({ match: async () => null, put: async (_request, response) => { writes++; assert.equal(await response.text(), 'first-image'); await writing; throw new Error('quota'); } }),
+    },
+  });
+  let response;
+  handlers.fetch({
+    request: new Request('https://example.test/api/artist-photo?name=IU&size=640'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetimes.push(value); if (!fetchStarted) lifetimeRegisteredBeforeFetch = true; },
+  });
+  assert.equal(await (await response).text(), 'first-image', 'the image response does not wait for storage');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(writes, 1);
+  assert.equal(lifetimeRegisteredBeforeFetch, true, 'the cache write lifetime is registered synchronously');
+  finishWrite();
+  await Promise.all(lifetimes);
+  assert.equal(networkCalls, 1);
+  assert.equal(writes, 1);
+});
+
+test('opaque artist redirects are served but not stored without inspectable cache expiry', async () => {
+  const handlers = {};
+  let writes = 0;
+  const opaqueImage = { ok: false, type: 'opaque', status: 0, headers: new Headers(), clone() { return this; } };
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console,
+    fetch: async () => opaqueImage,
+    caches: {
+      open: async () => ({ match: async () => null, put: async () => { writes++; } }),
+    },
+  });
+  let response;
+  let lifetime;
+  handlers.fetch({
+    request: new Request('https://example.test/api/artist-photo?name=IU&size=640'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetime = value; },
+  });
+  assert.equal((await response).type, 'opaque');
+  await lifetime;
+  assert.equal(writes, 0);
+});
+
+test('CacheStorage open failures fall back to the image network request', async () => {
+  const handlers = {};
+  let networkCalls = 0;
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => { networkCalls++; return new Response('image', { headers: { 'content-type': 'image/jpeg' } }); },
+    caches: { open: async () => { throw new Error('storage unavailable'); } },
+  });
+  let response;
+  let lifetime;
+  handlers.fetch({
+    request: new Request('https://example.test/api/cover?picId=43'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetime = value; },
+  });
+  assert.equal(await (await response).text(), 'image');
+  await lifetime;
+  assert.equal(networkCalls, 1);
+});
+
+test('default artist placeholders without a public TTL are never cached', async () => {
+  const handlers = {};
+  let writes = 0;
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => new Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }),
+    caches: { open: async () => ({ match: async () => null, put: async () => { writes++; } }) },
+  });
+  let response;
+  let lifetime;
+  handlers.fetch({
+    request: new Request('https://example.test/api/artist-photo?name=Unknown&size=640'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetime = value; },
+  });
+  assert.match(await (await response).text(), /svg/);
+  await lifetime;
+  assert.equal(writes, 0);
+});
+
+test('expired CacheStorage artwork is deleted and fetched from the network', async () => {
+  const handlers = {};
+  let deleted = 0;
+  let fetched = 0;
+  const expired = new Response('old-image', { headers: {
+    'content-type': 'image/jpeg', 'cache-control': 'public, max-age=3600',
+    date: new Date(Date.now() - 7200_000).toUTCString(),
+  } });
+  vm.runInNewContext(source, {
+    self: { addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => { fetched++; return new Response('new-image', { headers: { 'content-type': 'image/jpeg' } }); },
+    caches: { open: async () => ({
+      match: async () => expired.clone(), delete: async () => { deleted++; return true; }, put: async () => {},
+    }) },
+  });
+  let response;
+  let lifetime;
+  handlers.fetch({
+    request: new Request('https://example.test/api/cover?picId=44'),
+    respondWith(value) { response = value; },
+    waitUntil(value) { lifetime = value; },
+  });
+  assert.equal(await (await response).text(), 'new-image');
+  await lifetime;
+  assert.equal(deleted, 1);
+  assert.equal(fetched, 1);
+});
+
 test('shell refresh stays alive until its cache write finishes', async () => {
   const handlers = {};
   let finishWrite;

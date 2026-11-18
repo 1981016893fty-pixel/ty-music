@@ -102,6 +102,7 @@ test('homepage keeps all genre choices through navigation and reduced motion', a
       assert.equal(html, '', 'inactive homepage releases its widgets');
     } else {
       assert.equal((html.match(/class="chroma-card"/g) || []).length, 12, 'homepage renders every genre');
+      assert.equal((html.match(/&amp;size=640/g) || []).length, 12, 'genre cards request bounded-resolution artist photos');
       const labels = [...html.matchAll(/<h3 class="name">(.*?)<\/h3>/g)].map(match => match[1].replaceAll('&amp;', '&'));
       assert.deepEqual(labels, expected);
     }

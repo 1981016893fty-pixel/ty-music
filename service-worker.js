@@ -67,6 +67,47 @@ self.addEventListener('fetch', event => {
     return;
   }
 
+  const artworkApi = ['/api/cover', '/api/music/cover', '/api/artist-photo'].includes(url.pathname);
+  if (artworkApi && event.request.method === 'GET') {
+    let finishCacheWrite;
+    const cacheWriteLifetime = new Promise(resolve => { finishCacheWrite = resolve; });
+    event.waitUntil(cacheWriteLifetime);
+    event.respondWith((async () => {
+      let cache = null;
+      try { cache = await caches.open(CACHE_NAME); } catch (_) {}
+      try {
+        const cached = await cache?.match(event.request).catch(() => null);
+        if (cached) {
+          const cacheControl = cached.headers.get('cache-control') || '';
+          const maxAge = Number(cacheControl.match(/max-age=(\d+)/i)?.[1]);
+          const date = Date.parse(cached.headers.get('date') || '');
+          if (/public/i.test(cacheControl) && maxAge > 0 && Number.isFinite(date) && Date.now() - date < maxAge * 1000) {
+            finishCacheWrite();
+            return cached;
+          }
+          await cache.delete(event.request).catch(() => {});
+        }
+        const response = await fetch(event.request);
+        const type = response.headers.get('content-type') || '';
+        const cacheControl = response.headers.get('cache-control') || '';
+        const expiresPublicly = /public,\s*max-age=\d*[1-9]\d*/i.test(cacheControl);
+        const validImage = response.ok && /^image\//i.test(type) && response.headers.get('content-length') !== '0' && expiresPublicly;
+        if (cache && validImage) {
+          Promise.resolve().then(() => cache.put(event.request, response.clone()))
+            .catch(() => {})
+            .then(finishCacheWrite);
+        } else {
+          finishCacheWrite();
+        }
+        return response;
+      } catch (error) {
+        finishCacheWrite();
+        throw error;
+      }
+    })());
+    return;
+  }
+
   // Audio and lyric streams must remain network-only. Catalog JSON can use
   // stale-while-revalidate so a page switch is instant after first load.
   const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search|\/health)$/.test(url.pathname);
