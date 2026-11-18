@@ -18,7 +18,18 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
-      - run: npm run build:aurora
+      - run: npm run build:pages
+      - name: Check Workers runtime
+        run: |
+          npm exec --yes --package wrangler@4.164.0 -- wrangler pages dev pages-dist --port 8788 --inspector-port 0 > /tmp/ty-music-worker.log 2>&1 &
+          worker_pid=$!
+          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://localhost:8788/api/health > /dev/null; then break; fi
+            if ! kill -0 "$worker_pid" 2>/dev/null; then cat /tmp/ty-music-worker.log; exit 1; fi
+            sleep 1
+          done
+          node scripts/verify-deployment.mjs http://localhost:8788
       - name: Check committed bundles
         run: |
           git diff --exit-code -- soft-aurora-react.js soft-aurora-react.css assets/aurora

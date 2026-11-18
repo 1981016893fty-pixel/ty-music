@@ -8,7 +8,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out, { recursive: true });
 
 const files = [
-  'index.html', 'style.css', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js', 'player.js', 'soft-aurora-react.js',
+  'index.html', 'style.css', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js', 'library-transfer.html', 'library-transfer.js', 'player.js', 'soft-aurora-react.js',
   'soft-aurora-react.css', 'liquid-glass.js', 'manifest.json',
   'icon-192.png', 'icon-512.png', 'service-worker.js', 'desktop.html'
 ];
@@ -21,11 +21,11 @@ for (const dir of ['assets', 'vendor']) {
 }
 
 // The web build keeps relative /api URLs. In the desktop bundle they must
-// point at the existing Render service, while artwork and audio continue to
+// point at the Cloudflare Pages API, while artwork and audio continue to
 // be addressed through the same URLs used by the web app.
 const bootstrap = `<script>
 window.__TY_MUSIC_DESKTOP__ = true;
-window.__TY_MUSIC_API_BASE__ = 'https://ty-music.onrender.com';
+window.__TY_MUSIC_API_BASE__ = 'https://ty-music.pages.dev';
 document.documentElement.classList.add('ty-desktop');
 (() => {
   const base = window.__TY_MUSIC_API_BASE__;

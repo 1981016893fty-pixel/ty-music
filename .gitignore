@@ -18,6 +18,9 @@ push-to-github.sh
 upload_update.py
 test_github.py
 desktop-dist/
+pages-dist/
 
 # Temporary task notes and local verification artifacts
 work/
+
+.wrangler/

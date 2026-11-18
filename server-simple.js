@@ -5,11 +5,12 @@
  */
 const http = require('http');
 const https = require('https');
-const { createStaticHandler } = require('./static-files.cjs');
-const serveStatic = createStaticHandler();
 const { URL } = require('url');
 const { createEmbeatClient } = require('./gd-embeat.cjs');
-const embeat = createEmbeatClient();
+// Workers request I/O cannot be shared across unrelated request contexts.
+const sharePendingIO = process.env.TY_MUSIC_RUNTIME !== 'cloudflare';
+const sharedEmbeat = sharePendingIO ? createEmbeatClient() : null;
+const embeatClient = () => sharedEmbeat || createEmbeatClient();
 
 // =========================== HTTP Keep-Alive Agent ===========================
 // 复用 TCP 连接，避免每次请求都重新握手（对 GD API 延迟高的情况尤其重要）
@@ -216,13 +217,13 @@ function smartGet(url, headers, timeout = 15000) {
 function dedupedGetJSON(url, timeout, retries) {
   const key = url;
   const pending = pendingRequests.get(key);
-  if (pending) {
+  if (sharePendingIO && pending) {
     return pending;
   }
   const promise = httpsGetJSON(url, timeout, retries).finally(() => {
     pendingRequests.delete(key);
   });
-  pendingRequests.set(key, promise);
+  if (sharePendingIO) pendingRequests.set(key, promise);
   return promise;
 }
 
@@ -377,15 +378,15 @@ async function resolveEmbeatAudio(params) {
   const key = `embeat:audio:${JSON.stringify({ ...identity, resourceId: id })}`;
   const cached = cacheGet(key);
   if (cached) return cached;
-  if (pendingRequests.has(key)) return pendingRequests.get(key);
+  if (sharePendingIO && pendingRequests.has(key)) return pendingRequests.get(key);
   const pending = (async () => {
-    const data = await embeat.request('url', { source: 'embeat', id, br: 999 }, id);
+    const data = await embeatClient().request('url', { source: 'embeat', id, br: 999 }, id);
     if (!data || !validMediaUrl(data.url) || !Number.isFinite(Number(data.br)) || Number(data.br) < 0 || !Number.isFinite(Number(data.size)) || Number(data.size) <= 0) throw mediaFault(404, 'Audio not found', 'MEDIA_NOT_FOUND');
     const resolved = { ...data, url: validMediaUrl(data.url) };
     cacheSet(key, resolved, 5 * 60 * 1000);
     return resolved;
   })().finally(() => pendingRequests.delete(key));
-  pendingRequests.set(key, pending);
+  if (sharePendingIO) pendingRequests.set(key, pending);
   return pending;
 }
 function proxyPath(params) {
@@ -762,7 +763,7 @@ async function embeatCover(picId, size) {
   const key = `embeat:cover:${picId}:${size}`;
   let url = cacheGet(key);
   if (!url) {
-    const data = await embeat.request('pic', { source: 'embeat', id: picId, size }, picId);
+    const data = await embeatClient().request('pic', { source: 'embeat', id: picId, size }, picId);
     url = validMediaUrl(data?.url);
     if (!url) throw mediaFault(404, 'Cover not found', 'MEDIA_NOT_FOUND');
     const host = new URL(url).hostname;
@@ -1067,7 +1068,7 @@ async function getNewSongs(limit = 12) {
 
 // =========================== HTTP 服务器 ===========================
 
-const server = http.createServer(async (req, res) => {
+async function handleRequest(req, res) {
   const parsedUrl = new URL(req.url, `http://localhost:${PORT}`);
   const pathname = parsedUrl.pathname;
   const params = parsedUrl.searchParams;
@@ -1077,13 +1078,16 @@ const server = http.createServer(async (req, res) => {
 
   // CORS + Keep-Alive + Timing
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Content-Length, Accept-Ranges');
   res.setHeader('Timing-Allow-Origin', '*');
   res.setHeader('Connection', 'keep-alive');
 
-  // Static files share asynchronous IO, bounded caching and HTTP negotiation.
-  if (await serveStatic(req, res, pathname)) return;
+  if (req.method === 'OPTIONS') { res.statusCode = 204; res.end(); return; }
+  if (!['GET', 'HEAD'].includes(req.method)) {
+    res.statusCode = 405; res.setHeader('Allow', 'GET, HEAD, OPTIONS'); res.end(); return;
+  }
 
   // ========== API 端点 ==========
 
@@ -1098,7 +1102,7 @@ const server = http.createServer(async (req, res) => {
       if (!['netease', 'embeat'].includes(source)) throw mediaFault(400, 'Unsupported source', 'INVALID_SOURCE');
       const page = source === 'netease'
         ? await searchNeteaseCatalogPage(keywords, params.get('limit'), params.get('offset'))
-        : await embeat.search(keywords, params.get('limit'), params.get('offset'));
+        : await embeatClient().search(keywords, params.get('limit'), params.get('offset'));
       if (source === 'embeat') page.songs = page.songs.map(formatEmbeatSong);
       res.end(JSON.stringify(page));
     } catch (error) {
@@ -1163,7 +1167,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // 7. 音频代理播放
-  // - 默认：302 重定向到 CDN（浏览器直连，Render 零带宽）
+  // - 默认：302 重定向到 CDN（浏览器直连，不占用代理传输带宽）
   // - stream=1：服务器中转流式传输（用于微信小程序等需要绕过域名白名单限制的场景）
   if (pathname === '/api/music/proxy') {
     const id = params.get('id');
@@ -1175,7 +1179,7 @@ const server = http.createServer(async (req, res) => {
       if (!audioUrl) { res.statusCode = 404; res.end(JSON.stringify({ error: 'Audio not found' })); return; }
 
       if (streamMode) {
-        // 流式代理：服务器下载音频然后管道传输给客户端，域名始终是 ty-music.onrender.com
+        // 流式代理：服务器下载音频然后管道传输给客户端，保持当前 API 来源
         const parsedUrl = new URL(audioUrl);
         const proto = parsedUrl.protocol === 'https:' ? https : http;
         const reqOptions = {
@@ -1199,6 +1203,7 @@ const server = http.createServer(async (req, res) => {
           if (code >= 300 && code < 400 && audioRes.headers.location) {
             res.statusCode = 302;
             res.setHeader('Location', audioRes.headers.location);
+            audioRes.resume();
             res.end();
             return;
           }
@@ -1218,22 +1223,23 @@ const server = http.createServer(async (req, res) => {
             if (!res.headersSent) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: 'Stream failed' }));
-            }
+            } else res.destroy(err);
           });
         });
+        res.once('close', () => proxyReq.destroy());
         proxyReq.on('error', (err) => {
           console.error('[Stream Proxy] Request error:', err.message);
           if (!res.headersSent) {
             res.statusCode = 502;
             res.end(JSON.stringify({ error: 'Upstream unreachable' }));
-          }
+          } else res.destroy(err);
         });
         proxyReq.on('timeout', () => {
           proxyReq.destroy();
           if (!res.headersSent) {
             res.statusCode = 504;
             res.end(JSON.stringify({ error: 'Upstream timeout' }));
-          }
+          } else res.destroy();
         });
         proxyReq.end();
       } else {
@@ -1291,7 +1297,7 @@ const server = http.createServer(async (req, res) => {
       if (source === 'embeat') {
         embeatIdentity(params);
         if (id.length > 1024) throw mediaFault(400, 'Invalid lyric identifier', 'INVALID_TRACK');
-        const data = await embeat.request('lyric', { source: 'embeat', id }, id);
+        const data = await embeatClient().request('lyric', { source: 'embeat', id }, id);
         if (!data || typeof data.lyric !== 'string') throw mediaFault(502, 'Invalid lyric response');
         lyric = { lrc: data.lyric, tlyric: typeof data.tlyric === 'string' ? data.tlyric : '' };
       } else lyric = await gdGetLyric(id);
@@ -1401,8 +1407,8 @@ const server = http.createServer(async (req, res) => {
   // 15. 歌手头像（基于名字生成 SVG）
   if (pathname === '/api/artist-avatar') {
     const name = params.get('name') || '未知歌手';
-    const avatarBase64 = generateArtistAvatar(name);
-    const svgBuffer = Buffer.from(avatarBase64, 'base64');
+    const label = [...name].slice(0, 2).join('').replace(/[<>&"']/g, '');
+    const svgBuffer = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" rx="100" fill="#242036"/><text x="100" y="100" dy=".35em" text-anchor="middle" font-size="56" fill="#eee">${label}</text></svg>`);
     
     res.setHeader('Content-Type', 'image/svg+xml');
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1446,7 +1452,8 @@ const server = http.createServer(async (req, res) => {
   // ========== 健康检查 ==========
   if (pathname === '/api/health') {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.end(JSON.stringify({ status: 'ok', timestamp: Date.now(), commit: process.env.RENDER_GIT_COMMIT || null, node: process.versions.node, searchSource: 'netease', supplementalSearchSource: 'embeat' }));
+    res.setHeader('Cache-Control', 'no-store');
+    res.end(JSON.stringify({ status: 'ok', timestamp: Date.now(), commit: process.env.TY_MUSIC_COMMIT || null, runtime: process.env.TY_MUSIC_RUNTIME || 'node', node: process.versions.node, searchSource: 'netease', supplementalSearchSource: 'embeat' }));
     return;
   }
 
@@ -1601,9 +1608,32 @@ const server = http.createServer(async (req, res) => {
   res.statusCode = 404;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify({ error: 'Not found: ' + pathname }));
-});
+}
 
-server.listen(PORT, '0.0.0.0', () => {
+// Keep one API implementation for local Node and the official Workers HTTP bridge.
+// Cloudflare serves only an explicit static build, never the repository filesystem.
+function createServer({ staticFiles = true } = {}) {
+  const serveStatic = staticFiles && process.env.TY_MUSIC_RUNTIME !== 'cloudflare'
+    ? require('./static-files.cjs').createStaticHandler() : null;
+  return http.createServer(async (req, res) => {
+    try {
+      if (serveStatic && await serveStatic(req, res, new URL(req.url, 'http://localhost').pathname)) return;
+      await handleRequest(req, res);
+    } catch (error) {
+      console.error('[API] Unhandled request failure:', error.code || error.name);
+      if (res.headersSent) res.destroy();
+      else {
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify({ error: 'Request failed', code: 'INTERNAL_ERROR' }));
+      }
+    }
+  });
+}
+
+module.exports = { createServer };
+
+if (require.main === module) createServer().listen(PORT, '0.0.0.0', () => {
   console.log(`[Server] TY Music 运行在 http://localhost:${PORT}`);
   console.log('[Server] 默认搜索：网易云；Embeat 独立补充，不阻塞基础结果');
   console.log('[Server] API 端点:');

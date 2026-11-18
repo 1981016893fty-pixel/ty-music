@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>个人曲库迁移 · TY Music</title>
+<style>
+:root{color-scheme:light dark;font-family:system-ui,sans-serif;line-height:1.65}body{max-width:780px;margin:40px auto;padding:0 24px;background:#10131a;color:#e8eaf0}a{color:#a7c3ff}h1{line-height:1.25}section{border:1px solid #465064;border-radius:14px;padding:24px;margin:24px 0}button,input{font:inherit}button{padding:10px 18px;border:1px solid #859ac1;border-radius:8px;background:#234a85;color:white;cursor:pointer}button:disabled{opacity:.45;cursor:default}input{display:block;max-width:100%;margin:12px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}small{overflow-wrap:anywhere}li{margin-bottom:10px}:focus-visible{outline:3px solid #f4c86a;outline-offset:4px}
+</style>
+<script src="./library-transfer.js" defer></script>
+</head>
+<body>
+<a href="./">← 返回播放器</a>
+<h1>个人曲库备份与迁移</h1>
+<p>收藏、歌单、最近播放、歌曲资源信息、专辑收藏和本地音频一起备份。所有操作都在当前浏览器中完成，不上传资料。</p>
+<small>当前站点：<strong id="origin"></strong>。只读取此来源、此浏览器资料中的曲库。</small>
+<section aria-labelledby="export-heading">
+<h2 id="export-heading">1. 在旧站导出</h2>
+<p>请先关闭其他播放器标签，避免播放记录或歌单在迁移期间变化。</p>
+<button id="export-button" type="button">下载完整曲库备份</button>
+</section>
+<section aria-labelledby="import-heading">
+<h2 id="import-heading">2. 在新站合并导入</h2>
+<label for="backup-file">选择 TY Music JSON 备份（最多 512 MiB）</label>
+<input id="backup-file" type="file" accept="application/json,.json">
+<pre id="preview" aria-label="导入预览"></pre>
+<p>已有同 ID 的歌曲、音频和专辑资料优先保留；收藏和歌单曲目合并，不清空现有曲库。请确认后再导入。</p>
+<button id="import-button" type="button" disabled>合并导入</button>
+</section>
+<p id="status" role="status" aria-live="polite">尚未操作。</p>
+<section id="instructions" aria-labelledby="instructions-heading">
+<h2 id="instructions-heading">迁移步骤与注意事项</h2>
+<ol>
+<li>使用原来收藏音乐的同一浏览器资料，在旧 Render 站点打开此页面。地址必须与旧播放器属于同一来源（协议、域名、端口一致）。</li>
+<li>点击下载，确认 JSON 文件实际保存在电脑上。发起下载不代表文件已成功保存；保留原始音频和旧站资料。</li>
+<li>在新 Cloudflare Pages 站点打开同一个工具页面，选择刚下载的 JSON，核对预览，然后点击“合并导入”。选择文件和查看预览不会写入曲库。</li>
+<li>导入完成后重新加载新站播放器，检查收藏、歌单及本地音频播放；确认前保留备份。不同来源之间的浏览器数据不能自动互相读取。</li>
+</ol>
+<p>备份包含完整音频和个人收藏，请妥善保管。编码会增加文件体积，导出和导入需要额外内存；本工具限制备份文件为 512 MiB。超过限制时请保留原始音频，在新站重新添加本地音乐；本工具不提供拆分备份。</p>
+<p>本地音频在单个数据库事务中追加；收藏等浏览器存储另行合并。如果空间不足，页面会报告失败并尝试恢复本次浏览器存储写入。音频已成功追加但后续存储失败时，追加的音频会保留；可排查空间后重复导入，已有音频不会被覆盖。请始终以页面结果和实际播放检查为准。</p>
+</section>
+</body>
+</html>
