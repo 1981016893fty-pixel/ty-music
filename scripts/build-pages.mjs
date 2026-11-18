@@ -40,6 +40,8 @@ await build({
   target: 'es2022',
   external: ['node:*', 'cloudflare:*'],
   outfile: path.join(out, '_worker.js'),
+  // Pages currently injects an incomplete HTTP shim for direct imports.
+  // Resolve native modules at runtime; verify-deployment checks real workerd.
   plugins: [{ name: 'node-builtins', setup(build) {
     build.onLoad({ filter: /server-simple\.js$/ }, async ({ path: source }) => {
       let contents = await readFile(source, 'utf8');

@@ -11,10 +11,13 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 | 阶段 | 状态 |
 | --- | --- |
 | 已实现 | API-only 工厂、Worker、Pages 白名单构建、桌面 API 地址、迁移工具、v50 缓存标记 |
-| 本地验证 | npm test 通过；workerd 真实搜索、302、Range206通过；新增 runtime CI 待远端执行 |
-| 预览部署 | [Cloudflare preview](https://codex-cloudflare-migration.ty-music.pages.dev)，健康检查及真实网易云搜索通过；完整浏览器验收进行中 |
-| CI／合并／正式部署 | 待完成，不能用预览替代生产验收 |
-| Render 服务与 Safari 曲库 | 旧服务尚保留；个人数据未自动迁移，待同浏览器导出／导入验收后退役 |
+| 本地验证 | npm test：125项node:test、1项Pages构建检查与播放器／动效脚本通过；真实workerd搜索、302、Range206通过 |
+| 远端CI | 应用提交2726f89的[Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44239616058)通过，含真实Workers运行检查 |
+| 正式部署 | [ty-music.pages.dev](https://ty-music.pages.dev)，部署502707f8，应用提交2726f89ff3ac1a6b5afb2565a4c08555ae0bd34e；生产并发搜索／封面／302／Range206通过；ego lite真实Blinding Lights起播，时长200.046秒；歌词API返回原词及译词，歌词UI未完成验证 |
+| PR／合并 | 分支codex/cloudflare-migration已推送；GitHub PR创建报错、网络不稳定，尚未建PR或合并；生产直接部署已验证任务提交，不代表main已更新 |
+| Render／Safari曲库 | 旧站工具已随2726f89发布，[Render部署](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbuitoojo6nc73a84h50)成功；[旧站导出](https://ty-music.onrender.com/library-transfer.html)可用。服务仍保留，AutoDeploy为Off；待Safari导入新站验收后退役 |
+
+独立复审发现并已修复大音频Base64重复正则耗尽栈的问题，5MiB真实字节往返通过。浏览器下载、跨测试origin预览不写入、IndexedDB导入后音频字节一致已验证。Workers生产CPU／内存完整指标、Safari个人曲库和全部第三方目录尚未验证。
 
 新运行时不再有 Render 的闲置休眠唤醒，但不能承诺零延迟、无限额度或所有音源均可用。当前迁移沿用v49动效修复，未新增整机温度或Safari帧率结论。已安装的旧桌面包仍引用旧 API，源码更新只影响后续构建。
 
