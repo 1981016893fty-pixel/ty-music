@@ -19,7 +19,16 @@
 
 本地完整 `npm test` 通过 164 项 node:test、另 1 项 Pages 构建检查及既有播放器／动效脚本；真实 Workers 网络检查通过。独立复审发现并修正本地自动封面查询、队列覆盖与删除残留，补齐无 Content-Length 大响应和合法类型空图片夹具；聚焦复审 42 项通过且无新阻塞项。ego lite 通过首页 12 分类与网易云 Blinding Lights 实际起播（200.046 秒）。欢迎入口高层点击仍受工具节点失效影响，使用 DOM click 进入，不记作物理点击验收。
 
-发布进度以 [PR #7](https://github.com/1981016893fty-pixel/ty-music/pull/7)、[Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/workflows/checks.yml) 和生产 `/api/health` 的提交为准；本段不预先声明 CI、合并或部署完成。部署后仍需在正式域名验收普通刷新、搜索和播放；回退可使用此前 v52 部署 `d9c14ce5`，步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md#回退)。
+| 阶段 | 已核实状态 |
+| --- | --- |
+| 实现与本地验证 | 应用提交 `87739b7189f4b95eadf06abc5f26a0667c33d8e9`；完整测试及真实 Worker 网络检查通过 |
+| 远端 Web CI | [分支 push](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44278417711)、[PR](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44278422406)、[合并后 main](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44278691129) 均通过 |
+| 已合并 | [PR #7](https://github.com/1981016893fty-pixel/ty-music/pull/7)，合并提交 `303ce37ae8a2e1e1b4cb566a3cfd768e4cb39444` |
+| 已部署 | [ty-music.pages.dev](https://ty-music.pages.dev)，生产部署 `ffec1ee8-a47b-4a20-a2e5-94dcbe501712`；`/api/health` 确认合并提交，真实并发搜索、封面、音频 302／Range 206 通过 |
+| 正式域名浏览器 | ego lite 保留旧 v52 缓存后正常刷新升级至 v53，12 个分类仍在；搜索返回 20 首基础结果，Blinding Lights／The Weeknd 实际播放 200.046 秒，封面加载、全屏双语歌词显示通过。此网络下未取得 Embeat 追加成功证据，基础搜索保持可用 |
+| 桌面与 Safari | 本轮未安装测试新桌面包；构建状态见 [macOS](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44278691133)／[Windows](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44278691203)。Safari 真机和个人曲库迁移未验收 |
+
+本次发布后的维护记录属于文档更新，不改变生产应用提交。回退可使用此前 v52 部署 `d9c14ce5-ad93-45ec-b23d-0c7055e6c466`，步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md#回退)。
 
 剩余范围：F10 清单／HTML 场景契约及桌面 CI 输入尚未统一；Safari 个人曲库迁移、真机帧率／温升和全部第三方目录未验证。Cover Flow 静止零调度是计算边界证据，不能据此保证整站零发热。Render 保留至 Safari 资料迁移验收完成，不将旧服务留存当作新站仍依赖 Render。
 
