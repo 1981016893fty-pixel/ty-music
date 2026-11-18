@@ -31,7 +31,9 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 
 正式域名复现浏览器导航 `ERR_FAILED`，绕过Service Worker后HTTP首页正常。Pages将旧预缓存地址 `/index.html?v=…` 308到根路径，缓存实际 `redirected=true`；导航请求使用manual模式时，该响应会被浏览器拒绝。`service-worker.js` 改为预存canonical根路径、仅读取当前版本缓存、跳过已重定向响应，并在缓存或网络不可用时保留网络／离线HTML兜底。不清理localStorage、IndexedDB或用户曲库。
 
-`verify-cache-policy.mjs` 检查重定向缓存、缓存不可用、网络不可用和双方不可用；`verify-deployment.mjs` 检查线上预缓存URL必须直接200。回归已先验证旧代码失败，再验证修复通过；浏览器旧版本升级及正式域名验收以本次交付结果为准。操作入口和回退边界见 [部署与排障](../DEPLOY-GUIDE.md#验收与排障)。
+`verify-cache-policy.mjs` 检查重定向缓存、缓存不可用、网络不可用和双方不可用；`verify-deployment.mjs` 检查线上预缓存URL必须直接200。回归已先验证旧代码失败，再验证修复通过；完整测试128项node:test及Pages构建检查、既有播放器／动效脚本通过。操作入口和回退边界见 [部署与排障](../DEPLOY-GUIDE.md#验收与排障)。
+
+应用提交 `20bc03d3f2e0b4807a6d20434e05c75e92502c33` 已部署至生产 `d9c14ce5`；[push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44261515903) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44261521721) 通过。ego lite在正式域名保留旧缓存复现失败后，验证自动升级至v52、根路径及带查询参数导航、普通刷新和进入主页、12分类与爵士80首；预缓存响应为200且 `redirected=false`。线上并发搜索、封面、音频302与Range206检查通过。Safari设备本身尚未复测；[PR #7](https://github.com/1981016893fty-pixel/ty-music/pull/7) 已推送修复，合并状态以PR为准。
 
 ## 入口与修改位置
 
