@@ -451,10 +451,11 @@ function directCoverUrl(cover) {
   return '';
 }
 
-function trackCoverMarkup(track, className = '', lazy = true, alt = '') {
+function trackCoverMarkup(track, className = '', lazy = true, alt = '', priority = false) {
   const cover = track.coverSmall || track.cover || '';
   const direct = directCoverUrl(cover);
-  return `<img class="${className}" src="${escAttr(direct || cover)}" alt="${escAttr(alt)}" decoding="async"${lazy ? ' loading="lazy"' : ''}${direct ? ` referrerpolicy="no-referrer" data-proxy-cover="${escAttr(cover)}"` : ''} data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || track.name || '')}" onerror="fallbackCover(this)">`;
+  const loading = priority ? ' loading="eager" fetchpriority="high"' : lazy ? ' loading="lazy"' : '';
+  return `<img class="${className}" src="${escAttr(direct || cover)}" alt="${escAttr(alt)}" decoding="async"${loading}${direct ? ` referrerpolicy="no-referrer" data-proxy-cover="${escAttr(cover)}"` : ''} data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || track.name || '')}" onerror="fallbackCover(this)">`;
 }
 
 // Keep upstream resource IDs separate from the safe internal queue/storage identity.
@@ -1850,14 +1851,16 @@ function syncLyrics() {
 const trackMap = new Map();
 
 // ========== Render Cards ==========
-function createAMCard(track, wide = false) {
+const GENRE_PRIORITY_COVERS = 4;
+
+function createAMCard(track, wide = false, priorityCover = false) {
   // 存储歌曲到全局Map
   trackMap.set(track.id, track);
 
   return `
     <div class="am-card ${wide ? 'wide' : ''}" data-track-id="${track.id}">
       <div class="am-artwork">
-        ${trackCoverMarkup(track)}
+        ${trackCoverMarkup(track, '', true, '', priorityCover)}
         <div class="am-play-overlay">
           <div class="am-play-circle"><i class="fa-solid fa-play"></i></div>
         </div>
@@ -1877,8 +1880,38 @@ function renderScrollRow(containerId, tracks, wide = false) {
     container.innerHTML = '<div style="padding:40px 0;text-align:center;color:var(--text-secondary)">暂无歌曲</div>';
     return;
   }
-  container.innerHTML = tracks.map(t => createAMCard(t, wide)).join('');
+  const genre = containerId === '#genreTracks';
+  container.innerHTML = tracks.map((track, index) => createAMCard(track, wide, genre && index < GENRE_PRIORITY_COVERS)).join('');
+  if (genre) trySlowGenreCovers(container);
   revealContainer(container);
+}
+
+function trySlowGenreCovers(row) {
+  const cards = Array.from(row.children).slice(0, GENRE_PRIORITY_COVERS);
+  const section = row.closest('#genreSection');
+  const pendingImage = card => {
+    if (!card.isConnected || state.currentPage !== 'discover' || section?.style.display === 'none') return;
+    const image = card.querySelector('.am-artwork img[data-proxy-cover]');
+    if (image?.dataset.proxyCover && !image.naturalWidth) return image;
+  };
+
+  // Keep a working CDN load. Start the site proxy only for slow lead covers.
+  setTimeout(() => {
+    for (const card of cards) {
+      const image = pendingImage(card);
+      if (!image) continue;
+      const proxy = image.dataset.proxyCover;
+      const alternative = new Image();
+      alternative.referrerPolicy = image.referrerPolicy;
+      alternative.onload = () => {
+        const current = pendingImage(card);
+        if (current?.dataset.proxyCover !== proxy) return;
+        delete current.dataset.proxyCover;
+        current.src = proxy;
+      };
+      alternative.src = proxy;
+    }
+  }, 400);
 }
 
 function revealContainer(container) {

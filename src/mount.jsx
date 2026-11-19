@@ -486,6 +486,7 @@ function mountTiltedCards(scope = document) {
     if (!image || !imageSource || !/^\/(?:api|assets)\//.test(imageSource) && !/^https?:\/\//i.test(imageSource)) return;
     const imageProps = {
       loading: image.loading || undefined,
+      fetchPriority: image.getAttribute('fetchpriority') || undefined,
       decoding: image.decoding,
       referrerPolicy: image.referrerPolicy,
       'data-proxy-cover': image.dataset.proxyCover,
