@@ -155,13 +155,14 @@ test('genre artwork starts eagerly for the first four cards and switches only a 
   const proxy = '/api/cover?size=300&url=https%3A%2F%2Fp1.music.126.net%2Falbum.jpg';
   const cdn = 'https://p1.music.126.net/album.jpg?param=300y300';
   const pictures = Array.from({ length: 5 }, (_, i) => ({
-    src: cdn, naturalWidth: i === 0 ? 300 : 0, dataset: { proxyCover: proxy },
+    src: cdn, naturalWidth: i <= 1 ? 300 : 0, complete: i === 0, dataset: { proxyCover: proxy },
   }));
   const cards = pictures.map(pic => ({ querySelector: () => pic, isConnected: true }));
   const row = { children: cards, closest: () => ({ style: { display: 'block' } }) };
   const ctx = vm.createContext({
     URL, window: { location: new URL('https://music.test/') },
     state: { currentPage: 'discover' }, esc: String, escAttr: String, trackMap: new Map(),
+    document: { hidden: false },
     Image: class { constructor() { probeImages.push(this); } },
     setTimeout: (fn, delay) => { callbacks.push(fn); assert.equal(delay, 400); },
     $: () => row,
@@ -177,7 +178,14 @@ test('genre artwork starts eagerly for the first four cards and switches only a 
   assert.equal(probeImages.length, 3);
   assert.ok(probeImages.every(image => image.src === proxy));
   pictures[2].naturalWidth = 300;
+  pictures[2].complete = true;
   cards[3].isConnected = false;
   probeImages.forEach(image => image.onload());
   assert.deepEqual(pictures.map(pic => pic.src), [cdn, proxy, cdn, cdn, cdn]);
+  pictures[1].src = cdn;
+  pictures[1].dataset.proxyCover = proxy;
+  ctx.renderScrollRow('#genreTracks', [{ id: 'background', coverSmall: proxy }]);
+  ctx.document.hidden = true;
+  callbacks[1]();
+  assert.equal(probeImages.length, 3, 'background tabs do not start alternative downloads');
 });

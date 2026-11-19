@@ -6,7 +6,7 @@
 
 ## 部署
 
-目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度。构建 `npm run build:pages`，运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)。音乐分类优先加载前四张封面，其余封面随滚动加载。列表和播放器封面加载策略见[维护指南](docs/maintenance.md#歌曲封面加载)。
+目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度。构建 `npm run build:pages`，运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)。音乐分类优先加载前四张封面；仍在下载的慢图会在页面可见时尝试代理补图，其余封面随滚动加载。列表和播放器封面加载策略见[维护指南](docs/maintenance.md#歌曲封面加载)。
 
 换域名不会自动迁移个人曲库。请在原浏览器旧站打开 `/library-transfer.html` 导出，再在新站同名页面预览合并；音频与收藏留在本机，迁移工具不上传资料。旧服务退役以数据导出和新站验收完成为条件。
 
