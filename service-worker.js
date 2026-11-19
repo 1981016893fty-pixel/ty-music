@@ -15,7 +15,7 @@ const STATIC_ASSETS = [
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261118-quality-v53',
   '/search-session.js?v=20261118-quality-v53',
-  '/soft-aurora-react.js?v=20261118-quality-v53',
+  '/soft-aurora-react.js?v=20261118-genre-cover-v56',
   '/soft-aurora-react.css?v=20261118-quality-v53',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
