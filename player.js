@@ -435,6 +435,28 @@ function coverUrlForTrack(song, size, source) {
   );
 }
 
+function directCoverUrl(cover) {
+  if (cover && !window.__TY_MUSIC_DESKTOP__) {
+    try {
+      const proxy = new URL(cover, window.location.href);
+      if (proxy.origin !== window.location.origin || !['/api/cover', '/api/music/cover'].includes(proxy.pathname) ||
+          proxy.searchParams.get('source') === 'embeat') return '';
+      const cdn = new URL(proxy.searchParams.get('url') || '');
+      if (['https:', 'http:'].includes(cdn.protocol) && /^p\d+\.music\.126\.net$/.test(cdn.hostname) &&
+          !cdn.username && !cdn.password && !cdn.port) {
+        return resizeCoverUrl(cdn.href, Number(proxy.searchParams.get('size')) || 300);
+      }
+    } catch (_) { /* No trusted direct URL. */ }
+  }
+  return '';
+}
+
+function trackCoverMarkup(track, className = '', lazy = true, alt = '') {
+  const cover = track.coverSmall || track.cover || '';
+  const direct = directCoverUrl(cover);
+  return `<img class="${className}" src="${escAttr(direct || cover)}" alt="${escAttr(alt)}" decoding="async"${lazy ? ' loading="lazy"' : ''}${direct ? ` referrerpolicy="no-referrer" data-proxy-cover="${escAttr(cover)}"` : ''} data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || track.name || '')}" onerror="fallbackCover(this)">`;
+}
+
 // Keep upstream resource IDs separate from the safe internal queue/storage identity.
 function providerTrackId(track) {
   if (track.providerId != null && track.providerId !== '') return String(track.providerId);
@@ -1002,6 +1024,19 @@ function beginPlaybackSelection() {
   return id;
 }
 
+function setPlaybackCover(img, track) {
+  const cover = track.coverSmall || track.cover || '';
+  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried', 'proxyCover']) delete img.dataset[key];
+  img.dataset.artist = track.artist || '';
+  img.dataset.album = track.album || '';
+  img.dataset.name = track.title || '';
+  img.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
+  const direct = directCoverUrl(cover);
+  if (direct) img.dataset.proxyCover = cover;
+  if (cover) img.src = direct || cover;
+  else fallbackCover(img);
+}
+
 function presentPlaybackTrack(track) {
   // Remote and local selections publish the same metadata and lyric reset.
   state.currentTrack = track;
@@ -1012,19 +1047,7 @@ function presentPlaybackTrack(track) {
 
   // Update UI
   const coverSrc = track.coverSmall || track.cover || '';
-  const playerCoverImg = $('#playerCover');
-  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried']) delete playerCoverImg.dataset[key];
-  playerCoverImg.dataset.artist = track.artist || '';
-  playerCoverImg.dataset.album = track.album || '';
-  playerCoverImg.dataset.name = track.title || '';
-  if (coverSrc) {
-    playerCoverImg.src = coverSrc;
-    playerCoverImg.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
-  } else {
-    // 封面为空，立即触发 fallback
-    playerCoverImg.src = '';
-    fallbackCover(playerCoverImg);
-  }
+  setPlaybackCover($('#playerCover'), track);
   $('#playerTitle').textContent = track.title;
   const playerArtistEl = $('#playerArtist');
   playerArtistEl.textContent = track.artist;
@@ -1043,18 +1066,7 @@ function presentPlaybackTrack(track) {
   // Mini player
   const mini = $('#nowPlayingMini');
   mini.style.display = 'flex';
-  const miniCoverImg = $('#miniCover');
-  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried']) delete miniCoverImg.dataset[key];
-  miniCoverImg.dataset.artist = track.artist || '';
-  miniCoverImg.dataset.album = track.album || '';
-  miniCoverImg.dataset.name = track.title || '';
-  if (coverSrc) {
-    miniCoverImg.src = coverSrc;
-    miniCoverImg.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
-  } else {
-    miniCoverImg.src = '';
-    fallbackCover(miniCoverImg);
-  }
+  setPlaybackCover($('#miniCover'), track);
   $('#miniTitle').textContent = track.title;
   $('#miniArtist').textContent = track.artist;
   // 专辑名称（强制显示）
@@ -1620,7 +1632,7 @@ function renderQueue() {
   $('#queueCount').textContent = `${state.queue.length} 首`;
   $('#queueList').innerHTML = state.queue.map((t, i) => `
     <div class="track-row ${state.currentTrack?.id === t.id ? 'playing' : ''}" data-track-id="${t.id}" data-idx="${i}">
-      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${escAttr(t.artist || '')}" data-album="${escAttr(t.album || '')}" data-name="${escAttr(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
+      ${trackCoverMarkup(t, 'row-cover')}
       <div class="row-info">
         <div class="row-title">${esc(t.title)}</div>
         <div class="row-artist">${esc(t.artist)}</div>
@@ -1841,11 +1853,11 @@ const trackMap = new Map();
 function createAMCard(track, wide = false) {
   // 存储歌曲到全局Map
   trackMap.set(track.id, track);
-  
+
   return `
     <div class="am-card ${wide ? 'wide' : ''}" data-track-id="${track.id}">
       <div class="am-artwork">
-        <img src="${track.coverSmall || track.cover || ''}" alt="" loading="lazy" data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || '')}" onerror="fallbackCover(this)">
+        ${trackCoverMarkup(track)}
         <div class="am-play-overlay">
           <div class="am-play-circle"><i class="fa-solid fa-play"></i></div>
         </div>
@@ -2385,7 +2397,7 @@ function renderAutocomplete(songs) {
   box.style.display = 'block';
   box.innerHTML = songs.map((s, i) => `
     <div class="auto-item" data-idx="${i}" data-query="${escAttr(s.name + ' ' + s.artist)}">
-      <img class="auto-item-cover" src="${s.coverSmall || s.cover || ''}" data-artist="${escAttr(s.artist || '')}" data-album="${escAttr(s.album || '')}" data-name="${escAttr(s.name || '')}" onerror="fallbackCover(this)">
+      ${trackCoverMarkup(s, 'auto-item-cover', false)}
       <div class="auto-item-info">
         <span class="auto-item-name">${esc(s.name)}</span>
         <span class="auto-item-artist">${esc(s.artist)}</span>
@@ -2476,6 +2488,12 @@ function fixCoverUrl(url) {
 
 function fallbackCover(img) {
   if (img.dataset.fallback) return;
+  if (img.dataset.proxyCover) {
+    const proxy = img.dataset.proxyCover;
+    delete img.dataset.proxyCover;
+    img.src = proxy;
+    return;
+  }
   // Cover endpoints return JSON upstream; resolve their URL before assigning
   // an image src. Never let an old resolution repaint a reused player image.
   if (window.tyMusicProvider && !img.dataset.directCoverTried) {
@@ -2532,7 +2550,7 @@ function renderTrackList(containerId, tracks) {
   container.innerHTML = tracks.map((t, i) => `
     <div class="track-row${isBrowseResults ? ' browse-result-row' : ''}" data-track-id="${t.id}" data-idx="${i}">
       ${isBrowseResults ? '<span class="browse-result-index">' + (i + 1) + '</span>' : ''}
-      <img class="row-cover" src="${t.coverSmall || t.cover || ''}" data-artist="${escAttr(t.artist || '')}" data-album="${escAttr(t.album || '')}" data-name="${escAttr(t.title || '')}" onerror="fallbackCover(this)" loading="lazy">
+      ${trackCoverMarkup(t, 'row-cover')}
       <div class="row-info">
         <div class="row-title">${esc(t.title)}</div>
         <div class="row-artist">${esc(t.artist)}${isBrowseResults ? '' : (t.album ? ' — ' + esc(t.album) : '')}</div>
@@ -2646,7 +2664,7 @@ function renderFavorites() {
     var coverSrc = track.coverSmall || track.cover || '';
     return '<div class="fav-track-row" data-id="' + track.id + '">' +
       '<div class="fav-track-index">' + (i + 1) + '</div>' +
-      '<div class="fav-track-cover">' + (coverSrc ? '<img src="' + coverSrc + '" alt="" loading="lazy" data-artist="' + escAttr(track.artist || '') + '" data-album="' + escAttr(track.album || '') + '" data-name="' + escAttr(track.title || '') + '" onerror="fallbackCover(this)">' : '<i class="fa-solid fa-music"></i>') + '</div>' +
+      '<div class="fav-track-cover">' + (coverSrc ? trackCoverMarkup(track) : '<i class="fa-solid fa-music"></i>') + '</div>' +
       '<div class="fav-track-copy">' +
         '<div class="fav-track-title">' + esc(track.title) + '</div>' +
         '<div class="fav-track-artist">' + esc(track.artist) + '</div>' +
@@ -2744,8 +2762,7 @@ function renderPlaylists() {
       
       // 如果找到了第一首歌且有封面，显示封面图片
       if (firstTrack && (firstTrack.cover || firstTrack.coverSmall)) {
-        const coverUrl = firstTrack.cover || firstTrack.coverSmall;
-        coverHTML = `<img src="${coverUrl}" alt="${esc(pl.name)}" onerror="fallbackCover(this)">`;
+        coverHTML = trackCoverMarkup(firstTrack, '', true, pl.name);
       }
     }
     
@@ -3252,6 +3269,8 @@ function updateAmpFullscreenPlayer(trackOverride) {
   const artwork = $('#ampArtwork');
   if (artwork) {
     const coverCandidates = [];
+    const direct = directCoverUrl(ampCoverUrl);
+    if (direct) coverCandidates.push(direct);
     if (ampCoverUrl) coverCandidates.push(ampCoverUrl);
     if (albumCoverUrl) coverCandidates.push(albumCoverUrl);
     if (artistPhotoUrl) coverCandidates.push(artistPhotoUrl);

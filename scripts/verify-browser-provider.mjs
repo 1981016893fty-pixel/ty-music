@@ -88,7 +88,7 @@ test('late audio resolution cannot replace a later choice or reset its lyrics, e
     CustomEvent: class {}, $: () => element, showToast: text => notices.push(text),
     resolveMusicResource: x => x, musicResourceQuery: () => 'source=embeat&id=resource',
     fallbackCover() {}, syncNativeNowPlaying() {}, formatTime: String, fetchAndDisplayAlbumInfo() {},
-    updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
+    directCoverUrl: () => '', updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
     ampLyricsRequestId: 0, ampLyricsRenderedFor: null, ampIsShowing: false, playTimeout: null,
   });
   vm.runInContext(source.slice(source.indexOf('let playbackRequestId ='), source.indexOf('// ========== Play/Pause')) +

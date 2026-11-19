@@ -484,13 +484,23 @@ function mountTiltedCards(scope = document) {
     const image = artwork.querySelector(':scope > img');
     const imageSource = image?.getAttribute('src') || '';
     if (!image || !imageSource || !/^\/(?:api|assets)\//.test(imageSource) && !/^https?:\/\//i.test(imageSource)) return;
+    const imageProps = {
+      loading: image.loading || undefined,
+      decoding: image.decoding,
+      referrerPolicy: image.referrerPolicy,
+      'data-proxy-cover': image.dataset.proxyCover,
+      'data-artist': image.dataset.artist,
+      'data-album': image.dataset.album,
+      'data-name': image.dataset.name,
+      onError: event => window.fallbackCover?.(event.currentTarget),
+    };
     const mount = document.createElement('div');
     mount.className = 'tilted-card-mount';
     const overlay = artwork.querySelector(':scope > .am-play-overlay');
     artwork.insertBefore(mount, image);
     image.remove();
     const root = createRoot(mount);
-    root.render(<TiltedCard imageSrc={imageSource} altText={image.alt || '音乐专辑封面'} captionText={`${image.dataset.name || ''} · ${image.dataset.artist || ''}`} showTooltip={false} />);
+    root.render(<TiltedCard imageSrc={imageSource} imageProps={imageProps} altText={image.alt || '音乐专辑封面'} captionText={`${image.dataset.name || ''} · ${image.dataset.artist || ''}`} showTooltip={false} />);
     tiltedRoots.set(artwork, root);
     if (overlay) artwork.appendChild(overlay);
   });

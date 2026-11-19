@@ -679,6 +679,21 @@ function sizedNeteaseCoverUrl(rawUrl, size) {
   return coverUrl.toString();
 }
 
+const COVER_CONTENT_TYPE = /^image\/(jpe?g|png|webp|avif)(?:;|$)/i;
+const MAX_COVER_BYTES = 8 * 1024 * 1024;
+
+async function fetchCoverImage(url, signal, headers) {
+  const response = await fetch(url, { redirect: 'manual', signal, headers });
+  const contentType = response.headers.get('content-type') || '';
+  if (!response.ok || !COVER_CONTENT_TYPE.test(contentType)) {
+    await response.body?.cancel().catch(() => {});
+    throw mediaFault(502, 'Invalid cover response');
+  }
+  const image = await readFetchBody(response, MAX_COVER_BYTES);
+  if (!image.length) throw mediaFault(502, 'Empty cover response');
+  return { image, contentType };
+}
+
 async function embeatCover(picId, size) {
   if (!picId || picId.length > 1024) throw mediaFault(400, 'Invalid cover identifier', 'INVALID_TRACK');
   const key = `embeat:cover:${picId}:${size}`;
@@ -694,25 +709,7 @@ async function embeatCover(picId, size) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const response = await fetch(url, { redirect: 'error', signal: controller.signal });
-    const contentType = response.headers.get('content-type') || '';
-    if (!response.ok || !/^image\/(jpe?g|png|webp|avif)(?:;|$)/i.test(contentType) || Number(response.headers.get('content-length')) > 8 * 1024 * 1024 || !response.body) {
-      response.body?.cancel().catch(() => {});
-      throw mediaFault(502, 'Invalid cover response');
-    }
-    const reader = response.body.getReader();
-    const chunks = []; let bytes = 0;
-    try {
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        bytes += value.byteLength;
-        if (bytes > 8 * 1024 * 1024) throw mediaFault(502, 'Cover too large');
-        chunks.push(Buffer.from(value));
-      }
-    } finally { reader.cancel().catch(() => {}); }
-    if (!bytes) throw mediaFault(502, 'Empty cover');
-    return { image: Buffer.concat(chunks), contentType };
+    return await fetchCoverImage(url, controller.signal);
   } catch (error) {
     if (controller.signal.aborted) throw mediaFault(504, 'Cover timed out', 'GD_TIMEOUT');
     throw error;
@@ -1310,13 +1307,23 @@ async function handleRequest(req, res) {
       res.once('close', abort);
       let image, contentType;
       try {
-        const upstream = await requestBuffered(coverUrl, {
-          headers: { 'User-Agent': UA, Referer: 'https://music.163.com/' },
-          timeout: 15000, maxBytes: 8 * 1024 * 1024, signal: controller.signal,
-          acceptType: type => /^image\/(jpe?g|png|webp|avif)(?:;|$)/i.test(type),
-        });
-        image = upstream.body;
-        contentType = upstream.headers['content-type'];
+        const headers = { 'User-Agent': UA, Referer: 'https://music.163.com/' };
+        if (process.env.TY_MUSIC_RUNTIME === 'cloudflare') {
+          const deadline = AbortSignal.timeout(10000);
+          try {
+            ({ image, contentType } = await fetchCoverImage(coverUrl, AbortSignal.any([deadline, controller.signal]), headers));
+          } catch (error) {
+            if (deadline.aborted) throw mediaFault(504, 'Cover timed out', 'UPSTREAM_TIMEOUT');
+            throw error;
+          }
+        } else {
+          const upstream = await requestBuffered(coverUrl, {
+            headers, timeout: 15000, maxBytes: MAX_COVER_BYTES, signal: controller.signal,
+            acceptType: type => COVER_CONTENT_TYPE.test(type),
+          });
+          image = upstream.body;
+          contentType = upstream.headers['content-type'];
+        }
         if (!image.length) throw mediaFault(502, 'Empty cover response');
       } finally { res.off('close', abort); }
       res.statusCode = 200;

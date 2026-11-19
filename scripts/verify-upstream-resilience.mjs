@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { fork } from 'node:child_process';
 import { once } from 'node:events';
 
-async function app(mode, run) {
+async function app(mode, run, runtime = 'node') {
   const child = fork(new URL('./resilience-transport-fixture.cjs', import.meta.url), [], {
-    env: { ...process.env, GD_EMBEAT_CONNECT_HOST: '', RESILIENCE_FIXTURE: mode }, silent: true,
+    env: { ...process.env, GD_EMBEAT_CONNECT_HOST: '', RESILIENCE_FIXTURE: mode, TY_MUSIC_RUNTIME: runtime }, silent: true,
   });
   child.stdout.resume(); child.stderr.resume();
   try {
@@ -21,6 +21,15 @@ for (const mode of ['lyric-recover', 'lyric-truncated']) test(`${mode}: failed l
   assert.equal(recovered.status, 200);
   assert.equal((await recovered.json()).lrc, '[00:01]Recovered');
 }));
+
+for (const [mode, expected] of [['cover-jpg', 200], ['cover-error', 502], ['cover-type', 502], ['cover-empty', 502]]) {
+  test(`Workers native fetch: ${mode} returns ${expected} with matching cache policy`, () => app(mode, async get => {
+    const response = await get('/api/cover?url=https%3A%2F%2Fp1.music.126.net%2Ffixture.jpg&size=300');
+    assert.equal(response.status, expected);
+    assert.equal(response.headers.get('cache-control'), expected === 200 ? 'public, max-age=604800' : null);
+    if (expected === 200) assert.equal(await response.text(), 'fixture-body');
+  }, 'cloudflare'));
+}
 test('artist photos honor card dimensions while unqualified detail photos retain the source resolution', async () => app('artist-photo', async get => {
   const card = await get('/api/artist-photo?name=IU&size=640', { redirect: 'manual' });
   assert.equal(card.status, 302);

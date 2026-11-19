@@ -21,7 +21,13 @@ const upstream = http.createServer((req, res) => {
   }
 });
 upstream.listen(0, '127.0.0.1', () => {
-  https.get = (options, callback) => http.get({ ...options, hostname: '127.0.0.1', port: upstream.address().port, agent: false }, callback);
+  if (process.env.TY_MUSIC_RUNTIME === 'cloudflare') {
+    const request = globalThis.fetch;
+    globalThis.fetch = (input, options) => request(new URL(new URL(input).pathname, `http://127.0.0.1:${upstream.address().port}`), options);
+    https.get = () => { throw new Error('Workers artwork must use native fetch'); };
+  } else {
+    https.get = (options, callback) => http.get({ ...options, hostname: '127.0.0.1', port: upstream.address().port, agent: false }, callback);
+  }
   const { createServer } = require('../server-simple.js');
   const app = createServer({ staticFiles: false });
   app.listen(0, '127.0.0.1', () => process.send?.({ port: app.address().port }));

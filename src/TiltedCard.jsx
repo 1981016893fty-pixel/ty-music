@@ -7,7 +7,7 @@ const springValues = { damping: 30, stiffness: 100, mass: 2 };
 export default function TiltedCard({
   imageSrc, altText = '音乐专辑封面', captionText = '', containerHeight = '100%', containerWidth = '100%',
   imageHeight = '100%', imageWidth = '100%', scaleOnHover = 1.08, rotateAmplitude = 12,
-  showTooltip = true, showMobileWarning = false
+  showTooltip = true, showMobileWarning = false, imageProps
 }) {
   const ref = useRef(null);
   const x = useMotionValue(0);
@@ -38,7 +38,7 @@ export default function TiltedCard({
       onMouseLeave={() => { opacity.set(0); scale.set(1); rotateX.set(0); rotateY.set(0); rotateCaption.set(0); }}>
       {showMobileWarning && <div className="tilted-card-mobile-alert">This effect is not optimized for mobile. Check on desktop.</div>}
       <motion.div className="tilted-card-inner" style={{ width: imageWidth, height: imageHeight, rotateX, rotateY, scale }}>
-        <motion.img src={imageSrc} alt={altText} className="tilted-card-img" style={{ width: imageWidth, height: imageHeight }} />
+        <motion.img {...imageProps} src={imageSrc} alt={altText} className="tilted-card-img" style={{ width: imageWidth, height: imageHeight }} />
       </motion.div>
       {showTooltip && <motion.figcaption className="tilted-card-caption" style={{ x, y, opacity, rotate: rotateCaption }}>{captionText}</motion.figcaption>}
     </figure>

@@ -109,3 +109,42 @@ test('an in-flight batch cannot exceed the 80-track limit', async () => {
   assert.equal(row.ids.length, 80);
   assert.equal(queued.length, 80);
 });
+
+
+test('track thumbnails use the known sized CDN image and fall back to the original proxy once', () => {
+  const ctx = vm.createContext({ URL, location: { href: 'https://music.test/' },
+    window: { location: new URL('https://music.test/'), tyMusicProvider: {} },
+    trackMap: new Map(), esc: String,
+    escAttr: value => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;'),
+  });
+  vm.runInContext(slice('function resolveMusicResource(', '// Native macOS media bridge') +
+    slice('function resizeCoverUrl(', '// Keep upstream resource IDs') +
+    slice('function setPlaybackCover(', 'function presentPlaybackTrack(') +
+    slice('function createAMCard(', 'function renderScrollRow(') +
+    slice('function fallbackCover(', 'function renderTrackList('), ctx);
+  const proxy = '/api/cover?size=300&url=http%3A%2F%2Fp2.music.126.net%2Falbum.jpg';
+  const track = { id: '1', source: 'netease', coverSmall: proxy, artist: 'Artist', title: 'Song' };
+  const direct = 'https://p2.music.126.net/album.jpg?param=300y300';
+  const genreCard = ctx.createAMCard(track);
+  assert.ok(genreCard.includes(`src="${direct}"`));
+  assert.ok(genreCard.includes(`data-proxy-cover="${proxy.replace('&', '&amp;')}"`));
+  assert.ok(ctx.trackCoverMarkup(track, 'row-cover').includes(direct));
+  for (const coverSmall of ['/api/cover?picId=42', '/api/cover?url=https://p2.music.126.net.example.org/x',
+    '/api/cover?url=https://user@p2.music.126.net/x', 'https://other.test/api/cover?url=https://p2.music.126.net/x']) {
+    assert.ok(!ctx.createAMCard({ ...track, coverSmall }).includes('data-proxy-cover'));
+  }
+  ctx.window.__TY_MUSIC_DESKTOP__ = true;
+  assert.ok(!ctx.createAMCard(track).includes(direct), 'desktop keeps its existing cover path');
+  const image = { src: direct, dataset: { proxyCover: proxy, artist: 'Artist', name: 'Song' } };
+  ctx.fallbackCover(image);
+  assert.equal(image.src, proxy);
+  ctx.fallbackCover(image);
+  assert.match(image.src, /^\/api\/album-cover\?/);
+  assert.equal(image.dataset.proxyCover, undefined);
+  ctx.window.__TY_MUSIC_DESKTOP__ = false;
+  ctx.setPlaybackCover(image, track);
+  assert.equal(image.src, direct);
+  ctx.setPlaybackCover(image, { source: 'local', cover: '/icon.svg' });
+  assert.equal(image.src, '/icon.svg');
+  assert.equal(image.dataset.proxyCover, undefined, 'switching track clears the old proxy');
+});
