@@ -11,7 +11,7 @@ const APP_SHELL = '/?v=20261118-quality-v53';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/style.css?v=20261118-quality-v53',
-  '/player.js?v=20261118-genre-v55',
+  '/player.js?v=20261118-genre-cover-v56',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261118-quality-v53',
   '/search-session.js?v=20261118-quality-v53',
@@ -57,6 +57,10 @@ self.addEventListener('activate', event => {
 // 请求拦截
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+
+  // Use the CDN's HTTP cache for direct covers. Opaque images cannot be
+  // validated before storing them in CacheStorage.
+  if (event.request.destination === 'image' && /^p\d+\.music\.126\.net$/.test(url.hostname)) return;
 
   // A cached shell keeps navigation responsive during platform wake-up.
   // Refresh in the background; search and playback still require the network.

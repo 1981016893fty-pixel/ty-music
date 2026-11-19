@@ -104,6 +104,7 @@ function playbackPlayer() {
     showToast: message => notices.push(message),
     updateLikeUI: noop, updatePlayBtn: noop, updateQueueHighlight: noop, syncNativeNowPlaying: noop,
     updateAmpFullscreenPlayer: noop, fetchAndDisplayAlbumInfo: noop, updateDynamicGradient: noop,
+    directCoverUrl: () => '',
     extractAlbumColors: noop, fallbackCover: image => coverLookups.push(image), formatTime: String, setSliderValue: noop,
     resolveMusicResource: value => value, musicResourceQuery: item => `id=${item.id}`,
     requestAnimationFrame: fn => fn(),
