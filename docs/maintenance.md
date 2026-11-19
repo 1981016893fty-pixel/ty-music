@@ -22,6 +22,18 @@
 
 修改 `player.js` 的流派详情时，运行 `npm run test:genre` 和 `npm test`。浏览器验收从实际流派卡片进入，确认首批先出现、快速切换只显示当前流派、歌曲可播放。Pages 构建把同一个 Git SHA 写入首页和 API；`scripts/verify-deployment.mjs` 同时核对正式首页、预缓存首页、API 和既有网络检查，命令与回退见[部署指南](../DEPLOY-GUIDE.md#验收与排障)。Safari 真机验收另行记录。
 
+### v59 发布记录（2026-11-20）
+
+| 阶段 | 已核实状态 |
+| --- | --- |
+| 实现与本地验证 | `f92d6d5` 修正尺寸已知但下载未完成的判断，并跳过后台补图；完整 `npm test`（180 项主测试、1 项 Pages 测试及播放器／动效检查）、6 项分类回归和 Pages 构建通过。独立聚焦复审无阻塞发现，无新增依赖。 |
+| 远端 Web CI | [分支 push](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44628473676)、[PR](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44628585614)、[合并后 main](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44628783684) 均通过。 |
+| 已合并 | [PR #13](https://github.com/1981016893fty-pixel/ty-music/pull/13)，应用合并提交 `4a6f73703fb84c6aa9fdab559f45d99cd4589f43`。 |
+| 已部署 | [生产部署 27a60580](https://27a60580.ty-music.pages.dev) 已发布至 [ty-music.pages.dev](https://ty-music.pages.dev)；首页、预缓存页面、API 同 SHA 检查及并发搜索、封面、音频 Range 联网验收通过。 |
+| 浏览器验证 | ego lite 通过普通刷新读到 v59，12 个流派保留；禁用浏览器 HTTP 缓存后点击「爵士」，歌名约 1733ms 出现，前四图在歌名后约 217ms 完成加载，前四 eager/high、其余 lazy 属性正确。 |
+
+受控本地 JPEG 传输夹具先提供尺寸、延迟尾段 4.2 秒：旧逻辑约 4222ms 完成，新逻辑经备用路径约 507ms 完成。该夹具和单次正式站样本用于验证行为，不代表所有访客的速度；第三方 CDN、API 和边缘缓存未命中仍可能变慢。Safari 真机及桌面安装包未在本轮验收。此记录是发布后的文档补充，不改变上述生产应用提交。回退至 v58 部署 `9c7cc47a`，操作沿用[部署指南](../DEPLOY-GUIDE.md#回退)。
+
 ## 封面与图片加载优化（v54）
 
 首页 12 个流派卡片此前请求艺人全尺寸原图。同一张 IU 照片的 2500px 原图约 453,907 bytes，网易云 `640y640` 版本约 51,737 bytes，卡片图片字节减少约 88.6%；卡片仍使用原有裁切和样式。详情入口不带 `size` 时继续返回源分辨率。
