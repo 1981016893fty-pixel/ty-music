@@ -45,7 +45,7 @@ node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 
 验收脚本核对 API、首页和 Service Worker 预缓存首页是否属于同一目标提交，默认使用当前 checkout 的完整 SHA。若构建时用 `TY_MUSIC_COMMIT` 指定提交，验收应传入相同的 `--commit=<完整SHA>`。旧版首页没有构建标记，不能用新版检查脚本验收旧版回退；回退时按目标版本的说明复核。联网验收另测并发搜索、封面、音频跳转和 Range 206；真实浏览器还需检查首页 12 个流派、首批歌曲可点播、搜索、歌词及正常刷新。
 
-网页仍由访问者网络直连 GD 网易云与 Embeat，基础失败才回退同源 API。Embeat 可达时自动补充，不能保证任意网络都可达。服务端 Workers 出口也可能被音源限流；`GD_CLOCK_ERROR`、`GD_TIMEOUT` 不等于曲库无歌曲。不检测 VPN，不跨来源模糊替歌。
+网页优先请求同源 API 获取网易云结果和封面地址，失败时由访问者网络直连 GD 网易云。Embeat 始终由访问者网络直连，可达时自动补充。Workers 出口也可能被音源限流。遇到 `GD_CLOCK_ERROR` 或 `GD_TIMEOUT` 时，检查上游连接与请求耗时。
 
 Pages 首次新域名或预览证书可能需要等待；握手失败时先核对部署状态再重试，不能禁用 TLS。Workers 没有 Render Free 的闲置休眠唤醒流程，但初始化、网络与上游仍会带来延迟。免费额度属于账号共享，有请求及 CPU 上限；音频默认302让浏览器访问提供方，不作为无限媒体中转服务。详情见选型说明。
 

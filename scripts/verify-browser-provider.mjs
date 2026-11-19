@@ -9,9 +9,43 @@ async function browser(fetch) {
   return context.createBrowserMusicProvider({ fetchImpl: fetch });
 }
 const json = value => new Response(JSON.stringify(value));
-test('browser searches both real catalogs without a Render request and preserves resource identity', async () => {
+test('the base catalog returns its cover URLs and cursor while Embeat uses the visitor network', async () => {
+  const track = { id: '42', source: 'netease', name: 'Song', coverSmall: '/api/cover?size=300&url=https%3A%2F%2Fp1.music.126.net%2Fcover.jpg' };
+  const calls = [];
+  const provider = await browser(async raw => {
+    const url = new URL(raw, 'https://site.example');
+    calls.push(url);
+    if (url.pathname === '/api/music/search') {
+      assert.equal(url.searchParams.get('offset'), '20');
+      assert.equal(url.searchParams.get('limit'), '20');
+      assert.equal(url.searchParams.get('source'), 'netease');
+      return json({ songs: [track], total: 21, nextOffset: 21, hasMore: false });
+    }
+    if (url.pathname === '/time') return new Response('1794826800');
+    if (url.searchParams.get('source') === 'netease') {
+      return json([{ id: '42', name: 'Song', artist: ['Artist'], source: 'netease', pic_id: 'art' }]);
+    }
+    assert.equal(url.searchParams.get('source'), 'embeat');
+    return json([{ id: 'extra', name: 'Extra', artist: ['Artist'], source: 'embeat', pic_id: 'art' }]);
+  });
+  const [base, extra] = await Promise.all([
+    provider.search('周杰伦', 'netease', 20, 20),
+    provider.search('周杰伦', 'embeat'),
+  ]);
+  assert.equal(base.songs[0].coverSmall, track.coverSmall);
+  assert.equal(base.songs[0].id, track.id);
+  assert.equal(base.total, 21);
+  assert.equal(base.nextOffset, 21);
+  assert.equal(base.hasMore, false);
+  assert.equal(extra.songs[0].providerId, 'extra');
+  assert.equal(calls.filter(url => url.origin === 'https://site.example').length, 1);
+  assert.equal(calls.filter(url => url.hostname === 'music-api.gdstudio.xyz').length, 0);
+});
+
+test('direct catalog pagination preserves resource identity', async () => {
   const calls = [];
   const provider = await browser(async (raw, options) => {
+    if (String(raw).startsWith('/api/music/search?')) return new Response(null, { status: 502 });
     const url = new URL(raw); calls.push(url);
     assert.equal(options.credentials, 'omit');
     assert.equal(options.cache, 'no-store');
@@ -33,14 +67,17 @@ test('browser searches both real catalogs without a Render request and preserves
   assert.equal(calls.filter(u => u.hostname === 'music-api.gdstudio.xyz').length, 1);
 });
 
-test('direct failure retains the Netease server path, while Embeat cannot masquerade as base results', async () => {
+test('a failed base search falls back to GD Netease even when Embeat is unavailable', async () => {
   const calls = [];
   const provider = await browser(async (url, options) => {
     calls.push(String(url));
-    if (String(url).startsWith('/api/music/search?')) return json({ songs: [{ id: 'base', source: 'netease' }], nextOffset: 1, hasMore: false });
+    if (String(url).startsWith('/api/music/search?')) return new Response(null, { status: 502 });
+    if (new URL(url).searchParams.get('source') === 'netease') {
+      return json([{ id: '42', name: 'Song', artist: ['Artist'], source: 'netease' }]);
+    }
     throw new TypeError('Failed to fetch');
   });
-  assert.equal((await provider.search('test', 'netease')).songs[0].id, 'base');
+  assert.equal((await provider.search('test', 'netease')).songs[0].id, '42');
   await assert.rejects(provider.search('test', 'embeat'));
   assert.equal(calls.filter(url => url.startsWith('/api/')).length, 1);
 });
@@ -64,7 +101,7 @@ test('resource requests use resource IDs, reject unsafe URLs and normalize liter
   assert.deepEqual(calls.filter(u => u.pathname === '/api.php').map(u => u.searchParams.get('id')), ['audio', 'lyrics', 'cover', 'unsafe', 'audio', 'lyrics', 'cover', 'unsafe']);
 });
 
-test('cancelling a query does not fall back or wait for an uncooperative direct transport', async () => {
+test('cancelling a query does not fall back or wait for an uncooperative transport', async () => {
   const calls = [];
   const provider = await browser(url => { calls.push(String(url)); return new Promise(() => {}); });
   const controller = new AbortController();
