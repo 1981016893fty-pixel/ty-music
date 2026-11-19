@@ -1890,9 +1890,9 @@ function trySlowGenreCovers(row) {
   const cards = Array.from(row.children).slice(0, GENRE_PRIORITY_COVERS);
   const section = row.closest('#genreSection');
   const pendingImage = card => {
-    if (!card.isConnected || state.currentPage !== 'discover' || section?.style.display === 'none') return;
+    if (document.hidden || !card.isConnected || state.currentPage !== 'discover' || section?.style.display === 'none') return;
     const image = card.querySelector('.am-artwork img[data-proxy-cover]');
-    if (image?.dataset.proxyCover && !image.naturalWidth) return image;
+    if (image?.dataset.proxyCover && !(image.complete && image.naturalWidth > 0)) return image;
   };
 
   // Keep a working CDN load. Start the site proxy only for slow lead covers.
