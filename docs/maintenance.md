@@ -6,7 +6,9 @@
 
 `player.js#trackCoverMarkup` 为分类、歌曲列表、搜索建议、队列、收藏和歌单复用同一套封面渲染逻辑。对同源封面接口中已有地址且通过域名校验的网易云图片，浏览器按原尺寸直接加载，失败后回到同源接口。播放器与迷你播放器也复用该地址选择，切歌会清除上一首的回退状态。全屏封面优先展示直链，取色继续使用原同源接口。直接加载的网易图片使用浏览器 HTTP 缓存。
 
-只提供封面 ID 的搜索结果仍由 API 解析图片地址。Cloudflare Workers 用原生 `fetch` 下载并校验封面，失败响应不进入边缘缓存。外部目录、只有 ID 的封面和直连失败后的回退仍受上游网络影响。
+普通搜索通过 `browser-provider.js#search` 优先查询 `/api/music/search`。该接口优先使用网易云目录，首批结果通常已包含封面 CDN 地址。站内请求最多等待 12.5 秒，失败后尝试从浏览器直连 GD 网易云目录，整页搜索由 `search-session.js` 以 15 秒为上限。Embeat 仍经访客网络独立补充。切换网易云回退路径时结果排序可能有差异，页面按来源与歌曲 ID 去重。
+
+只提供封面 ID 的结果仍由 API 解析图片地址。Cloudflare Workers 用原生 `fetch` 下载并校验封面，失败响应不进入边缘缓存。外部目录、只有 ID 的封面和直连失败后的回退仍受上游网络影响。检查搜索首屏时记录歌名出现和封面显示两个时间点，分别定位目录查询和图片下载。
 
 验证时运行 `npm test`、`npm run test:genre`、`npm run build:pages`，再用 Wrangler Pages 运行 `node scripts/verify-deployment.mjs <URL> --network`。从首页点分类、搜索歌曲并尝试播放，检查前几张图片、切歌及全屏封面。使用 [部署指南](../DEPLOY-GUIDE.md#回退) 退回上一版。
 
