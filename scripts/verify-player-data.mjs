@@ -4,10 +4,10 @@ import vm from 'node:vm';
 
 const source = await fs.readFile(new URL('../player.js', import.meta.url), 'utf8');
 const resizeStart = source.indexOf('function resizeCoverUrl');
-const normalizeStart = source.indexOf('// 标准化歌曲对象（新音源）');
+const normalizeEnd = source.indexOf('// 通过本地服务器搜索');
 const recentStart = source.indexOf('function trackFromRecentEntry');
 const favoriteStart = source.indexOf('function toggleFavorite');
-if (resizeStart < 0 || normalizeStart < 0 || recentStart < 0 || favoriteStart < 0) {
+if (resizeStart < 0 || normalizeEnd < 0 || recentStart < 0 || favoriteStart < 0) {
   throw new Error('Player data helpers are missing');
 }
 
@@ -28,7 +28,7 @@ vm.runInContext(`
     const base = window.__TY_MUSIC_API_BASE__ || '';
     return base ? base + value : value;
   }
-  ${source.slice(resizeStart, normalizeStart)}
+  ${source.slice(resizeStart, normalizeEnd)}
   ${source.slice(recentStart, favoriteStart)}
   this.coverUrlForTrack = coverUrlForTrack;
   this.trackFromRecentEntry = trackFromRecentEntry;

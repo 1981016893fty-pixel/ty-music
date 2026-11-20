@@ -4,6 +4,7 @@
 // use the visitor's network.
 function createBrowserMusicProvider({ fetchImpl = globalThis.fetch, apiBase = '' } = {}) {
   const embeat = GDMusicProtocol.createEmbeatClient({ fetchImpl });
+  const pendingCovers = new Map();
   function sourceOf(source) {
     if (!['netease', 'embeat'].includes(source)) throw new TypeError('Invalid music source');
     return source;
@@ -88,7 +89,15 @@ function createBrowserMusicProvider({ fetchImpl = globalThis.fetch, apiBase = ''
     const params = { id };
     if (kind === 'url') params.br = 999;
     if (kind === 'pic') params.size = 1000;
-    const data = await request(kind, source, params, options);
+    let pending;
+    if (kind === 'pic' && source === 'embeat' && !options.signal && options.timeout === undefined) {
+      pending = pendingCovers.get(id);
+      if (!pending) {
+        pending = request(kind, source, params, options).finally(() => pendingCovers.delete(id));
+        pendingCovers.set(id, pending);
+      }
+    }
+    const data = await (pending || request(kind, source, params, options));
     if (kind === 'lyric') {
       if (typeof data?.lyric !== 'string') throw new Error('Lyrics unavailable');
       return { lrc: data.lyric.replace(/\\n/g, '\n'), tlyric: typeof data.tlyric === 'string' ? data.tlyric.replace(/\\n/g, '\n') : '' };

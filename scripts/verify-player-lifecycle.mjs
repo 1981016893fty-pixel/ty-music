@@ -23,7 +23,9 @@ function storagePlayer() {
     coverUrlForTrack: item => item.cover || '',
   });
   vm.runInContext(section('function loadData()', '\nloadData();') +
-    section('function cacheTrack(', 'function toggleFavorite('), context);
+    section('function cacheTrack(', 'function toggleFavorite(') +
+    section('function providerTrackId(', 'function normalizeTrack(') +
+    section('function normalizeTrack(', '// 通过本地服务器搜索'), context);
   return { context, saved, notices };
 }
 
@@ -106,7 +108,7 @@ function playbackPlayer() {
     updateAmpFullscreenPlayer: noop, fetchAndDisplayAlbumInfo: noop, updateDynamicGradient: noop,
     directCoverUrl: () => '',
     extractAlbumColors: noop, fallbackCover: image => coverLookups.push(image), formatTime: String, setSliderValue: noop,
-    resolveMusicResource: value => value, musicResourceQuery: item => `id=${item.id}`,
+    providerTrackId: item => item.id, resolveMusicResource: value => value, musicResourceQuery: item => `id=${item.id}`,
     requestAnimationFrame: fn => fn(),
   });
   vm.runInContext(section('let playbackRequestId =', '// ========== Play/Pause') +
@@ -262,7 +264,10 @@ test('local lyrics remain offline without disclosing file metadata', async () =>
 function fullscreenArtworkPlayer() {
   const requests = [], nodes = new Map(), events = [];
   const node = selector => {
-    if (!nodes.has(selector)) nodes.set(selector, { style: {}, classList: { remove() {} } });
+    if (!nodes.has(selector)) {
+      const style = { setProperty(key, value) { this[key] = value; }, removeProperty(key) { delete this[key]; } };
+      nodes.set(selector, { style, classList: { remove() {} } });
+    }
     return nodes.get(selector);
   };
   const context = vm.createContext({
@@ -330,4 +335,43 @@ test('fullscreen skips a malformed stored cover and can still show the song thum
   select('imported', 'https://[', '/valid.jpg');
   settle('/valid.jpg', true);
   assert.equal(context.window.ampCoverSrc, '/valid.jpg');
+});
+
+test('legacy recent entries keep the Embeat provider and recover missing resource identifiers from cache', () => {
+  const { context } = storagePlayer();
+  context.cacheTrack({ ...track('embeat:kept'), source: 'embeat', providerId: 'kept',
+    urlId: 'play', lyricId: 'words', picId: 'art', cover: '/same-song.webp' });
+  const restored = context.trackFromRecentEntry({ id: 'embeat:kept', urlId: '', lyricId: '', cover: '' });
+  assert.equal(restored.source, 'embeat');
+  assert.equal(restored.urlId, 'play');
+  assert.equal(restored.lyricId, 'words');
+  assert.equal(restored.cover, '/same-song.webp');
+  const legacy = context.trackFromRecentEntry({ id: 'embeat:track%3A42', title: 'Original' });
+  assert.equal(legacy.source, 'embeat');
+  assert.equal(legacy.providerId, 'track:42');
+});
+
+test('Embeat fullscreen can display its backdrop while the proxy is still pending', async () => {
+  const { context, requests, settle } = fullscreenArtworkPlayer();
+  context.window.tyMusicProvider = { resource: async () => 'https://art.test/embeat.jpg' };
+  context.updateAmpFullscreenPlayer({ ...track('embeat:42'), source: 'embeat', picId: '42', cover: '/slow.webp' });
+  await new Promise(resolve => setImmediate(resolve));
+  settle('https://art.test/embeat.jpg', true);
+  assert.equal(context.window.ampCoverSrc, 'https://art.test/embeat.jpg');
+  assert.match(context.$('#ampGridDistortionMount').style['--amp-cover-backdrop'], /embeat.jpg/);
+  settle('/slow.webp', true);
+  assert.equal(context.window.ampCoverSrc, 'https://art.test/embeat.jpg');
+  context.updateAmpFullscreenPlayer(track('next'));
+  assert.equal(context.$('#ampGridDistortionMount').style['--amp-cover-backdrop'], undefined);
+  assert.equal(requests.length, 2);
+});
+
+test('direct audio resolution does not restart a proxy that has buffered enough to start', async () => {
+  const { context, audio, resources } = playbackPlayer();
+  context.playTrack(track('remote'), 0, true);
+  const proxy = audio.src;
+  audio.readyState = 3;
+  resources[0].resolve('https://audio.test/remote.mp3');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(audio.src, proxy);
 });
