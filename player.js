@@ -1054,7 +1054,6 @@ function presentPlaybackTrack(track) {
   playerArtistEl.textContent = track.artist;
   playerArtistEl.dataset.album = track.album || '';
   window.dispatchEvent(new CustomEvent('ty:trackchange', { detail: track }));
-  // 全屏播放器订阅同一事件，确保浏览器端自动切歌也立即刷新标题、歌手和封面。
   // Pass the just-selected track explicitly. Reading the queue again here can
   // race with queue/index updates during automatic next-track playback.
   if (ampIsShowing) updateAmpFullscreenPlayer(track);
@@ -1227,7 +1226,6 @@ function playTrack(track, index, skipRecentUpdate) {
     updateLikeUI();
     updatePlayBtn();
     updateQueueHighlight();
-    if (ampIsShowing) updateAmpFullscreenPlayer(track);
     return;
   }
 
@@ -1249,9 +1247,6 @@ function playTrack(track, index, skipRecentUpdate) {
   updateLikeUI();
   updatePlayBtn();
   updateQueueHighlight();
-
-  // 如果全屏播放器正在显示，同步更新
-  if (ampIsShowing) updateAmpFullscreenPlayer(track);
 
   // Auto-load lyrics if panel is open
   state.lyrics = { lines: [], activeIndex: -1, expanded: false };
@@ -2985,31 +2980,68 @@ function resetThemeToAuto() {
 // ========== Apple Music 风格全屏播放器 ==========
 let ampIsShowing = false;
 
-// ========== 全屏封面预加载 + 错误回退 ==========
-function applyAmpArtwork(artwork, urls, idx, trackId) {
-  if (idx >= urls.length) {
-    artwork.style.backgroundImage = '';
-    return;
+// Fullscreen artwork belongs to one selection, even when revisiting the same ID.
+let ampArtworkRequestId = 0;
+
+function setAmpArtwork(artwork, cover) {
+  artwork.style.backgroundImage = `url(${JSON.stringify(cover || LOCAL_TRACK_COVER)})`;
+  window.ampCoverSrc = cover;
+  window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover } }));
+}
+
+function updateAmpArtwork(track) {
+  const artwork = $('#ampArtwork');
+  if (!artwork) return;
+  const requestId = ++ampArtworkRequestId;
+  const isCurrent = () => requestId === ampArtworkRequestId;
+  setAmpArtwork(artwork, '');
+  const covers = new Map();
+  for (const candidate of [track.cover, track.coverSmall]) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue;
+    let url;
+    try { url = new URL(candidate, window.location.href); }
+    catch (_) { continue; }
+    const { pathname } = url;
+    if (/^\/api\/(artist-photo|artist-avatar|album-cover)$/.test(pathname) ||
+        pathname.startsWith('/assets/demo/') || pathname === '/icon.svg') continue;
+    const resolved = resolveMusicResource(candidate);
+    const direct = directCoverUrl(candidate);
+    if (direct) covers.set(direct, resolved);
+    covers.set(resolved, resolved);
   }
-  // CSS background URLs are not covered by the desktop bridge's img.src
-  // rewrite. Resolve before both preloading and assigning the background so
-  // Tauri never requests its own local /api route for album artwork.
-  const sourceUrl = typeof window.__TY_MUSIC_RESOLVE_URL__ === 'function'
-    ? window.__TY_MUSIC_RESOLVE_URL__(urls[idx])
-    : urls[idx];
-  const img = new Image();
-  img.onload = function() {
-    if (trackId && getActiveTrack()?.id !== trackId) return;
-    artwork.style.backgroundImage = `url("${sourceUrl}")`;
-    artwork.style.backgroundSize = 'cover';
-    artwork.style.backgroundPosition = 'center';
-    window.ampCoverSrc = sourceUrl;
-    window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: sourceUrl } }));
-  };
-  img.onerror = function() {
-    applyAmpArtwork(artwork, urls, idx + 1, trackId);
-  };
-  img.src = sourceUrl;
+
+  function showCover(cover, colorSource) {
+    if (!isCurrent()) return;
+    setAmpArtwork(artwork, cover);
+    // Use the proxy URL for palette extraction when the CDN lacks CORS.
+    extractAlbumColors(colorSource, colors => {
+      if (isCurrent()) applyAlbumColors(colors);
+    });
+  }
+
+  const candidates = covers.entries();
+  function tryNextCover() {
+    if (!isCurrent()) return;
+    const next = candidates.next();
+    if (!next.done) {
+      const [cover, colorSource] = next.value;
+      loadCover(cover, colorSource, tryNextCover);
+    } else if (track.picId && track.source !== 'local' && window.tyMusicProvider && !window.__TY_MUSIC_DESKTOP__) {
+      // Resolve only this track's own provider artwork, never a text search.
+      window.tyMusicProvider.resource(track, 'pic').then(cover => {
+        if (isCurrent()) loadCover(cover, cover, null);
+      }).catch(() => {});
+    }
+  }
+
+  function loadCover(cover, colorSource, onError) {
+    const image = new Image();
+    image.onload = () => showCover(cover, colorSource);
+    image.onerror = onError;
+    image.src = cover;
+  }
+
+  tryNextCover();
 }
 
 // 辅助：在圆角矩形路径上画圆角矩形（用于未来剪裁）
@@ -3265,10 +3297,12 @@ function closeAmpFullscreenPlayer() {
   const player = $('#ampFullscreenPlayer');
   if (!player) return;
   
+  ampArtworkRequestId += 1;
+  ampIsShowing = false;
   player.classList.remove('show');
   setTimeout(() => {
+    if (ampIsShowing) return;
     player.style.display = 'none';
-    ampIsShowing = false;
     document.body.style.overflow = '';
   }, 400);
 }
@@ -3282,46 +3316,8 @@ function updateAmpFullscreenPlayer(trackOverride) {
   // same track identity immediately.
   if (state.currentTrack?.id !== track.id) state.currentTrack = track;
   
-  // 封面 URL（全屏用大图 track.cover，小图用 coverSmall）
-  const ampCoverUrl = track.cover || track.coverSmall || '';
-  const primaryArtist = track.source === 'local' ? '' : (track.artist || '').split(',')[0].trim();
-  const artistPhotoUrl = primaryArtist ? '/api/artist-photo?name=' + encodeURIComponent(primaryArtist) : '';
-  // 无直接封面时，优先尝试专辑封面搜索，再退到歌手照片
-  const albumCoverUrl = (primaryArtist && track.album) ? '/api/album-cover?artist=' + encodeURIComponent(primaryArtist) + '&album=' + encodeURIComponent(track.album) : '';
-  const fallbackBg = ampCoverUrl || albumCoverUrl || artistPhotoUrl || '';
+  updateAmpArtwork(track);
 
-  // 从专辑封面提取颜色，供全屏 GridDistortion 生成无图案混色纹理。
-  if (fallbackBg) {
-    extractAlbumColors(fallbackBg, (colors) => {
-      // Image loading is async. Ignore a stale cover after the user changes track.
-      if (getActiveTrack()?.id === track.id) applyAlbumColors(colors);
-    });
-  }
-
-  // 更新专辑封面（用 Image 预加载 + 错误回退）
-  const artwork = $('#ampArtwork');
-  if (artwork) {
-    const coverCandidates = [];
-    const direct = directCoverUrl(ampCoverUrl);
-    if (direct) coverCandidates.push(direct);
-    if (ampCoverUrl) coverCandidates.push(ampCoverUrl);
-    if (albumCoverUrl) coverCandidates.push(albumCoverUrl);
-    if (artistPhotoUrl) coverCandidates.push(artistPhotoUrl);
-    
-    if (coverCandidates.length > 0) {
-      // Prime the React-mounted TiltedCard immediately so the fullscreen
-      // artwork is visible even before the async image preload resolves.
-      const firstCover = coverCandidates[0];
-      if (firstCover) {
-        window.ampCoverSrc = firstCover;
-        window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover: firstCover } }));
-      }
-      applyAmpArtwork(artwork, coverCandidates, 0, track.id);
-    } else {
-      artwork.style.backgroundImage = '';
-    }
-  }
-  
   // 更新歌曲信息
   const title = $('#ampTitle');
   if (title) title.textContent = track.title;
@@ -3631,13 +3627,6 @@ function updateAmpLyricsHighlight() {
 
 // 初始化全屏播放器事件
 function initAmpFullscreenPlayer() {
-  window.addEventListener('ty:trackchange', event => {
-    const track = event.detail || getActiveTrack();
-    if (!track || !ampIsShowing) return;
-    updateAmpFullscreenPlayer(track);
-    requestAnimationFrame(() => loadAmpLyrics());
-  });
-
   // 关闭按钮
   const closeBtn = $('#ampCloseBtn');
   if (closeBtn) {

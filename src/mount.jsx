@@ -136,7 +136,7 @@ if (heroElectricBorderMount) sceneRoot(heroElectricBorderMount, 'discover', true
 function AmpTiltedArtwork() {
   const [image, setImage] = React.useState(() => window.ampCoverSrc || '');
   React.useEffect(() => {
-    const update = event => setImage(event.detail?.cover || window.ampCoverSrc || '');
+    const update = event => setImage(event.detail?.cover ?? '');
     window.addEventListener('ty:ampcoverchange', update);
     if (window.ampCoverSrc) setImage(window.ampCoverSrc);
     return () => window.removeEventListener('ty:ampcoverchange', update);

@@ -258,3 +258,76 @@ test('local lyrics remain offline without disclosing file metadata', async () =>
   await context.loadLyrics({ source: 'local', title: 'Private recording', artist: 'Filename' }, value => { lines = value; });
   assert.equal(lines.length, 0);
 });
+
+function fullscreenArtworkPlayer() {
+  const requests = [], nodes = new Map(), events = [];
+  const node = selector => {
+    if (!nodes.has(selector)) nodes.set(selector, { style: {}, classList: { remove() {} } });
+    return nodes.get(selector);
+  };
+  const context = vm.createContext({
+    $: node, URL, location: new URL('https://music.test/'),
+    Image: class { set src(value) { this.url = value; requests.push(this); } },
+    CustomEvent: class { constructor(type, { detail }) { this.type = type; this.detail = detail; } },
+    window: { location: new URL('https://music.test/'), dispatchEvent: event => events.push(event) },
+    state: {}, getQueue: () => [], directCoverUrl: () => '',
+    resolveMusicResource: url => url, updateAmpPlayBtn() {}, ampLyricsShowing: false,
+    applyAlbumColors() {}, extractAlbumColors() {}, setTimeout() {},
+  });
+  for (const selector of ['#ampLikeBtn', '#ampShuffleBtn', '#ampRepeatBtn']) nodes.set(selector, null);
+  vm.runInContext(section('const LOCAL_TRACK_COVER =', 'function releaseLocalAudio()') +
+    section('let ampIsShowing = false;', '// 辅助：在圆角矩形路径上') +
+    section('function getActiveTrack()', 'function updateAmpPlayBtn()'), context);
+  const select = (id, cover, coverSmall = '') =>
+    context.updateAmpFullscreenPlayer({ ...track(id), album: 'Album', cover, coverSmall });
+  const settle = (request, success) => {
+    const img = typeof request === 'string' ? requests.find(item => item.url === request) : request;
+    assert.ok(img, 'the selected track artwork must be requested');
+    img[success ? 'onload' : 'onerror']();
+  };
+  return { context, requests, events, select, settle, artwork: node('#ampArtwork'), title: node('#ampTitle') };
+}
+
+test('fullscreen drops the previous cover at song change and shows the same song thumbnail if the large cover fails', () => {
+  const { context, requests, select, settle, artwork, title } = fullscreenArtworkPlayer();
+  select('a', '/a.jpg');
+  settle('/a.jpg', true);
+  assert.equal(context.window.ampCoverSrc, '/a.jpg');
+  select('b', '/b-large.jpg', '/b-small.jpg');
+  assert.equal(title.textContent, 'Song b');
+  assert.doesNotMatch(artwork.style.backgroundImage, /\/a\.jpg/);
+  settle('/b-large.jpg', false);
+  settle('/b-small.jpg', true);
+  assert.equal(context.window.ampCoverSrc, '/b-small.jpg');
+  assert.ok(!requests.some(img => img.url.startsWith('/api/artist-photo') || img.url.startsWith('/api/album-cover')));
+});
+
+test('fullscreen ignores stale successes and failures after revisiting the same track', () => {
+  const { context, requests, select, settle } = fullscreenArtworkPlayer();
+  select('same', '/old.jpg', '/old-small.jpg');
+  const old = requests.find(img => img.url === '/old.jpg');
+  select('other', '/other.jpg');
+  const other = requests.find(img => img.url === '/other.jpg');
+  select('same', '/new.jpg');
+  settle('/new.jpg', true);
+  const count = requests.length;
+  settle(old, true);
+  settle(other, false);
+  assert.equal(context.window.ampCoverSrc, '/new.jpg');
+  assert.equal(requests.length, count);
+});
+
+test('fullscreen keeps a neutral placeholder when metadata only has a portrait or demo image', () => {
+  const { context, requests, select, artwork } = fullscreenArtworkPlayer();
+  select('missing', '/api/artist-photo?name=Artist', '/assets/demo/cs1.webp');
+  assert.equal(requests.length, 0);
+  assert.match(artwork.style.backgroundImage, /data:image\/svg\+xml/);
+  assert.equal(context.window.ampCoverSrc, '');
+});
+
+test('fullscreen skips a malformed stored cover and can still show the song thumbnail', () => {
+  const { context, select, settle } = fullscreenArtworkPlayer();
+  select('imported', 'https://[', '/valid.jpg');
+  settle('/valid.jpg', true);
+  assert.equal(context.window.ampCoverSrc, '/valid.jpg');
+});
