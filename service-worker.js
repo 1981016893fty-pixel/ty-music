@@ -7,7 +7,7 @@
 const CACHE_NAME = 'ty-music-v53-quality';
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261120-embeat-priority-v61';
+const APP_SHELL = '/?v=20261120-stable-navigation-v62';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/style.css?v=20261120-embeat-priority-v61',
@@ -65,7 +65,9 @@ self.addEventListener('fetch', event => {
   // A cached shell keeps navigation responsive during platform wake-up.
   // Refresh in the background; search and playback still require the network.
   if (event.request.mode === 'navigate' && url.origin === self.location.origin && ['/', '/index.html'].includes(url.pathname)) {
-    const refresh = fetchAndCache(event.request);
+    // Only installation writes the versioned shell. A later deployment can
+    // serve different HTML at that same URL while this worker is still active.
+    const refresh = url.pathname + url.search === APP_SHELL ? fetch(event.request) : fetchAndCache(event.request);
     event.waitUntil(refresh.catch(() => {}));
     event.respondWith(navigationResponse(event.request, refresh));
     return;
@@ -187,7 +189,9 @@ self.addEventListener('fetch', event => {
 async function navigationResponse(request, refresh) {
   try {
     const cache = await caches.open(CACHE_NAME);
-    for (const key of [request, APP_SHELL]) {
+    // The installed shell belongs to this worker; an exact URL may still
+    // contain HTML from the previous release in our shared cache.
+    for (const key of [APP_SHELL, request]) {
       const cached = await cache.match(key);
       if (cached?.ok && !cached.redirected) return cached;
     }
