@@ -2605,6 +2605,8 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   transition: var(--transition-fast);
 }
 
+.album-fav-btn[hidden] { display: none; }
+
 .album-fav-btn:hover {
   border-color: var(--neon-pink);
   color: var(--neon-pink);
@@ -6976,6 +6978,15 @@ body.native-mini-mode #volumeBar {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* Direct Embeat art can display even if the CDN denies canvas readback. */
+#ampGridDistortionMount::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--amp-cover-backdrop, none) center / cover no-repeat;
+  opacity: .22;
 }
 
 /* Apple Music 式完整歌词列表：远行仍可见，只降低层级。 */

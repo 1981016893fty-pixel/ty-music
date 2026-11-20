@@ -18,7 +18,7 @@ function playerSearch(fetch, timers = {}) {
   };
   const context = vm.createContext({
     fetch: (url, options) => url.includes('source=embeat')
-      ? Promise.resolve({ ok: true, json: async () => ({ songs: [], nextOffset: 0, hasMore: false }) }) : fetch(url, options),
+      ? Promise.resolve({ ok: false, status: 502 }) : fetch(url, options),
     AbortController, setTimeout, clearTimeout, ...timers, URL, URLSearchParams, console,
     $: element, state: { currentSource: 'netease' },
     SOURCE_LABELS: { netease: '全网搜索' }, browseResultTitleOverride: '',

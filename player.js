@@ -879,25 +879,12 @@ function trackFromRecentEntry(entry) {
   const id = String(entry.id || '');
   if (!id) return null;
   const cached = state.trackCache.get(id) || state.trackCache.get(entry.id);
-  const merged = { ...(cached || {}), ...entry, id };
-  const source = merged.source || 'netease';
-  return {
-    id,
-    providerId: providerTrackId(merged),
-    urlId: merged.urlId || merged.url_id || '',
-    lyricId: merged.lyricId || merged.lyric_id || '',
-    isrc: merged.isrc || '',
-    title: merged.title || merged.name || '未知歌曲',
-    artist: merged.artist || '未知歌手',
-    album: merged.album || '',
-    cover: coverUrlForTrack(merged, 1000, source),
-    coverSmall: coverUrlForTrack(merged, 300, source),
-    picId: merged.picId || merged.pic_id || '',
-    albumId: String(merged.albumId || merged.album_id || ''),
-    duration: Number(merged.duration) || 0,
-    previewUrl: merged.previewUrl || '',
-    source,
-  };
+  const merged = { ...(cached || {}), id };
+  for (const [field, value] of Object.entries(entry)) {
+    if (value !== undefined && value !== null && value !== '') merged[field] = value;
+  }
+  merged.source ||= id.startsWith('embeat:') ? 'embeat' : 'netease';
+  return { ...normalizeTrack(merged), previewUrl: merged.previewUrl || '' };
 }
 
 function toggleFavorite(track) {
@@ -1074,7 +1061,7 @@ function presentPlaybackTrack(track) {
     var albumText = track.album || track.title || '未知专辑';
     var picId = track.picId || track.albumId || ''; // 优先使用 picId（100% 准确）
     var albumId = track.albumId || '';
-    var songId = track.id || ''; // 歌曲ID（用来获取 picId）
+    var songId = providerTrackId(track);
     
     // 迷你播放器
     var miniAlbumEl = $('#miniAlbum');
@@ -1085,7 +1072,8 @@ function presentPlaybackTrack(track) {
       miniAlbumEl.title = '点击打开专辑';
       miniAlbumEl.onclick = function() {
         // 优先使用 picId，没有的话用 songId 让后端自动获取
-        openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
+        if (track.source === 'embeat') openEmbeatAlbum(track);
+        else openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
       };
     }
     // 全屏播放器
@@ -1099,7 +1087,8 @@ function presentPlaybackTrack(track) {
         closeAmpFullscreenPlayer();
         setTimeout(function() {
           // 优先使用 picId，没有的话用 songId 让后端自动获取
-          openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
+          if (track.source === 'embeat') openEmbeatAlbum(track);
+          else openAlbumByPicId(picId, songId, albumText, track.artist, track.source || 'netease', albumId);
         }, 400);
       };
     }
@@ -1154,21 +1143,21 @@ function playTrack(track, index, skipRecentUpdate) {
   // 缓存歌曲数据到 trackCache 并立即持久化（不等异步回调）
   cacheTrack(track);
 
-  // Record recent play，最多 30 首，超出清空
-  if (state.recentPlays.length >= 30) state.recentPlays = [];
+  // 保留最近 30 首，先淘汰最旧的记录
   state.recentPlays = state.recentPlays.filter(r => r.id !== track.id);
   state.recentPlays.unshift({
     id: track.id, title: track.title, artist: track.artist,
     album: track.album || '',
-    cover: track.cover || track.coverSmall || '', source: track.source,
+    cover: track.cover || track.coverSmall || '', coverSmall: track.coverSmall || '', source: track.source,
     picId: track.picId || '',
     providerId: providerTrackId(track),
     urlId: track.urlId || '',
     lyricId: track.lyricId || '',
     albumId: track.albumId || '',
     isrc: track.isrc || '',
-    previewUrl: track.previewUrl,
+    previewUrl: track.previewUrl, duration: track.duration || 0,
   });
+  state.recentPlays.length = Math.min(30, state.recentPlays.length);
 
   // 【关键修复】立即同步保存，不依赖异步回调。防止页面关闭时数据丢失
   saveAll();
@@ -1215,7 +1204,7 @@ function playTrack(track, index, skipRecentUpdate) {
       window.tyMusicProvider.resource(track, 'url', { signal: playbackController.signal }).then(url => {
         if (playbackId !== playbackRequestId) return;
         pendingAudioResolution = 0;
-        if (!audio.paused && audio.currentTime > 0) return;
+        if (!audio.paused && (audio.readyState >= 3 || audio.currentTime > 0)) return;
         return startAudio(url);
       }).catch(function() {
         if (playbackId !== playbackRequestId) return;
@@ -2024,25 +2013,13 @@ async function loadDiscover() {
       
       const trackId = card.dataset.trackId;
       
-      // 首先尝试从队列中查找
       const qIdx = state.queue.findIndex(t => t.id === trackId);
-      if (qIdx >= 0) {
-        state.queueIndex = qIdx;
-        playTrack(state.queue[qIdx], qIdx);
-        return;
-      }
-      
-      // 如果不在队列中，从 trackMap 中获取
-      const track = trackMap.get(trackId);
-      if (track) {
-        // 添加到队列并播放
-        state.queue.push(track);
-        const newIdx = state.queue.length - 1;
-        state.queueIndex = newIdx;
-        playTrack(track, newIdx);
-      } else {
-        showToast('歌曲加载失败，请重试');
-      }
+      const entry = sel === '#recentTracks' && state.recentPlays.find(item => String(item.id) === trackId);
+      const track = entry ? trackFromRecentEntry(entry) : state.queue[qIdx] || trackMap.get(trackId);
+      if (!track) { showToast('歌曲加载失败，请重试'); return; }
+      if (qIdx < 0) state.queue.push(track);
+      else state.queue[qIdx] = track;
+      playTrack(track);
     });
   });
 
@@ -2279,9 +2256,7 @@ if (browseQuickGrid) {
 }
 
 let searchTimeout;
-let autoAbortCtrl = null;
 let autoIndex = -1;
-const SEARCH_REQUEST_TIMEOUT = 15000;
 let activeSearchTracks = [];
 let activeSearchHasMore = false;
 let searchResultsObserver = null;
@@ -2292,10 +2267,9 @@ const searchSession = createMusicSearchSession({
     activeSearchStatus = page;
     activeSearchTracks = page.songs.map(normalizeTrack);
     activeSearchHasMore = page.hasMore;
-    const hasEmbeat = activeSearchTracks.some(track => track.source === 'embeat');
-    const hasNetease = activeSearchTracks.some(track => track.source === 'netease');
-    $('#searchSourceLabel').textContent = hasEmbeat
-      ? (hasNetease ? '音源：网易云 + Embeat' : '音源：Embeat 补充结果') : '音源：网易云 · Embeat 可用时补充';
+    $('#searchSourceLabel').textContent = page.source
+      ? '音源：' + (page.source === 'embeat' ? 'Embeat' : '网易云')
+      : '正在选择可用音源…';
     if (page.added.length) addToQueue(page.added.map(normalizeTrack));
     renderPaginatedSearchResults();
   },
@@ -2393,28 +2367,16 @@ function selectAutoItem(item) {
   performSearch(q);
 }
 
-async function fetchAutocomplete(query) {
-  if (!query || query.length < 1) { hideAutocomplete(); return; }
-  // 取消上一次请求
-  if (autoAbortCtrl) autoAbortCtrl.abort();
-  const controller = new AbortController();
-  autoAbortCtrl = controller;
-  const timer = setTimeout(() => controller.abort(), SEARCH_REQUEST_TIMEOUT);
-  
-  try {
-    const res = await fetch('/api/music/search?keywords=' + encodeURIComponent(query) + '&limit=8&source=netease', { signal: controller.signal, cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
-    if (controller.signal.aborted || autoAbortCtrl !== controller || $('#searchInput').value.trim() !== query) return;
-    const songs = data.songs || [];
-    if (!songs.length) { hideAutocomplete(); return; }
-    renderAutocomplete(songs);
-  } catch (e) {
-    if (e.name !== 'AbortError') console.warn('[Autocomplete]', e.message);
-  } finally {
-    clearTimeout(timer);
-    if (autoAbortCtrl === controller) autoAbortCtrl = null;
-  }
+const autocompleteSession = createMusicSearchSession({
+  searchPage: window.tyMusicProvider?.search,
+  limit: 8,
+  onChange(page) {
+    if (page.songs.length) renderAutocomplete(page.songs);
+  },
+});
+
+function fetchAutocomplete(query) {
+  if (query) autocompleteSession.search(query);
 }
 
 function renderAutocomplete(songs) {
@@ -2444,7 +2406,7 @@ function hideAutocomplete() {
   const box = $('#searchAutocomplete');
   if (box) { box.style.display = 'none'; box.innerHTML = ''; }
   autoIndex = -1;
-  if (autoAbortCtrl) { autoAbortCtrl.abort(); autoAbortCtrl = null; }
+  autocompleteSession.cancel();
 }
 
 async function performSearch(query, resultTitle = '') {
@@ -2472,8 +2434,7 @@ function renderPaginatedSearchResults() {
   if (!activeSearchTracks.length) {
     if (activeSearchStatus?.loading) container.innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
     else {
-      const message = activeSearchStatus?.supplementLoading ? '正在尝试补充搜索…'
-        : activeSearchStatus?.error || '没有找到相关歌曲';
+      const message = activeSearchStatus?.error || '没有找到相关歌曲';
       container.innerHTML = '<p class="empty-state">' + esc(message) + '</p>';
     }
     return;
@@ -2994,8 +2955,11 @@ function updateAmpArtwork(track) {
   if (!artwork) return;
   const requestId = ++ampArtworkRequestId;
   const isCurrent = () => requestId === ampArtworkRequestId;
+  const backdrop = $('#ampGridDistortionMount');
   setAmpArtwork(artwork, '');
+  backdrop?.style.removeProperty('--amp-cover-backdrop');
   const covers = new Map();
+  let shown = false;
   for (const candidate of [track.cover, track.coverSmall]) {
     if (typeof candidate !== 'string' || !candidate.trim()) continue;
     let url;
@@ -3011,8 +2975,10 @@ function updateAmpArtwork(track) {
   }
 
   function showCover(cover, colorSource) {
-    if (!isCurrent()) return;
+    if (!isCurrent() || shown) return;
+    shown = true;
     setAmpArtwork(artwork, cover);
+    if (track.source === 'embeat') backdrop?.style.setProperty('--amp-cover-backdrop', `url(${JSON.stringify(cover)})`);
     // Use the proxy URL for palette extraction when the CDN lacks CORS.
     extractAlbumColors(colorSource, colors => {
       if (isCurrent()) applyAlbumColors(colors);
@@ -3020,20 +2986,22 @@ function updateAmpArtwork(track) {
   }
 
   const candidates = covers.entries();
+  const provider = track.picId && track.source !== 'local' && !window.__TY_MUSIC_DESKTOP__ && window.tyMusicProvider;
+  function requestProviderCover() {
+    provider.resource(track, 'pic').then(cover => {
+      if (isCurrent() && !shown) loadCover(cover, cover, null);
+    }).catch(() => {});
+  }
   function tryNextCover() {
-    if (!isCurrent()) return;
+    if (!isCurrent() || shown) return;
     const next = candidates.next();
     if (!next.done) {
       const [cover, colorSource] = next.value;
       loadCover(cover, colorSource, tryNextCover);
-    } else if (track.picId && track.source !== 'local' && window.tyMusicProvider && !window.__TY_MUSIC_DESKTOP__) {
-      // Resolve only this track's own provider artwork, never a text search.
-      window.tyMusicProvider.resource(track, 'pic').then(cover => {
-        if (isCurrent()) loadCover(cover, cover, null);
-      }).catch(() => {});
-    }
+    } else if (provider && track.source !== 'embeat') requestProviderCover();
   }
 
+  if (provider && track.source === 'embeat') requestProviderCover();
   function loadCover(cover, colorSource, onError) {
     const image = new Image();
     image.onload = () => showCover(cover, colorSource);
@@ -3250,10 +3218,13 @@ function resetAlbumDetailColors() {
 }
 
 function syncAlbumDetailColorsFromCover(image) {
+  const generation = albumDetailGeneration;
   if (!image) return;
   const source = image.currentSrc || image.src;
   if (!source) return;
-  extractAlbumColors(source, applyAlbumDetailColors);
+  extractAlbumColors(source, colors => {
+    if (generation === albumDetailGeneration && state.currentPage === 'album-detail') applyAlbumDetailColors(colors);
+  });
 }
 
 function openAmpFullscreenPlayer() {
@@ -4303,6 +4274,7 @@ async function updateStorageInfo() {
 // ============================================
 
 let currentAlbumTracks = [];
+let albumDetailGeneration = 0;
 let driftSourceTracksPromise = null;
 let driftWallSourceTracks = [];
 let driftWallRefreshTimer = null;
@@ -4388,6 +4360,8 @@ function loadDriftWallSourceCovers(extraTracks) {
 }
 
 async function openAlbumDetail(albumId) {
+  albumDetailGeneration++;
+  currentAlbumTracks = [];
   console.log('[Album] openAlbumDetail called', { albumId });
   
   // 存储当前专辑 ID
@@ -4396,6 +4370,7 @@ async function openAlbumDetail(albumId) {
   
   // 导航到专辑详情页
   navigateTo('album-detail');
+  $('#albumFavBtn').hidden = false;
   resetAlbumDetailColors();
   
   document.getElementById('albumTrackList').innerHTML = '<div class="scroll-loading" aria-label="曲目加载中"></div>';
@@ -4508,13 +4483,37 @@ function renderAlbumTracks(tracks) {
   if (window.mountGlassSurfaces) window.mountGlassSurfaces();
 }
 
+// Embeat exposes a track and album metadata, not a verified album track list.
+function openEmbeatAlbum(track) {
+  albumDetailGeneration++;
+  navigateTo('album-detail');
+  resetAlbumDetailColors();
+  window.currentAlbumId = null;
+  window.currentAlbumData = null;
+  currentAlbumTracks = [track];
+  $('#albumFavBtn').hidden = true;
+  setShinyText('albumDetailTitle', track.album || '专辑名称未知');
+  $('#albumDetailArtist').textContent = track.artist || '';
+  $('#albumDetailMeta').textContent = 'Embeat · 完整曲目暂不可用';
+  const cover = $('#albumDetailCover');
+  cover.onload = function() { syncAlbumDetailColorsFromCover(this); };
+  setPlaybackCover(cover, track);
+  renderAlbumTracks(currentAlbumTracks);
+}
+
 // 通过 picId 获取专辑信息（最准确）
 async function openAlbumByPicId(picId, songId, albumName, artistName, source, albumId) {
-  if (source === 'embeat') { showToast('Embeat 暂不提供专辑曲目'); return; }
+  if (source === 'embeat') { showToast('Embeat 暂不提供完整专辑曲目'); return; }
+  const generation = ++albumDetailGeneration;
+  const isCurrent = () => generation === albumDetailGeneration && state.currentPage === 'album-detail';
+  currentAlbumTracks = [];
+  window.currentAlbumId = null;
+  window.currentAlbumData = null;
   console.log('[Album] openAlbumByPicId', { picId, songId, albumName, artistName, source, albumId });
   
   // 导航到专辑详情页
   navigateTo('album-detail');
+  $('#albumFavBtn').hidden = false;
   
   const container = document.getElementById('albumTrackList');
   resetAlbumDetailColors();
@@ -4547,6 +4546,7 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
     
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (!isCurrent()) return;
     const songs = data.songs || [];
     
     if (songs.length === 0) {
@@ -4609,6 +4609,7 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
     // 渲染曲目列表
     renderAlbumTracks(tracks);
   } catch (e) {
+    if (!isCurrent()) return;
     console.error('[Album] Error loading album:', e);
     container.innerHTML = '<p class="empty-state">加载专辑失败</p>';
     document.getElementById('albumDetailMeta').textContent = '加载失败';
@@ -4617,11 +4618,17 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
 
 // 通过专辑名称搜索曲目（向后兼容）
 async function openAlbumByName(albumName, artistName, source, picId) {
-  if (source === 'embeat') { showToast('Embeat 暂不提供专辑曲目'); return; }
+  if (source === 'embeat') { showToast('Embeat 暂不提供完整专辑曲目'); return; }
+  const generation = ++albumDetailGeneration;
+  const isCurrent = () => generation === albumDetailGeneration && state.currentPage === 'album-detail';
+  currentAlbumTracks = [];
+  window.currentAlbumId = null;
+  window.currentAlbumData = null;
   console.log('[Album] openAlbumByName (fallback)', { albumName, artistName, source, picId });
   
   // 导航到专辑详情页
   navigateTo('album-detail');
+  $('#albumFavBtn').hidden = false;
   
   const container = document.getElementById('albumTrackList');
   resetAlbumDetailColors();
@@ -4640,6 +4647,7 @@ async function openAlbumByName(albumName, artistName, source, picId) {
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
+    if (!isCurrent()) return;
     const songs = data.songs || [];
 
     if (songs.length === 0) {
@@ -4699,6 +4707,7 @@ async function openAlbumByName(albumName, artistName, source, picId) {
     // 渲染曲目列表
     renderAlbumTracks(tracks);
   } catch (e) {
+    if (!isCurrent()) return;
     console.error('[Album] Error loading album:', e);
     container.innerHTML = '<p class="empty-state">加载专辑失败</p>';
   }
@@ -4771,6 +4780,7 @@ function renderArtistSections() {
 
 function openRepresentativeAlbum(track) {
   if (!track) return;
+  if (track.source === 'embeat') { openEmbeatAlbum(track); return; }
   var albumName = track.album || track.title || '专辑';
   var artistName = track.artist || '';
   if (track.picId || track.albumId) {

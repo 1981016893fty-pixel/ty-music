@@ -123,7 +123,7 @@ test('late audio resolution cannot replace a later choice or reset its lyrics, e
     window: { dispatchEvent() {}, tyMusicProvider: { resource: (...args) => new Promise((resolve, reject) => pending.push({ resolve, reject, args })) } },
     document: { title: '', getElementById: () => null, querySelector: () => element },
     CustomEvent: class {}, $: () => element, showToast: text => notices.push(text),
-    resolveMusicResource: x => x, musicResourceQuery: () => 'source=embeat&id=resource',
+    providerTrackId: item => item.id, resolveMusicResource: x => x, musicResourceQuery: () => 'source=embeat&id=resource',
     fallbackCover() {}, syncNativeNowPlaying() {}, formatTime: String, fetchAndDisplayAlbumInfo() {},
     directCoverUrl: () => '', updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
     ampLyricsRequestId: 0, ampLyricsRenderedFor: null, ampIsShowing: false, playTimeout: null,
@@ -155,4 +155,20 @@ test('Embeat CDN image failure falls back to the icon without guessing another c
   assert.equal(img.src, 'https://cdn.example/broken.jpg');
   context.fallbackCover(img);
   assert.match(img.src, /^data:image\/svg\+xml/);
+});
+
+test('concurrent Embeat cover lookups share the same provider request and can retry failures', async () => {
+  let pictureRequests = 0;
+  const provider = await browser(async raw => {
+    const url = new URL(raw);
+    if (url.pathname === '/time') return new Response('1794826800');
+    if (++pictureRequests === 1) return new Response(null, { status: 502 });
+    return json({ url: 'https://cdn.example/current.webp' });
+  });
+  const track = { source: 'embeat', picId: 'cover' };
+  const first = await Promise.allSettled([provider.resource(track, 'pic'), provider.resource(track, 'pic')]);
+  assert.ok(first.every(result => result.status === 'rejected'));
+  assert.equal(pictureRequests, 1);
+  assert.equal(await provider.resource(track, 'pic'), 'https://cdn.example/current.webp');
+  assert.equal(pictureRequests, 2);
 });
