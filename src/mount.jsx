@@ -29,10 +29,10 @@ if (welcomeStartMount) {
   sceneRoot(welcomeStartMount, 'welcome', false).render(
     <SpecularButton
       className="welcome-start-button"
+      radius={999}
       tint="rgba(255, 255, 255, 0.02)"
       blur={18}
-      lineColor="rgba(255,255,255,0.72)"
-      baseColor="rgba(255,255,255,0.94)"
+      baseColor="#fff"
       intensity={0.62}
       autoAnimate
       onClick={() => window.enterMusicApp?.()}
@@ -47,10 +47,10 @@ if (welcomeLearnMoreMount) {
   sceneRoot(welcomeLearnMoreMount, 'welcome', false).render(
     <SpecularButton
       className="welcome-learn-more"
+      radius={999}
       tint="rgba(255, 255, 255, 0.02)"
       blur={18}
-      lineColor="rgba(255,255,255,0.72)"
-      baseColor="rgba(255,255,255,0.94)"
+      baseColor="#fff"
       intensity={0.62}
       autoAnimate
       onClick={() => window.toggleWelcomeFeatures?.()}
@@ -413,10 +413,10 @@ if (topDockClientMount) {
   sceneRoot(topDockClientMount, 'app', false).render(
     <SpecularButton
       className="top-dock__client-entry"
+      radius={999}
       tint="rgba(255, 255, 255, 0.02)"
       blur={18}
-      lineColor="rgba(255,255,255,0.72)"
-      baseColor="rgba(255,255,255,0.94)"
+      baseColor="#fff"
       intensity={0.62}
       autoAnimate
       onClick={() => { window.location.href = 'desktop.html'; }}

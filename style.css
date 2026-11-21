@@ -165,13 +165,13 @@
   letter-spacing: 0;
 }
 
-.welcome-start-button,
-.welcome-learn-more {
+.specular-button.welcome-start-button,
+.specular-button.welcome-learn-more {
   min-width: 142px;
   min-height: 48px;
-  border-radius: 999px !important;
   background: rgba(255,255,255,.045) !important;
   color: #fff !important;
+  box-shadow: none;
 }
 
 .welcome-actions {
@@ -856,11 +856,9 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   width: 132px;
   min-width: 132px;
   height: 28px;
-  padding: 0;
   margin-left: auto;
   padding: 0 13px;
   border: 1px solid rgba(255,255,255,.72);
-  border-radius: 999px;
   color: rgba(255,255,255,.82);
   background: transparent;
   box-shadow: none;
@@ -872,13 +870,7 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   white-space: nowrap;
   transition: color .2s ease, background .2s ease, border-color .2s ease, transform .2s ease;
 }
-.top-dock__client-entry:hover { color: #fff; background: rgba(255,255,255,.075); border-color: rgba(255,255,255,.9); box-shadow: inset 0 1px rgba(255,255,255,.16), 0 10px 24px rgba(0,0,0,.3); transform: translateY(-1px); }
-.top-dock__client-entry:hover { background: transparent; box-shadow: none; }
-.top-dock__client-surface { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.top-dock__client-entry > i,
-.top-dock__client-entry > span:not(.top-dock__client-surface) { position: relative; z-index: 1; }
-.top-dock__client-entry > i:first-child { color: #c49aff; text-shadow: 0 0 10px rgba(196,154,255,.45); }
-.top-dock__client-arrow { color: rgba(255,255,255,.5); font-size: 9px; }
+.top-dock__client-entry:hover { color: #fff; transform: translateY(-1px); }
 html.ty-desktop .top-dock__client-entry { display: none; }
 .top-dock__glitch {
   margin: 0;
@@ -907,7 +899,6 @@ html.ty-desktop .top-dock__client-entry { display: none; }
   .top-dock { top: 0; left: 0; width: 100vw; height: 32px; padding: 0 12px; }
   .top-dock__glitch { font-size: 11px; }
   .top-dock__client-entry { min-height: 24px; padding: 0 9px; font-size: 10px; }
-  .top-dock__client-arrow { display: none; }
 }
 
 /* Playlist detail: a compact, scan-first workspace with the official
