@@ -1,5 +1,33 @@
 'use strict';
 
+function normalizeSearchText(value) {
+  return String(value ?? '').normalize('NFKC').toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, ' ').trim();
+}
+
+function searchArtistNames(artist) {
+  if (Array.isArray(artist)) return artist.map(normalizeSearchText);
+  if (typeof artist !== 'string') return [];
+  return [artist, ...artist.split(/[,，、]|\s+(?:feat\.?|ft\.?)\s+/i)].map(normalizeSearchText);
+}
+
+function relevantSearchSongs(session, songs) {
+  const query = session.normalizedQuery;
+  const exactArtist = song => searchArtistNames(song.artist).includes(query);
+  if (session.offset === 0) session.artistSearch = Boolean(query) && songs.some(exactArtist);
+  if (session.artistSearch) return songs.filter(exactArtist);
+  // A single word can be a partial title or name. Multiple words should each
+  // be present in the song metadata, with Latin names compared as whole words.
+  const terms = query.split(' ');
+  if (terms.length < 2) return songs;
+  return songs.filter(song => {
+    const text = normalizeSearchText([song.name || song.title, song.artist, song.album].join(' '));
+    const words = new Set(text.split(' '));
+    return terms.every(term => /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(term)
+      ? text.includes(term) : words.has(term));
+  });
+}
+
 // Choose one catalog for a query. A speculative NetEase request keeps
 // fallback latency independent of the Embeat deadline.
 function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, onChange, limit = 20 }) {
@@ -79,7 +107,7 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
         }
       }
       if (current !== session) return;
-      const added = page.songs.filter(song => {
+      const added = relevantSearchSongs(session, page.songs).filter(song => {
         const key = String(song.providerId ?? song.id);
         if (session.seen.has(key)) return false;
         session.seen.add(key);
@@ -102,7 +130,8 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
   return {
     search(query) {
       cancel();
-      current = { query, source: '', offset: 0, songs: [], seen: new Set(), hasMore: true, loading: false, controller: new AbortController() };
+      current = { query, normalizedQuery: normalizeSearchText(query), source: '', offset: 0,
+        songs: [], seen: new Set(), hasMore: true, loading: false, controller: new AbortController() };
       void loadMore();
       publish(current);
     },

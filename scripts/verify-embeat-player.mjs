@@ -34,6 +34,7 @@ console.log('Verified Embeat identity, resource routing, cache/recent round trip
 // Execute the actual recent-write expression, not a parallel implementation.
 context.track = track;
 context.state.recentPlays = [];
+vm.runInContext(between('  const previousRecent =', '  state.recentPlays = state.recentPlays.filter'), context);
 const recentStart = source.indexOf('  state.recentPlays.unshift({');
 vm.runInContext(source.slice(recentStart, source.indexOf('\n  });', recentStart) + 6), context);
 const recent = JSON.parse(JSON.stringify(context.state.recentPlays[0]));

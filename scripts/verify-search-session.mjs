@@ -91,7 +91,7 @@ test('Embeat wins without waiting for or publishing NetEase', async () => {
   session.search('November Rain Kris Wu');
   const embeat = requests.find(r => r.params.get('source') === 'embeat');
   const netease = requests.find(r => r.params.get('source') === 'netease');
-  embeat.resolve(response([song('original', 'embeat')], 20, true));
+  embeat.resolve(response([{ ...song('original', 'embeat'), name: 'November Rain', artist: 'Kris Wu' }], 20, true));
   await setImmediate();
   assert.deepEqual(Array.from(latest().songs, s => s.id), ['original']);
   assert.equal(latest().source, 'embeat');
@@ -115,4 +115,31 @@ test('valid empty Embeat result suppresses even faster NetEase results', async (
   assert.equal(latest().error, null);
   assert.equal(latest().loading, false);
   assert.equal(latest().songs.length, 0);
+});
+
+test('artist searches exclude near names and unrelated titles across pages', async () => {
+  const { session, requests, latest } = setup();
+  session.search('  KRIS   WU ');
+  const result = (id, artist, name = id) => ({ ...song(id, 'embeat'), name, artist });
+  requests[1].resolve(response([
+    result('near', 'kriswwu'), result('original', 'Kris Wu'),
+    result('collaboration', 'Travis Scott, Kris Wu'), result('tribute', 'Other', 'Kris Wu tribute'),
+  ], 20, true));
+  await setImmediate();
+  assert.deepEqual(Array.from(latest().songs, s => s.id), ['original', 'collaboration']);
+  session.loadMore();
+  requests[2].resolve(response([result('near-2', 'Kris Wuu'), result('second', ['Kris Wu', 'Other'])], 40));
+  await setImmediate();
+  assert.deepEqual(Array.from(latest().added, s => s.id), ['second']);
+});
+
+test('song plus artist keywords can match both fields and a fuzzy artist alone does not match', async () => {
+  const { session, requests, latest } = setup();
+  session.search('November Rain Kris Wu');
+  requests[1].resolve(response([
+    { ...song('original', 'embeat'), name: 'November Rain', artist: 'Kris Wu' },
+    { ...song('near', 'embeat'), name: 'November Rain', artist: 'kriswwu' },
+  ]));
+  await setImmediate();
+  assert.deepEqual(Array.from(latest().songs, s => s.id), ['original']);
 });

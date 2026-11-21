@@ -7,14 +7,14 @@
 const CACHE_NAME = 'ty-music-v53-quality';
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261120-stable-navigation-v62';
+const APP_SHELL = '/?v=20261121-player-search-v63';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261120-embeat-priority-v61',
-  '/player.js?v=20261120-embeat-priority-v61',
+  '/style.css?v=20261121-player-search-v63',
+  '/player.js?v=20261121-player-search-v63',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261120-embeat-priority-v61',
-  '/search-session.js?v=20261120-embeat-priority-v61',
+  '/search-session.js?v=20261121-player-search-v63',
   '/soft-aurora-react.js?v=20261120-fullscreen-artwork-v60',
   '/soft-aurora-react.css?v=20261118-quality-v53',
   '/assets/demo/cs1.webp',
