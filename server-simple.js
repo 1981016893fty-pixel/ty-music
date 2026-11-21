@@ -152,16 +152,16 @@ function dedupedGetJSON(url, timeout, retries) {
 const DEFAULT_COVER = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgZmlsbD0iIzFhMWExYSIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LXNpemU9IjgwIiBmaWxsPSIjNjY2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+8J+QvjwvdGV4dD48L3N2Zz4=';
 
 // 歌手照片缓存（避免重复请求）
-const artistPhotoCache = new Map();
+const artistPhotoCache = createBoundedCache(128);
+const ARTIST_PHOTO_TTL = 60 * 60 * 1000;
 
 // 获取歌手真实照片 URL（从网易云音乐 API）
 async function getArtistPhotoUrl(artistName) {
   if (!artistName || artistName === '未知歌手') return null;
   
   // 检查缓存
-  if (artistPhotoCache.has(artistName)) {
-    return artistPhotoCache.get(artistName);
-  }
+  const cached = artistPhotoCache.get(artistName);
+  if (cached !== null) return cached || null;
   
   try {
     const url = `https://music.163.com/api/search/get?s=${encodeURIComponent(artistName)}&type=100&limit=1`;
@@ -173,8 +173,7 @@ async function getArtistPhotoUrl(artistName) {
       
       if (photoUrl) {
         // 缓存结果（有效期 1 小时）
-        artistPhotoCache.set(artistName, photoUrl);
-        setTimeout(() => artistPhotoCache.delete(artistName), 3600000);
+        artistPhotoCache.set(artistName, photoUrl, ARTIST_PHOTO_TTL);
         console.log(`[Artist Photo] ${artistName}: ${photoUrl.substring(0, 60)}...`);
         return photoUrl;
       }
@@ -184,8 +183,7 @@ async function getArtistPhotoUrl(artistName) {
   }
   
   // 缓存空结果（避免重复请求）
-  artistPhotoCache.set(artistName, null);
-  setTimeout(() => artistPhotoCache.delete(artistName), 3600000);
+  artistPhotoCache.set(artistName, '', ARTIST_PHOTO_TTL);
   
   return null;
 }

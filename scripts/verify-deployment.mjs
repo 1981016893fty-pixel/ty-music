@@ -27,6 +27,7 @@ assert.equal(shell.status, 200, 'precache URL must not redirect');
 assert.match(shell.headers.get('content-type'), /text\/html/);
 assert.ok((await shell.text()).includes(releaseTag), 'Precached homepage must serve the expected Git commit');
 assert.equal((await get('/library-transfer.html')).status, 200);
+assert.match((await get('/local-music-db.js')).headers.get('content-type'), /javascript/);
 for (const path of ['/server-simple.js', '/users.json', '/.env']) {
   const text = await get(path).then(r => r.text());
   assert.match(text, /<!DOCTYPE html>/i, 'Private files must resolve to the public SPA fallback');

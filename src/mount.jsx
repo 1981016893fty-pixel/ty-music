@@ -493,6 +493,8 @@ function mountTiltedCards(scope = document) {
       'data-artist': image.dataset.artist,
       'data-album': image.dataset.album,
       'data-name': image.dataset.name,
+      'data-recent-track-id': image.dataset.recentTrackId,
+      onLoad: image.dataset.recentTrackId ? event => window.rememberRecentCoverImage?.(event.currentTarget) : undefined,
       onError: event => window.fallbackCover?.(event.currentTarget),
     };
     const mount = document.createElement('div');

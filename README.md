@@ -6,7 +6,7 @@
 
 ## 部署
 
-目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度。构建 `npm run build:pages`，运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)。音乐分类优先加载前四张封面；仍在下载的慢图会在页面可见时尝试代理补图，其余封面随滚动加载。全屏在大图无法加载时优先尝试该曲缩略图，缺图时显示占位。最近播放会恢复原曲封面，全屏背景跟随已加载的当前歌曲封面。列表和播放器封面加载策略见[维护指南](docs/maintenance.md#歌曲封面加载)。
+目标站点：[ty-music.pages.dev](https://ty-music.pages.dev)。前端使用 Cloudflare Pages，API 使用同源 Workers 免费额度。构建 `npm run build:pages`，运行、发布、额度与回退说明见[部署指南](DEPLOY-GUIDE.md)。音乐分类优先加载前四张封面；仍在下载的慢图会在页面可见时尝试代理补图，其余封面随滚动加载。全屏在大图无法加载时优先尝试该曲缩略图，缺图时显示占位。最近播放会恢复原曲封面，全屏使用原有 GridDistortion 动效，并尽量从当前专辑封面取色。列表和播放器封面加载策略见[维护指南](docs/maintenance.md#歌曲封面加载)。
 
 换域名不会自动迁移个人曲库。请在原浏览器旧站打开 `/library-transfer.html` 导出，再在新站同名页面预览合并；音频与收藏留在本机，迁移工具不上传资料。旧服务退役以数据导出和新站验收完成为条件。
 
@@ -61,4 +61,4 @@ npm run build:aurora
 
 以下为 Render 历史验收记录；当前 Cloudflare 状态以维护指南为准。2026-11-17 v49 动效负载优化已部署，保留现有效果；当次 ego lite 首页动画回调 CPU 约减少39%，不代表整机温度同比下降，详见维护说明的测量边界。此前 v48 已合并并部署至[旧站](https://ty-music.onrender.com)，ego lite 真实页面已验证网易云20首＋Embeat20首、Embeat原曲起播／封面／39行歌词、拖动后歌词高亮，以及补充源阻断时保留20首基础结果。校时和歌曲时长兼容上游秒／毫秒差异；播放不使用同名异曲模糊替换。Render Free 控制台确认存在闲置休眠：缓存过的返访界面优先显示，首次无缓存访问仍可能等待唤醒。此前生产服务端受 GD 校时 HTTP 403 阻塞，v48 网页改从访问者网络直连；上游仍可能波动。最新 PR、CI、部署及验收边界以[维护说明的当前状态](docs/maintenance.md#封面与图片加载优化v54)为准，不据此承诺全目录可用、Safari 60fps 或消除平台冷启动。
 
-详细的接口契约、排障、数据位置、验证状态和回退步骤见[维护说明](docs/maintenance.md)。[API 入口说明](README_API.md)提供常用请求示例。
+搜索翻页只追加新结果，点播才建立该次搜索的队列。本地曲库列表只读元数据，点播时才读取音频。详细的接口契约、排障、数据位置、验证状态和回退步骤见[维护说明](docs/maintenance.md)。[API 入口说明](README_API.md)提供常用请求示例。

@@ -16,7 +16,7 @@ await mkdir(out);
 // Mirror the public allowlist in static-files.cjs, excluding the desktop shell.
 // Never publish the repository root: it also contains private server data.
 const publicFiles = [
-  'index.html', 'library-transfer.html', 'library-transfer.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
+  'index.html', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
   'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css', 'liquid-glass.js',
   'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
 ];
