@@ -9,11 +9,11 @@ const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
 const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261121-button-v66';
+const APP_SHELL = '/?v=20261122-desktop-v67';
 const STATIC_ASSETS = [
   APP_SHELL,
   '/style.css?v=20261121-button-v66',
-  '/player.js?v=20261121-artwork-v65',
+  '/player.js?v=20261122-desktop-v67',
   '/local-music-db.js?v=20261121-memory-v64',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261121-artwork-v65',

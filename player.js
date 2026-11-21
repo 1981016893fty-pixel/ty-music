@@ -1388,7 +1388,7 @@ function playTrack(track, index, skipRecentUpdate) {
         showToast(e.name === 'NotAllowedError' ? '请点击播放按钮继续播放' : '播放失败，请换一首试试');
       });
     }
-    const direct = window.tyMusicProvider && !window.__TY_MUSIC_DESKTOP__;
+    const direct = window.tyMusicProvider && (!window.__TY_MUSIC_DESKTOP__ || track.source === 'embeat');
     pendingAudioResolution = direct ? playbackId : 0;
     // Start the existing path synchronously, preserving Safari and desktop
     // gesture behavior. Direct resolution can rescue a rejected server path.

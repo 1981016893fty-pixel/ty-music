@@ -10,7 +10,7 @@ fs.mkdirSync(out, { recursive: true });
 const files = [
   'index.html', 'style.css', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'soft-aurora-react.js',
   'soft-aurora-react.css', 'liquid-glass.js', 'manifest.json',
-  'icon-192.png', 'icon-512.png', 'service-worker.js', 'desktop.html'
+  'icon-192.png', 'icon-512.png', 'icon.svg', 'service-worker.js', 'desktop.html'
 ];
 for (const file of files) {
   const source = path.join(root, file);
