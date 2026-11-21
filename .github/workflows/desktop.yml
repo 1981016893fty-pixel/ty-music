@@ -32,7 +32,7 @@ jobs:
       matrix:
         include:
           - platform: macOS
-            os: macos-15
+            os: macos-26
             command: desktop:build
             files: src-tauri/target/release/bundle/dmg/*.dmg
           - platform: Windows

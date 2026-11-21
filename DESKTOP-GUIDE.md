@@ -15,7 +15,7 @@ GitHub 构建未配置 Developer ID 公证或 Windows Authenticode 签名，系�
 
 ## 开发和构建
 
-两端均使用 Node.js 22、Rust stable。macOS 需要 Xcode 命令行工具；Windows 需要 Visual Studio 的 C++ 桌面构建工具和 WebView2 Runtime。依赖说明见 [Tauri 前置环境](https://v2.tauri.app/start/prerequisites/)。
+两端均使用 Node.js 22、Rust stable。构建 macOS 包需要 Xcode 26 和 macOS 26 SDK，原生媒体桥在编译时依赖该 SDK；安装包部署目标仍为 macOS 12。Windows 需要 Visual Studio 的 C++ 桌面构建工具和 WebView2 Runtime。依赖说明见 [Tauri 前置环境](https://v2.tauri.app/start/prerequisites/)。
 
 ```sh
 npm ci
