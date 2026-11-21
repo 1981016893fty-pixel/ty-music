@@ -176,7 +176,6 @@ if (ampGridMount) sceneRoot(ampGridMount, 'fullscreen', true).render(<AmpGridDis
 
 function AlbumDriftWall() {
   const [items, setItems] = React.useState(() => window.albumDriftWallItems || []);
-  const itemsRef = React.useRef(items);
   React.useEffect(() => {
     const update = event => {
       const incoming = Array.isArray(event.detail?.items) ? event.detail.items : [];
@@ -189,9 +188,7 @@ function AlbumDriftWall() {
           seen.add(item.image);
           merged.push(item);
         });
-        const next = merged.slice(-96);
-        itemsRef.current = next;
-        return next;
+        return merged.slice(-30);
       });
     };
     window.addEventListener('ty:albumdriftcovers', update);
@@ -490,6 +487,7 @@ function mountTiltedCards(scope = document) {
       decoding: image.decoding,
       referrerPolicy: image.referrerPolicy,
       'data-proxy-cover': image.dataset.proxyCover,
+      'data-embeat-cover': image.dataset.embeatCover,
       'data-artist': image.dataset.artist,
       'data-album': image.dataset.album,
       'data-name': image.dataset.name,
@@ -569,8 +567,14 @@ const pendingSubtrees = new Set();
 let mountFrame = 0;
 const tiltedObserver = new MutationObserver(records => {
   for (const record of records) {
+    for (const node of record.removedNodes) {
+      if (!(node instanceof Element) || node.isConnected) continue;
+      matchingTargets(node, 'img[data-embeat-cover]').forEach(image => window.unwatchCoverImage?.(image));
+    }
     for (const node of record.addedNodes) {
-      if (node instanceof Element && !node.closest('.glass-surface-mount, .tilted-card-mount')) pendingSubtrees.add(node);
+      if (!(node instanceof Element)) continue;
+      matchingTargets(node, 'img[data-embeat-cover]').forEach(image => window.watchCoverImage?.(image));
+      if (!node.closest('.glass-surface-mount, .tilted-card-mount')) pendingSubtrees.add(node);
     }
   }
   if (mountFrame) return;
@@ -591,4 +595,5 @@ const tiltedObserver = new MutationObserver(records => {
   });
 });
 tiltedObserver.observe(document.body, { childList: true, subtree: true });
+matchingTargets(document, 'img[data-embeat-cover]').forEach(image => window.watchCoverImage?.(image));
 mountTiltedCards();

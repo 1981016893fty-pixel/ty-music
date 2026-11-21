@@ -37,7 +37,7 @@ function mount(count = 100) {
     document, window, performance: { now: () => now },
     state: { currentPage: 'album-favorites', albumFavorites: new Set(Array.from({ length: count }, (_, i) => String(i + 1))) },
     localStorage: { getItem: key => JSON.stringify({ id: key.slice('melodybox_album_'.length), name: key, artist: 'Artist', cover: '/cover.jpg' }), setItem() {} },
-    esc: String, openAlbumDetail() {}, clearTimeout() {},
+    esc: String, trackCoverMarkup: track => `<img src="${track.coverSmall}">`, openAlbumDetail() {}, clearTimeout() {},
     requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
     cancelAnimationFrame(id) { frames.delete(id); },
   });

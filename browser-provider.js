@@ -88,13 +88,14 @@ function createBrowserMusicProvider({ fetchImpl = globalThis.fetch, apiBase = ''
     if (!id || id.length > 16384) throw new TypeError('Invalid music resource');
     const params = { id };
     if (kind === 'url') params.br = 999;
-    if (kind === 'pic') params.size = 1000;
+    if (kind === 'pic') params.size = options.size || 1000;
+    const coverKey = `${id}:${params.size}`;
     let pending;
     if (kind === 'pic' && source === 'embeat' && !options.signal && options.timeout === undefined) {
-      pending = pendingCovers.get(id);
+      pending = pendingCovers.get(coverKey);
       if (!pending) {
-        pending = request(kind, source, params, options).finally(() => pendingCovers.delete(id));
-        pendingCovers.set(id, pending);
+        pending = request(kind, source, params, options).finally(() => pendingCovers.delete(coverKey));
+        pendingCovers.set(coverKey, pending);
       }
     }
     const data = await (pending || request(kind, source, params, options));

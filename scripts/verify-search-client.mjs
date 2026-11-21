@@ -39,7 +39,7 @@ function playerSearch(fetch, timers = {}) {
   });
   vm.runInContext(sessionSource + source.slice(source.indexOf('function resizeCoverUrl'), source.indexOf('// 通过本地服务器搜索')) +
     source.slice(source.indexOf('let searchTimeout;'), source.indexOf("$('#searchInput').addEventListener('input'")) +
-    source.slice(source.indexOf('async function performSearch('), source.indexOf('function fixCoverUrl(')), context);
+    source.slice(source.indexOf('async function performSearch('), source.indexOf('function fallbackCover(')), context);
   return { search: async query => { await context.performSearch(query); await setImmediate(); },
     more: async () => { context.loadMoreSearchResults(); await setImmediate(); }, queued, rendered,
     cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };

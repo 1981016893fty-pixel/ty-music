@@ -108,7 +108,7 @@ function playbackPlayer() {
     showToast: message => notices.push(message),
     updateLikeUI: noop, updatePlayBtn: noop, updateQueueHighlight: noop, syncNativeNowPlaying: noop,
     updateAmpFullscreenPlayer: noop, fetchAndDisplayAlbumInfo: noop, updateDynamicGradient: noop,
-    directCoverUrl: () => '',
+    coverUrlForTrack: track => track.coverSmall || track.cover, compactCover: cover => ({ src: cover }), watchCoverImage: noop, unwatchCoverImage: noop,
     extractAlbumColors: noop, fallbackCover: image => coverLookups.push(image), formatTime: String, setSliderValue: noop,
     providerTrackId: item => item.id, resolveMusicResource: value => value, musicResourceQuery: item => `id=${item.id}`,
     requestAnimationFrame: fn => fn(),
@@ -396,16 +396,15 @@ test('legacy recent entries keep the Embeat provider and recover missing resourc
 
 test('recent artwork remembers a decoded CDN thumbnail and retries its original source when the URL expires', () => {
   const { context, saved } = storagePlayer();
-  const cover = '/api/music/cover?source=embeat&picId=art&size=300';
+  const cover = '/api/music/cover?picId=art&source=embeat&size=300';
   const cdn = 'https://resources.tidal.com/images/example/320x320.jpg';
   context.URL = URL;
   context.escAttr = String;
-  context.directCoverUrl = () => '';
+  context.resolveMusicResource = String;
   context.window.location = new URL('https://music.test/');
-  context.coverUrlForTrack = item => item.cover || (item.picId ? cover : '');
   const timers = [];
   context.setTimeout = callback => timers.push(callback);
-  vm.runInContext(section('function recentlyPlayedCoverUrl(', '// Keep upstream resource IDs separate'), context);
+  vm.runInContext(section('function resizeCoverUrl(', '// Keep upstream resource IDs separate'), context);
   context.state.recentPlays = [{ id: 'embeat:kept', picId: 'art', cover: '/icon.svg', title: 'Original' }];
   let restored = context.trackFromRecentEntry(context.state.recentPlays[0]);
   assert.equal(restored.coverSmall, cover, 'legacy placeholder must not hide the saved picture ID');
