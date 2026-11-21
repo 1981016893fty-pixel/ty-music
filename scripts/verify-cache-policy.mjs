@@ -198,6 +198,81 @@ test('expired CacheStorage artwork is deleted and fetched from the network', asy
   assert.equal(fetched, 1);
 });
 
+test('runtime artwork and catalog have a shared eviction limit and leave installed assets intact', async () => {
+  const origin = 'https://example.test';
+  const shell = source.match(/const APP_SHELL = '([^']+)'/)[1];
+  const release = source.match(/const CACHE_NAME = '([^']+)'/)[1];
+  const installed = new Map([[origin + shell, new Response('installed-shell')]]);
+  const stores = new Map([[release, installed]]);
+  const handlers = {};
+  const open = async name => {
+    if (!stores.has(name)) stores.set(name, new Map());
+    const values = stores.get(name);
+    const key = request => typeof request === 'string' ? new URL(request, origin).href : request.url;
+    return {
+      match: async request => values.get(key(request))?.clone(),
+      put: async (request, response) => { values.set(key(request), response); },
+      keys: async () => [...values.keys()].map(url => new Request(url)),
+      delete: async request => values.delete(key(request)),
+    };
+  };
+  vm.runInNewContext(source, {
+    self: { location: { origin }, addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async request => new Response(request.url, { headers: {
+      'content-type': request.url.includes('/cover?') ? 'image/webp' : 'application/json',
+      'cache-control': 'public, max-age=86400', date: new Date().toUTCString(),
+    } }),
+    caches: { open, match: async request => (await open(release)).match(request) },
+  });
+  const dispatch = async path => {
+    const request = new Request(origin + path);
+    let response;
+    const lifetime = [];
+    handlers.fetch({ request, respondWith(value) { response = value; }, waitUntil(value) { lifetime.push(value); } });
+    assert.equal(await (await response).text(), request.url);
+    await Promise.all(lifetime);
+  };
+  for (let i = 0; i < 140; i++) await dispatch(`/api/cover?picId=${i}`);
+  await dispatch('/api/music/album?album=recent');
+  assert.equal(installed.size, 1, 'runtime content must stay out of the installed release cache');
+  assert.ok(installed.has(origin + shell));
+  const runtime = [...stores.values()].find(store => store !== installed);
+  assert.ok(runtime.size <= 128);
+  assert.equal(runtime.has(origin + '/api/cover?picId=0'), false);
+  assert.ok(runtime.has(origin + '/api/cover?picId=139'));
+  assert.ok(runtime.has(origin + '/api/music/album?album=recent'));
+});
+
+test('activation removes only old runtime data from the release cache', async () => {
+  const origin = 'https://example.test';
+  const release = source.match(/const CACHE_NAME = '([^']+)'/)[1];
+  const shell = source.match(/const APP_SHELL = '([^']+)'/)[1];
+  const currentRuntime = 'ty-music-runtime-v1';
+  const kept = [origin + shell, origin + '/?v=20261121-older-build-v62', origin + '/player.js?v=previous'];
+  const entries = new Set([...kept, origin + '/api/cover?picId=42', origin + '/?ref=home',
+    'https://resources.tidal.com/images/old-cover.jpg']);
+  const caches = new Set([release, currentRuntime, 'unrelated-cache']);
+  let claimed = false;
+  let activate;
+  vm.runInNewContext(source, {
+    self: { addEventListener(name, handler) { if (name === 'activate') activate = handler; },
+      clients: { async claim() { claimed = true; } } },
+    URL, console, caches: {
+      keys: async () => [...caches],
+      delete: async name => caches.delete(name),
+      open: async () => ({ keys: async () => [...entries].map(url => new Request(url)),
+        delete: async request => entries.delete(request.url) }),
+    },
+  });
+  let lifetime;
+  activate({ waitUntil(value) { lifetime = value; } });
+  await lifetime;
+  assert.ok(claimed);
+  assert.deepEqual([...entries], kept);
+  assert.deepEqual([...caches], [release, currentRuntime, 'unrelated-cache']);
+});
+
 test('shell refresh stays alive until its cache write finishes', async () => {
   const handlers = {};
   let finishWrite;

@@ -6980,15 +6980,6 @@ body.native-mini-mode #volumeBar {
   height: 100%;
 }
 
-/* The loaded cover can color the background even when canvas cannot read it. */
-#ampGridDistortionMount::after {
-  content: "";
-  position: absolute;
-  inset: -8%;
-  background: var(--amp-cover-backdrop, none) center / cover no-repeat;
-  filter: blur(38px) brightness(.42) saturate(1.2);
-}
-
 /* Apple Music 式完整歌词列表：远行仍可见，只降低层级。 */
 .amp-fullscreen-player .amp-lyrics-line,
 .amp-fullscreen-player .amp-lyrics-line.far-2 {

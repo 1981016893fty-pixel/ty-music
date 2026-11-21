@@ -1,8 +1,122 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { test } from 'node:test';
+import vm from 'node:vm';
 const require = createRequire(import.meta.url);
 const transfer = require('../library-transfer.js');
+const databaseSource = await readFile(new URL('../local-music-db.js', import.meta.url), 'utf8');
+
+function localDatabase(globals = {}) {
+  const context = vm.createContext(globals);
+  vm.runInContext(databaseSource, context);
+  return { context, api: vm.runInContext('LocalMusicDB', context) };
+}
+
+test('opening the local list reads only metadata, with zero audio bytes returned', async () => {
+  const player = await readFile(new URL('../player.js', import.meta.url), 'utf8');
+  const database = {
+    transaction(stores) {
+      assert.deepEqual(Array.from(stores), ['trackMetadata']);
+      return { objectStore(name) {
+        assert.equal(name, 'trackMetadata');
+        return { getAll() {
+          const request = { result: [{ id: 'local_1', title: 'Fixture', fileSize: 5242880 }] };
+          queueMicrotask(() => request.onsuccess({ target: request }));
+          return request;
+        } };
+      } };
+    },
+  };
+  const { context } = localDatabase({ localMusicDB: database });
+  vm.runInContext(player.slice(player.indexOf('function getAllLocalTracks('), player.indexOf('async function deleteLocalTrack(')), context);
+  const list = await context.getAllLocalTracks();
+  assert.deepEqual(list, [{ id: 'local_1', title: 'Fixture', fileSize: 5242880 }]);
+});
+
+test('upgrading an old library indexes one track at a time and keeps the original audio records', async () => {
+  const stored = [
+    { id: 'old_a', title: 'Legacy', artist: 'Artist', duration: 25, audioData: new ArrayBuffer(5242880) },
+    { id: 'old_b', title: 'Missing optional metadata', audioData: new Blob([new Uint8Array([1, 2, 3])]) },
+  ];
+  const indexed = [], cursorRequest = {};
+  let index = 0;
+  const onversionchange = new EventTarget();
+  const database = Object.assign(onversionchange, {
+    objectStoreNames: ['tracks'],
+  });
+  database.objectStoreNames.contains = name => database.objectStoreNames.includes(name);
+  database.createObjectStore = (name, options) => {
+    assert.equal(name, 'trackMetadata');
+    assert.equal(options.keyPath, 'id');
+    return { add(row) { indexed.push(row); } };
+  };
+  const upgrade = { result: database, transaction: { objectStore(name) {
+    assert.equal(name, 'tracks');
+    return { openCursor() { return cursorRequest; } };
+  } } };
+  const { api } = localDatabase({ indexedDB: { open(name, version) {
+    assert.equal(name, 'melodybox_local');
+    assert.equal(version, 2);
+    return upgrade;
+  } } });
+  const ready = api.open();
+  upgrade.onupgradeneeded();
+  const visit = () => {
+    cursorRequest.result = index < stored.length ? {
+      get value() { return stored[index]; },
+      continue() { index++; },
+    } : null;
+    cursorRequest.onsuccess();
+  };
+  while (index < stored.length) {
+    const visited = index;
+    visit();
+    assert.equal(index, visited + 1, 'one cursor advance per legacy track');
+  }
+  visit();
+  upgrade.onsuccess();
+  assert.equal(await ready, database);
+  assert.deepEqual(JSON.parse(JSON.stringify(indexed)), [
+    { id: 'old_a', title: 'Legacy', artist: 'Artist', album: '', duration: 25, fileSize: 5242880 },
+    { id: 'old_b', title: 'Missing optional metadata', artist: '', album: '', duration: 0, fileSize: 3 },
+  ]);
+  assert.equal(stored[0].audioData.byteLength, 5242880);
+});
+
+test('backup imports use key checks and commit original audio and metadata together', async () => {
+  const existing = { id: 'existing', title: 'Do not overwrite', audioData: new ArrayBuffer(2) };
+  const newTrack = { id: 'new', title: 'Restored', audioData: new Uint8Array([10, 20, 30]).buffer };
+  const checks = [], audioAdds = [], metadataAdds = [];
+  const tx = { objectStore(name) {
+    return name === 'tracks' ? {
+      getKey(id) {
+        const request = { result: id === existing.id ? id : undefined };
+        checks.push(request);
+        return request;
+      },
+      add(track) { audioAdds.push(track); },
+    } : { add(row) { metadataAdds.push(row); } };
+  } };
+  const { api } = localDatabase();
+  const db = { transaction(stores, mode) {
+    assert.deepEqual(Array.from(stores), ['tracks', 'trackMetadata']);
+    assert.equal(mode, 'readwrite');
+    return tx;
+  } };
+  const imported = api.importTracks(db, [{ ...existing, title: 'Other title' }, newTrack]);
+  checks.forEach(request => request.onsuccess());
+  let resolved = false;
+  imported.then(() => { resolved = true; });
+  await Promise.resolve();
+  assert.equal(resolved, false);
+  assert.deepEqual(audioAdds, [newTrack]);
+  assert.equal(metadataAdds[0].title, 'Restored');
+  assert.equal(metadataAdds[0].fileSize, 3);
+  assert.equal(metadataAdds[0].audioData, undefined);
+  tx.oncomplete();
+  assert.equal(await imported, 1);
+});
 
 test('library backup round-trips favorites, playlists, provider resources, album data and actual audio bytes', async () => {
   const storage = {

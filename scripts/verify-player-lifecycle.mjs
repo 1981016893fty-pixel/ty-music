@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../player.js', import.meta.url), 'utf8');
+const localDatabaseSource = await readFile(new URL('../local-music-db.js', import.meta.url), 'utf8');
 function section(start, end) {
   const a = source.indexOf(start), b = source.indexOf(end, a);
   assert.ok(a >= 0 && b > a, `missing player section: ${start}`);
@@ -33,6 +34,7 @@ test('saved favorites and playlist metadata survive browsing more than 500 other
   const { context, saved } = storagePlayer();
   for (let id = 1; id <= 1100; id++) context.cacheTrack(track(id));
   context.cacheTrack({ ...track('embeat:kept'), source: 'embeat', providerId: 'kept', urlId: 'play', lyricId: 'words', picId: 'art' });
+  assert.ok(context.state.trackCache.size <= 503, 'live browsing metadata is bounded too');
   context.saveAll();
   const persisted = JSON.parse(saved.get('melodybox_tracks'));
   assert.equal(persisted['1']?.title, 'Song 1');
@@ -111,8 +113,8 @@ function playbackPlayer() {
     providerTrackId: item => item.id, resolveMusicResource: value => value, musicResourceQuery: item => `id=${item.id}`,
     requestAnimationFrame: fn => fn(),
   });
-  vm.runInContext(section('let playbackRequestId =', '// ========== Play/Pause') +
-    section('function deleteLocalTrack(', '// Minimal ID3v2 parser') +
+  vm.runInContext(localDatabaseSource + '\n' + section('let playbackRequestId =', '// ========== Play/Pause') +
+    section('async function deleteLocalTrack(', '// Minimal ID3v2 parser') +
     section('function playLocalTrack(', '// 更新存储信息显示') +
     section('function syncQueueOrder()', '// Repeat') +
     section('function togglePlay()', '// HTML5 audio events') +
@@ -205,8 +207,14 @@ test('deleting the playing local track releases audio only after the deletion co
   context.playLocalTrack('localL'); finishLocal('localL');
   await new Promise(resolve => setImmediate(resolve));
   let tx;
-  context.localMusicDB.transaction = () => (tx = { objectStore: () => ({ delete: () => ({}) }) });
+  const deletes = [];
+  context.localMusicDB.transaction = (stores, mode) => {
+    assert.deepEqual(Array.from(stores), ['tracks', 'trackMetadata']);
+    assert.equal(mode, 'readwrite');
+    return tx = { objectStore: name => ({ delete: id => deletes.push([name, id]) }) };
+  };
   const deletion = context.deleteLocalTrack('localL');
+  assert.deepEqual(deletes, [['tracks', 'localL'], ['trackMetadata', 'localL']]);
   assert.deepEqual(revoked, [], 'an uncommitted deletion must not interrupt playback');
   assert.equal(typeof tx.oncomplete, 'function');
   tx.oncomplete();
@@ -273,7 +281,7 @@ function fullscreenArtworkPlayer() {
     return nodes.get(selector);
   };
   const context = vm.createContext({
-    $: node, URL, location: new URL('https://music.test/'),
+    $: node, URL, URLSearchParams, location: new URL('https://music.test/'),
     Image: class { set src(value) { this.url = value; requests.push(this); } },
     CustomEvent: class { constructor(type, { detail }) { this.type = type; this.detail = detail; } },
     window: { location: new URL('https://music.test/'), dispatchEvent: event => events.push(event) },
@@ -340,7 +348,7 @@ test('fullscreen skips a malformed stored cover and can still show the song thum
   assert.equal(context.window.ampCoverSrc, '/valid.jpg');
 });
 
-test('fullscreen keeps the same cover behind the player when the palette cannot be read', () => {
+test('fullscreen leaves the original grid visible when the palette cannot be read', () => {
   const { context, select, settle } = fullscreenArtworkPlayer();
   let settlePalette;
   context.extractAlbumColors = (_url, callback) => { settlePalette = callback; };
@@ -348,9 +356,9 @@ test('fullscreen keeps the same cover behind the player when the palette cannot 
   settle('/cross-origin.jpg', true);
   const mount = context.$('#ampGridDistortionMount');
   const backdrop = mount.style;
-  assert.match(backdrop['--amp-cover-backdrop'], /cross-origin\.jpg/);
+  assert.equal(backdrop['--amp-cover-backdrop'], undefined);
   settlePalette(null);
-  assert.match(backdrop['--amp-cover-backdrop'], /cross-origin\.jpg/);
+  assert.equal(backdrop['--amp-cover-backdrop'], undefined);
   select('next', '/next.jpg');
   assert.equal(backdrop['--amp-cover-backdrop'], undefined);
   settle('/next.jpg', true);
@@ -415,17 +423,25 @@ test('recent artwork remembers a decoded CDN thumbnail and retries its original 
   assert.match(markup, /loading="lazy"/);
 });
 
-test('Embeat fullscreen can display its backdrop while the proxy is still pending', async () => {
+test('Embeat fullscreen shows direct artwork and retries blocked palette reads with its own thumbnail ID', async () => {
   const { context, requests, settle } = fullscreenArtworkPlayer();
+  const palettes = [];
+  context.extractAlbumColors = (url, callback) => { palettes.push({ url, callback }); };
   context.window.tyMusicProvider = { resource: async () => 'https://art.test/embeat.jpg' };
   context.updateAmpFullscreenPlayer({ ...track('embeat:42'), source: 'embeat', picId: '42', cover: '/slow.webp' });
   await new Promise(resolve => setImmediate(resolve));
   settle('https://art.test/embeat.jpg', true);
   assert.equal(context.window.ampCoverSrc, 'https://art.test/embeat.jpg');
-  assert.match(context.$('#ampGridDistortionMount').style['--amp-cover-backdrop'], /embeat.jpg/);
+  assert.equal(palettes[0].url, 'https://art.test/embeat.jpg');
+  palettes[0].callback(null);
+  assert.match(palettes[1]?.url || '', /picId=42&source=embeat&size=300$/);
+  assert.equal(context.$('#ampGridDistortionMount').style['--amp-cover-backdrop'], undefined);
   settle('/slow.webp', true);
   assert.equal(context.window.ampCoverSrc, 'https://art.test/embeat.jpg');
   context.updateAmpFullscreenPlayer(track('next'));
+  const red = { r: 110, g: 20, b: 10 };
+  palettes[1].callback({ primary: red, secondary: red, tertiary: red });
+  assert.equal(context.window.ampGridColors, undefined);
   assert.equal(context.$('#ampGridDistortionMount').style['--amp-cover-backdrop'], undefined);
   assert.equal(requests.length, 2);
 });

@@ -62,11 +62,18 @@ function scheduleNativePositionSync() {
   nativeSyncTimer = window.setTimeout(() => { nativeSyncTimer = 0; syncNativeNowPlaying(); }, 500);
 }
 
-// Keep API results alive for the lifetime of the tab. Navigation only swaps
-// views, so returning to a page should reuse the already-rendered catalog
-// instead of waking the server and upstream source again.
+// Cache small catalog responses; leave media to the browser and edge cache.
+const catalogApiPaths = new Set([
+  '/api/discover/featured', '/api/discover/hot', '/api/music/hot', '/api/hot',
+  '/api/album/new', '/api/album/search', '/api/album',
+  '/api/music/album', '/api/music/artist', '/api/music/artist-info',
+]);
+const MAX_API_CACHE_ENTRIES = 48;
+const MAX_API_CACHE_BYTES = 2 * 1024 * 1024;
 const apiMemoryCache = new Map();
 const apiInflight = new Map();
+let apiCacheBytes = 0;
+let apiExpiryTimer;
 const rawFetch = window.fetch.bind(window);
 window.tyMusicProvider = createBrowserMusicProvider({ fetchImpl: rawFetch, apiBase: window.__TY_MUSIC_API_BASE__ || '' });
 const desktopCacheEnabled = Boolean(window.__TY_MUSIC_DESKTOP__);
@@ -88,6 +95,33 @@ function writeDesktopApiCache(key, item) {
   if (!desktopCacheEnabled || item.body.length > 700000) return;
   try { localStorage.setItem(desktopCachePrefix + key, JSON.stringify(item)); } catch (_) {}
 }
+function evictApiCache(key) {
+  const item = apiMemoryCache.get(key);
+  if (!item) return;
+  apiCacheBytes -= item.body.length * 2;
+  apiMemoryCache.delete(key);
+}
+function expireApiCache() {
+  clearTimeout(apiExpiryTimer);
+  let next = Infinity;
+  const now = Date.now();
+  for (const [key, item] of apiMemoryCache) {
+    if (item.expires <= now) evictApiCache(key);
+    else next = Math.min(next, item.expires);
+  }
+  apiExpiryTimer = Number.isFinite(next) ? setTimeout(expireApiCache, next - now) : undefined;
+}
+function setApiCache(key, item) {
+  const bytes = item.body.length * 2;
+  if (bytes > MAX_API_CACHE_BYTES) return;
+  evictApiCache(key);
+  apiMemoryCache.set(key, item);
+  apiCacheBytes += bytes;
+  while (apiMemoryCache.size > MAX_API_CACHE_ENTRIES || apiCacheBytes > MAX_API_CACHE_BYTES) {
+    evictApiCache(apiMemoryCache.keys().next().value);
+  }
+  expireApiCache();
+}
 window.fetch = function cachedApiFetch(input, init) {
   let request = input instanceof Request ? input : new Request(input, init);
   const apiBase = window.__TY_MUSIC_API_BASE__ || '';
@@ -99,9 +133,9 @@ window.fetch = function cachedApiFetch(input, init) {
   const url = new URL(request.url, window.location.href);
   const method = (request.method || 'GET').toUpperCase();
   const apiOrigin = apiBase ? new URL(apiBase).origin : window.location.origin;
-  const cacheable = method === 'GET' && (url.origin === window.location.origin || url.origin === apiOrigin) &&
-    url.pathname.startsWith('/api/') &&
-    !/(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search|\/health)$/.test(url.pathname);
+  const cacheable = method === 'GET' && !init?.signal && !(input instanceof Request) &&
+    request.cache !== 'no-store' && (url.origin === window.location.origin || url.origin === apiOrigin) &&
+    catalogApiPaths.has(url.pathname);
   if (!cacheable) return rawFetch(request);
 
   const key = url.href;
@@ -115,7 +149,7 @@ window.fetch = function cachedApiFetch(input, init) {
   }
   const persisted = readDesktopApiCache(key);
   if (persisted) {
-    apiMemoryCache.set(key, persisted);
+    setApiCache(key, persisted);
     return Promise.resolve(new Response(persisted.body, {
       status: persisted.status,
       headers: { 'Content-Type': 'application/json; charset=utf-8', 'X-TY-Cache': 'disk' }
@@ -128,9 +162,9 @@ window.fetch = function cachedApiFetch(input, init) {
 
   const promise = rawFetch(request).then(async response => {
     const body = await response.text();
-    if (response.ok) {
-      const cached = { body, status: response.status, expires: now + (desktopCacheEnabled ? 30 * 60 * 1000 : 5 * 60 * 1000) };
-      apiMemoryCache.set(key, cached);
+    if (response.ok && /application\/json/i.test(response.headers.get('content-type') || '')) {
+      const cached = { body, status: response.status, expires: Date.now() + (desktopCacheEnabled ? 30 * 60 * 1000 : 5 * 60 * 1000) };
+      setApiCache(key, cached);
       writeDesktopApiCache(key, cached);
     }
     return { body, status: response.status };
@@ -290,9 +324,14 @@ function loadData() {
 
 // User references are durable data; only unreferenced browsing metadata is a cache.
 // Keep the existing storage shape so old libraries and exports remain readable.
-function libraryTrackSnapshot(browsingLimit = 500) {
+function referencedLibraryTrackIds() {
   const referenced = new Set([...state.favorites].map(String));
   state.playlists.forEach(playlist => (playlist.tracks || []).forEach(id => referenced.add(String(id))));
+  return referenced;
+}
+
+function libraryTrackSnapshot(browsingLimit = 500) {
+  const referenced = referencedLibraryTrackIds();
   const available = new Map([...state.trackCache].map(([id, track]) => [String(id), track]));
   for (const entry of [...state.queue, ...state.recentPlays]) {
     const id = String(entry.id);
@@ -892,6 +931,7 @@ function isFavorite(id) { return state.favorites.has(id); }
 // 缓存歌曲完整信息到 trackCache（用于跨会话持久化）
 function cacheTrack(track) {
   if (!track || !track.id) return;
+  state.trackCache.delete(track.id);
   state.trackCache.set(track.id, {
     id: track.id,
     title: track.title || '未知歌曲',
@@ -908,6 +948,16 @@ function cacheTrack(track) {
     duration: track.duration || 0,
     source: track.source || 'netease',
   });
+  if (state.trackCache.size <= 500) return;
+  const referenced = referencedLibraryTrackIds();
+  let remaining = state.trackCache.size - 500;
+  for (const id of referenced) { if (state.trackCache.has(id)) remaining--; }
+  if (remaining <= 0) return;
+  for (const id of state.trackCache.keys()) {
+    if (referenced.has(String(id))) continue;
+    state.trackCache.delete(id);
+    if (--remaining === 0) break;
+  }
 }
 
 function trackFromRecentEntry(entry) {
@@ -2310,18 +2360,19 @@ let autoIndex = -1;
 let activeSearchTracks = [];
 let activeSearchHasMore = false;
 let searchResultsObserver = null;
+let searchPaginationNode = null;
 let activeSearchStatus = null;
 const searchSession = createMusicSearchSession({
   searchPage: window.tyMusicProvider?.search,
   onChange(page) {
     activeSearchStatus = page;
-    activeSearchTracks = page.songs.map(normalizeTrack);
+    const previousCount = activeSearchTracks.length;
+    activeSearchTracks.push(...page.added.map(normalizeTrack));
     activeSearchHasMore = page.hasMore;
     $('#searchSourceLabel').textContent = page.source
       ? '音源：' + (page.source === 'embeat' ? 'Embeat' : '网易云')
       : '正在选择可用音源…';
-    if (page.added.length) addToQueue(page.added.map(normalizeTrack));
-    renderPaginatedSearchResults();
+    renderPaginatedSearchResults(previousCount);
   },
 });
 
@@ -2330,6 +2381,12 @@ function cancelSearch() {
   activeSearchHasMore = false;
   searchResultsObserver?.disconnect();
   searchResultsObserver = null;
+  searchPaginationNode?.remove();
+  searchPaginationNode = null;
+  activeSearchTracks = [];
+  activeSearchStatus = null;
+  const results = $('#searchResults');
+  if (results) { results.onclick = null; results.innerHTML = ''; }
 }
 
 $('#searchInput').addEventListener('input', () => {
@@ -2471,24 +2528,24 @@ async function performSearch(query, resultTitle = '') {
   if (quickStart) quickStart.style.display = 'none';
   $('#searchResultTitle').textContent = resultTitle || '搜索结果';
   $('#searchResults').innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
-  activeSearchTracks = [];
-  if (searchResultsObserver) { searchResultsObserver.disconnect(); searchResultsObserver = null; }
   searchSession.search(query);
 }
 
-function renderPaginatedSearchResults() {
+function renderPaginatedSearchResults(from = 0) {
   const container = $('#searchResults');
   if (!container) return;
   searchResultsObserver?.disconnect();
   searchResultsObserver = null;
+  searchPaginationNode?.remove();
+  searchPaginationNode = null;
   if (!activeSearchTracks.length) {
     if (activeSearchStatus?.loading) container.innerHTML = '<div class="loading" aria-label="搜索结果加载中"></div>';
     else {
       const message = activeSearchStatus?.error || (activeSearchHasMore ? '本页没有匹配的歌曲' : '没有找到相关歌曲');
       container.innerHTML = '<p class="empty-state">' + esc(message) + '</p>';
     }
-  } else {
-    renderTrackList(container, activeSearchTracks);
+  } else if (from < activeSearchTracks.length) {
+    renderTrackList(container, activeSearchTracks, { from, search: true });
   }
   if (!activeSearchHasMore || activeSearchStatus?.loading) return;
 
@@ -2499,6 +2556,7 @@ function renderPaginatedSearchResults() {
     button.textContent = '加载更多结果';
     button.addEventListener('click', loadMoreSearchResults);
     container.appendChild(button);
+    searchPaginationNode = button;
     return;
   }
 
@@ -2506,6 +2564,7 @@ function renderPaginatedSearchResults() {
   sentinel.className = 'search-results-sentinel';
   sentinel.setAttribute('aria-hidden', 'true');
   container.appendChild(sentinel);
+  searchPaginationNode = sentinel;
   if (!('IntersectionObserver' in window)) return;
 
   if (searchResultsObserver) searchResultsObserver.disconnect();
@@ -2597,11 +2656,13 @@ function fallbackCover(img) {
   img.style.display = '';
   img.onerror = null;
 }
-function renderTrackList(containerId, tracks) {
+function renderTrackList(containerId, tracks, { from = 0, search = false } = {}) {
   const container = typeof containerId === 'string' ? $(containerId) : containerId;
   const isMobile = window.innerWidth <= 768;
   const isBrowseResults = container.classList.contains('browse-results-list');
-  container.innerHTML = tracks.map((t, i) => `
+  const rows = tracks.slice(from).map((t, offset) => {
+    const i = from + offset;
+    return `
     <div class="track-row${isBrowseResults ? ' browse-result-row' : ''}" data-track-id="${t.id}" data-idx="${i}">
       ${isBrowseResults ? '<span class="browse-result-index">' + (i + 1) + '</span>' : ''}
       ${trackCoverMarkup(t, 'row-cover')}
@@ -2612,26 +2673,32 @@ function renderTrackList(containerId, tracks) {
       ${isBrowseResults ? '<span class="browse-result-album">' + esc(t.album || '单曲') + '</span>' : ''}
       ${isMobile ? '' : '<span class="row-duration">' + formatTime(t.duration) + '</span>'}
       <div class="row-actions ${isMobile ? 'mobile' : ''}">
-        <button class="row-action-btn like-btn ${isFavorite(t.id) ? 'liked' : ''}" onclick="event.stopPropagation(); toggleFavById('${t.id}')">
+        <button class="row-action-btn like-btn ${isFavorite(t.id) ? 'liked' : ''}" data-track-action="like" aria-label="收藏">
           <i class="fa-${isFavorite(t.id) ? 'solid' : 'regular'} fa-heart"></i>
         </button>
-        <button class="row-action-btn" onclick="event.stopPropagation(); addToPlaylist('${t.id}')">
+        <button class="row-action-btn" data-track-action="playlist" aria-label="添加到歌单">
           <i class="fa-solid fa-plus"></i>
         </button>
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
+  if (from) container.insertAdjacentHTML('beforeend', rows);
+  else container.innerHTML = rows;
 
-  container.querySelectorAll('.track-row').forEach(row => {
-    row.addEventListener('click', () => {
-      const idx = parseInt(row.dataset.idx);
-      const track = tracks[idx];
-      if (!track) return;
-      const qIdx = state.queue.findIndex(t => t.id === track.id);
-      if (qIdx >= 0) { state.queueIndex = qIdx; playTrack(state.queue[qIdx], qIdx); }
-      else { state.queue.push(track); state.queueIndex = state.queue.length - 1; playTrack(track, state.queueIndex); }
-    });
-  });
+  container.onclick = event => {
+    const row = event.target.closest('.track-row');
+    if (!row || !container.contains(row)) return;
+    const track = tracks[Number(row.dataset.idx)];
+    if (!track) return;
+    const action = event.target.closest('[data-track-action]')?.dataset.trackAction;
+    if (action === 'like') { toggleFavorite(track); return; }
+    if (action === 'playlist') { addToPlaylist(track.id, track); return; }
+    if (search) replaceQueue(tracks);
+    const qIdx = state.queue.findIndex(t => t.id === track.id);
+    if (qIdx >= 0) playTrack(state.queue[qIdx], qIdx);
+    else { state.queue.push(track); playTrack(track, state.queue.length - 1); }
+  };
   revealContainer(container);
   updateQueueHighlight();
 }
@@ -2900,13 +2967,12 @@ $('#playlistPlayAllBtn').addEventListener('click', () => {
 });
 $('#backFromArtist').addEventListener('click', () => goBack());
 
-function addToPlaylist(trackId) {
+function addToPlaylist(trackId, track = state.queue.find(t => t.id === trackId)) {
   if (!state.playlists.length) { showToast('请先创建歌单'); return; }
   const pl = state.playlists[state.playlists.length - 1];
   if (pl.tracks.includes(trackId)) { showToast('已在歌单中'); return; }
   pl.tracks.push(trackId);
   // 缓存歌曲数据
-  var track = state.queue.find(function(t) { return t.id === trackId; });
   if (track) cacheTrack(track);
   saveAll();
   showToast(`已添加到「${pl.name}」`);
@@ -3025,9 +3091,7 @@ function updateAmpArtwork(track) {
   if (!artwork) return;
   const requestId = ++ampArtworkRequestId;
   const isCurrent = () => requestId === ampArtworkRequestId;
-  const backdrop = $('#ampGridDistortionMount');
   setAmpArtwork(artwork, '');
-  backdrop?.style.removeProperty('--amp-cover-backdrop');
   if (window.ampGridColors) applyAlbumColors();
   const covers = new Map();
   let shown = false;
@@ -3050,12 +3114,16 @@ function updateAmpArtwork(track) {
     shown = true;
     setAmpArtwork(artwork, cover);
     if (track.source !== 'local') rememberRecentCover(track.id, cover);
-    backdrop?.style.setProperty('--amp-cover-backdrop', `url(${JSON.stringify(cover)})`);
-    // Use the proxy URL for palette extraction when the CDN lacks CORS.
+    const applyPalette = colors => { if (isCurrent() && colors) applyAlbumColors(colors); };
+    // The grid always owns the background; a blocked CDN read can use the
+    // same track's smaller proxy image for color sampling.
     extractAlbumColors(colorSource, colors => {
-      if (!isCurrent() || !colors) return;
-      applyAlbumColors(colors);
-      backdrop?.style.removeProperty('--amp-cover-backdrop');
+      if (!isCurrent()) return;
+      if (colors) { applyPalette(colors); return; }
+      if (colorSource === cover && /^https?:\/\//i.test(cover) && track.picId && track.source === 'embeat') {
+        const query = new URLSearchParams({ picId: track.picId, source: 'embeat', size: '300' });
+        extractAlbumColors(resolveMusicResource('/api/music/cover?' + query), applyPalette, { allowDefault: false });
+      }
     }, { allowDefault: false });
   }
 
@@ -3102,12 +3170,12 @@ function roundRectPath(ctx, x, y, w, h, r) {
 }
 
 // ========== 专辑取色引擎 ==========
-let ampColorExtractCache = {};
+const ampColorExtractCache = new Map();
 
 function extractAlbumColors(imageSrc, callback, { allowDefault = true } = {}) {
   // 使用缓存避免重复提取
-  if (ampColorExtractCache[imageSrc]) {
-    callback(ampColorExtractCache[imageSrc]);
+  if (ampColorExtractCache.has(imageSrc)) {
+    callback(ampColorExtractCache.get(imageSrc));
     return;
   }
   
@@ -3189,7 +3257,8 @@ function extractAlbumColors(imageSrc, callback, { allowDefault = true } = {}) {
       tertiary: centroids[0]                      // 最暗 → 背景/阴影
     };
     
-    ampColorExtractCache[imageSrc] = colors;
+    ampColorExtractCache.set(imageSrc, colors);
+    if (ampColorExtractCache.size > 96) ampColorExtractCache.delete(ampColorExtractCache.keys().next().value);
     callback(colors);
   };
   img.onerror = unavailable;
@@ -4006,59 +4075,30 @@ window.addEventListener('unhandledrejection', function(e) {
 // 本地音乐功能 (Local Music Upload)
 // ============================================
 
-const LOCAL_MUSIC_DB_NAME = 'melodybox_local';
 let localMusicDB = null;
+let localMusicDBOpening = null;
 
 function openLocalMusicDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(LOCAL_MUSIC_DB_NAME, 1);
-    req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('tracks')) {
-        db.createObjectStore('tracks', { keyPath: 'id' });
-      }
-    };
-    req.onsuccess = (e) => { localMusicDB = e.target.result; resolve(localMusicDB); };
-    req.onerror = (e) => reject(e);
-  });
-}
-
-function saveLocalTrack(track) {
-  return new Promise((resolve, reject) => {
-    const tx = localMusicDB.transaction(['tracks'], 'readwrite');
-    const store = tx.objectStore('tracks');
-    const req = store.put(track);
-    req.onsuccess = () => resolve();
-    req.onerror = (e) => reject(e);
-  });
+  if (localMusicDB) return Promise.resolve(localMusicDB);
+  return localMusicDBOpening ||= LocalMusicDB.open().then(db => {
+    const clear = () => { if (localMusicDB === db) localMusicDB = null; };
+    db.addEventListener('versionchange', clear);
+    db.addEventListener('close', clear);
+    return localMusicDB = db;
+  }).finally(() => { localMusicDBOpening = null; });
 }
 
 function getAllLocalTracks() {
-  return new Promise((resolve, reject) => {
-    const tx = localMusicDB.transaction(['tracks'], 'readonly');
-    const store = tx.objectStore('tracks');
-    const req = store.getAll();
-    req.onsuccess = (e) => resolve(e.target.result || []);
-    req.onerror = (e) => reject(e);
-  });
+  return LocalMusicDB.list(localMusicDB);
 }
 
-function deleteLocalTrack(id) {
-  return new Promise((resolve, reject) => {
-    const tx = localMusicDB.transaction(['tracks'], 'readwrite');
-    const store = tx.objectStore('tracks');
-    store.delete(id);
-    tx.oncomplete = () => {
-      if (state.currentTrack?.source === 'local' && state.currentTrack.id === id) {
-        beginPlaybackSelection();
-        updatePlayBtn();
-      }
-      replaceQueue(state.queue.filter(track => track.id !== id));
-      resolve();
-    };
-    tx.onabort = () => reject(tx.error || new Error('Local track deletion failed'));
-    tx.onerror = () => reject(tx.error || new Error('Local track deletion failed'));
-  });
+async function deleteLocalTrack(id) {
+  await LocalMusicDB.remove(localMusicDB, id);
+  if (state.currentTrack?.source === 'local' && state.currentTrack.id === id) {
+    beginPlaybackSelection();
+    updatePlayBtn();
+  }
+  replaceQueue(state.queue.filter(track => track.id !== id));
 }
 
 // Minimal ID3v2 parser
@@ -4153,7 +4193,9 @@ async function extractAudioMetadata(file) {
 }
 
 async function handleLocalFileUpload(files) {
-  await openLocalMusicDB();
+  let db;
+  try { db = await openLocalMusicDB(); }
+  catch (error) { showToast(error.message || '打开本地曲库失败'); return; }
   const container = document.getElementById('localTracksList');
   container.innerHTML = '<p class="empty-state">正在解析音乐文件...</p>';
   let addedCount = 0;
@@ -4179,7 +4221,7 @@ async function handleLocalFileUpload(files) {
         fileType: metadata.fileType,
         fileSize: file.size
       };
-      await saveLocalTrack(track);
+      await LocalMusicDB.save(db, track);
       addedCount++;
     } catch (e) { 
       console.error('Error processing:', file.name, e); 
@@ -4212,10 +4254,19 @@ async function handleLocalFileUpload(files) {
 }
 
 async function renderLocalTracks() {
-  await openLocalMusicDB();
-  const tracks = await getAllLocalTracks();
   const container = document.getElementById('localTracksList');
   const localTracksCount = document.getElementById('localTracksCount');
+  let tracks;
+  try {
+    await openLocalMusicDB();
+    tracks = await getAllLocalTracks();
+  } catch (error) {
+    const message = document.createElement('p');
+    message.className = 'empty-state';
+    message.textContent = error.message || '读取本地曲库失败';
+    container.replaceChildren(message);
+    return;
+  }
   if (localTracksCount) localTracksCount.textContent = tracks.length + ' 首歌曲';
   if (!tracks.length) {
     container.innerHTML = '<div class="empty-state"><i class="fa-solid fa-music"></i><p>还没有本地歌曲</p><span>把音频文件拖到上方区域即可添加。</span></div>';
@@ -4241,9 +4292,11 @@ async function renderLocalTracks() {
   container.querySelectorAll('.track-delete').forEach(el => {
     el.addEventListener('click', async (e) => {
       e.stopPropagation();
-      await deleteLocalTrack(el.dataset.localId);
-      renderLocalTracks();
-      showToast('已删除');
+      try {
+        await deleteLocalTrack(el.dataset.localId);
+        renderLocalTracks();
+        showToast('已删除');
+      } catch (error) { showToast(error.message || '删除本地歌曲失败'); }
     });
   });
   

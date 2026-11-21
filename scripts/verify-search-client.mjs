@@ -9,6 +9,8 @@ const sessionSource = await readFile(new URL('../search-session.js', import.meta
 
 function playerSearch(fetch, timers = {}) {
   const elements = new Map();
+  const queued = [];
+  const rendered = [];
   const element = selector => {
     if (!elements.has(selector)) elements.set(selector, {
       style: {}, innerHTML: '', textContent: '', value: '',
@@ -22,25 +24,46 @@ function playerSearch(fetch, timers = {}) {
     AbortController, setTimeout, clearTimeout, ...timers, URL, URLSearchParams, console,
     $: element, state: { currentSource: 'netease' },
     SOURCE_LABELS: { netease: '全网搜索' }, browseResultTitleOverride: '',
-    window: {}, document: { createElement: () => ({ setAttribute() {} }) },
+    window: {}, document: { createElement: () => ({ setAttribute() {}, remove() {} }) },
     resolveMusicResource: value => value,
     esc: value => value,
-    addToQueue() {},
+    addToQueue: tracks => queued.push(...tracks),
     // A minimal DOM adapter: the real search/pagination functions select
     // which tracks are rendered; this only makes that output observable.
-    renderTrackList: (container, tracks) => { container.innerHTML = tracks.map(t => t.title).join('|'); },
+    renderTrackList: (container, tracks, { from = 0 } = {}) => {
+      const titles = tracks.slice(from).map(t => t.title).join('|');
+      rendered.push(titles);
+      container.innerHTML = from ? container.innerHTML + '|' + titles : titles;
+    },
     hideAutocomplete() {},
   });
   vm.runInContext(sessionSource + source.slice(source.indexOf('function resizeCoverUrl'), source.indexOf('// 通过本地服务器搜索')) +
     source.slice(source.indexOf('let searchTimeout;'), source.indexOf("$('#searchInput').addEventListener('input'")) +
     source.slice(source.indexOf('async function performSearch('), source.indexOf('function fixCoverUrl(')), context);
-  return { search: async query => { await context.performSearch(query); await setImmediate(); }, cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };
+  return { search: async query => { await context.performSearch(query); await setImmediate(); },
+    more: async () => { context.loadMoreSearchResults(); await setImmediate(); }, queued, rendered,
+    cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };
 }
 
 function response(name) {
   return { ok: true, json: async () => ({ songs: [{ id: name, name, source: 'netease' }], nextOffset: 1, hasMore: false }) };
 }
 
+test('search pagination renders only newly added rows without changing the queue', async () => {
+  let index = 0;
+  const player = playerSearch(async () => {
+    index++;
+    return { ok: true, json: async () => ({
+      songs: [{ id: String(index), name: 'song ' + index, source: 'netease' }],
+      nextOffset: index, hasMore: index === 1,
+    }) };
+  });
+  await player.search('artist');
+  await player.more();
+  assert.deepEqual(player.queued, []);
+  assert.deepEqual(player.rendered, ['song 1', 'song 2']);
+  assert.equal(player.output(), 'song 1|song 2');
+});
 test('a later query wins even if an earlier server ignores cancellation', async () => {
   const pending = [];
   const player = playerSearch((url, options) => new Promise(resolve => pending.push({ url, options, resolve })));

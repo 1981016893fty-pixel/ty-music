@@ -146,36 +146,13 @@
       throw error;
     }
   }
-  function openDatabase() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open('melodybox_local', 1);
-      let blocked = false;
-      request.onupgradeneeded = () => { if (!request.result.objectStoreNames.contains('tracks')) request.result.createObjectStore('tracks', {keyPath:'id'}); };
-      request.onerror = () => reject(request.error);
-      request.onblocked = () => { blocked = true; reject(new Error('本地音频数据库被其他标签占用，请关闭后重试')); };
-      request.onsuccess = () => { if (blocked) { request.result.close(); return; } resolve(request.result); };
-    });
-  }
-  async function localAudio(incoming) {
-    const db = await openDatabase();
-    try {
-      return await new Promise((resolve, reject) => {
-        const tx = db.transaction('tracks', incoming ? 'readwrite' : 'readonly');
-        const store = tx.objectStore('tracks');
-        let result = incoming ? 0 : [];
-        tx.oncomplete = () => resolve(result);
-        tx.onabort = () => reject(tx.error || new Error('本地音频事务失败，未写入本次音频'));
-        tx.onerror = () => {};
-        if (!incoming) { const request = store.getAll(); request.onsuccess = () => { result = request.result; }; }
-        else for (const track of incoming) {
-          const request = store.get(track.id);
-          request.onsuccess = () => { if (request.result === undefined) { store.add(track); result++; } };
-        }
-      });
-    } finally { db.close(); }
+  async function withLocalDatabase(run) {
+    const db = await LocalMusicDB.open();
+    try { return await run(db); }
+    finally { db.close(); }
   }
   function counts(storage, tracks) {
-    return `收藏 ${(storage.melodybox_fav || []).length} · 歌单 ${(storage.melodybox_pl || []).length} · 最近播放 ${(storage.melodybox_rec || []).length} · 专辑收藏 ${(storage.melodybox_album_fav || []).length} · 本地音频 ${tracks.length} 首（${(tracks.reduce((n,t)=>n+(t.audioData?.byteLength ?? t.audioData?.size ?? 0),0)/1048576).toFixed(1)} MiB）`;
+    return `收藏 ${(storage.melodybox_fav || []).length} · 歌单 ${(storage.melodybox_pl || []).length} · 最近播放 ${(storage.melodybox_rec || []).length} · 专辑收藏 ${(storage.melodybox_album_fav || []).length} · 本地音频 ${tracks.length} 首（${(tracks.reduce((n,t)=>n+(t.audioData?.byteLength ?? t.audioData?.size ?? t.fileSize ?? 0),0)/1048576).toFixed(1)} MiB）`;
   }
   function setupPage() {
     const byId = id => document.getElementById(id);
@@ -186,7 +163,7 @@
     exportButton.addEventListener('click', async () => {
       controls(true); status.textContent = '正在读取并编码曲库，请保持页面打开…';
       try {
-        const storage = readStorage(localStorage), tracks = await localAudio();
+        const storage = readStorage(localStorage), tracks = await withLocalDatabase(LocalMusicDB.exportTracks);
         const json = await serializeBackup(storage, tracks);
         const url = URL.createObjectURL(new Blob([json], {type:'application/json'}));
         const link = document.createElement('a'); link.href = url; link.download = 'ty-music-library-' + new Date().toISOString().slice(0,10) + '.json'; link.click();
@@ -202,7 +179,7 @@
         const selected = file.files[0]; if (!selected) return;
         if (selected.size > MAX_BYTES) fail('文件超过 512 MiB');
         const parsed = parseBackup(await selected.text());
-        const current = readStorage(localStorage), tracks = await localAudio();
+        const current = readStorage(localStorage), tracks = await withLocalDatabase(LocalMusicDB.list);
         const merged = mergeStorage(current, parsed.storage);
         const combined = union(tracks, parsed.localTracks, track => track.id);
         preview.textContent = '备份：' + counts(parsed.storage, parsed.localTracks) + '\n当前：' + counts(current, tracks) + '\n合并后：' + counts(merged, combined);
@@ -218,7 +195,7 @@
         const merged = mergeStorage(readStorage(localStorage), pending.storage);
         // Pre-serialize before starting audio writes; quota errors still require rollback below.
         JSON.stringify(merged);
-        added = await localAudio(pending.localTracks);
+        added = await withLocalDatabase(db => LocalMusicDB.importTracks(db, pending.localTracks));
         // Re-read after the asynchronous database transaction to preserve intervening changes.
         writeStorage(localStorage, mergeStorage(readStorage(localStorage), pending.storage));
         status.textContent = '合并完成，新增本地音频 ' + added + ' 首。请重新加载播放器检查；保留备份。';

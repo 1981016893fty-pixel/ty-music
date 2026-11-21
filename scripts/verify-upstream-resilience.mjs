@@ -40,6 +40,19 @@ test('artist photos honor card dimensions while unqualified detail photos retain
   assert.equal(new URL(detail.headers.get('location')).searchParams.has('param'), false);
   for (const size of ['bad', '640px', '']) assert.equal((await get(`/api/artist-photo?name=IU&size=${size}`, { redirect: 'manual' })).status, 400, size);
 }));
+test('artist photo cache reuses recent lookups and evicts older names', () => app('artist-photo', async get => {
+  const photo = async name => {
+    const response = await get('/api/artist-photo?name=' + name, { redirect: 'manual' });
+    assert.equal(response.status, 302);
+    return response.headers.get('location');
+  };
+  const oldest = await photo('oldest');
+  assert.equal(await photo('oldest'), oldest);
+  for (let i = 0; i < 128; i++) await photo('artist-' + i);
+  const newest = await photo('artist-127');
+  assert.notEqual(await photo('oldest'), oldest, 'the oldest entry should come from the upstream again');
+  assert.equal(await photo('artist-127'), newest, 'the newest entry should remain cached');
+}));
 test('valid explicitly empty lyrics remain a successful empty result', async () => app('lyric-empty', async get => {
   const response = await get('/api/music/lyric?id=42');
   assert.equal(response.status, 200);

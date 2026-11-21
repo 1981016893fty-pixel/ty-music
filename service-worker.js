@@ -5,17 +5,20 @@
  */
 
 const CACHE_NAME = 'ty-music-v53-quality';
+const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
+const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261121-player-search-v63';
+const APP_SHELL = '/?v=20261121-memory-v64';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261121-player-search-v63',
-  '/player.js?v=20261121-player-search-v63',
+  '/style.css?v=20261121-memory-v64',
+  '/player.js?v=20261121-memory-v64',
+  '/local-music-db.js?v=20261121-memory-v64',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261120-embeat-priority-v61',
   '/search-session.js?v=20261121-player-search-v63',
-  '/soft-aurora-react.js?v=20261120-fullscreen-artwork-v60',
+  '/soft-aurora-react.js?v=20261121-memory-v64',
   '/soft-aurora-react.css?v=20261118-quality-v53',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
@@ -45,12 +48,12 @@ self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
-        if (name.startsWith('ty-music-') && name !== CACHE_NAME) {
+        if (name.startsWith('ty-music-') && name !== CACHE_NAME && name !== RUNTIME_CACHE_NAME) {
           console.log('[SW] Deleting old cache:', name);
           return caches.delete(name);
         }
       }))
-    ).then(() => self.clients.claim())
+    ).catch(() => {}).then(removeLegacyRuntimeEntries).then(() => self.clients.claim())
   );
 });
 
@@ -58,9 +61,7 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Use the CDN's HTTP cache for direct covers. Opaque images cannot be
-  // validated before storing them in CacheStorage.
-  if (event.request.destination === 'image' && /^p\d+\.music\.126\.net$/.test(url.hostname)) return;
+  if (event.request.method !== 'GET') return;
 
   // A cached shell keeps navigation responsive during platform wake-up.
   // Refresh in the background; search and playback still require the network.
@@ -74,13 +75,13 @@ self.addEventListener('fetch', event => {
   }
 
   const artworkApi = ['/api/cover', '/api/music/cover', '/api/artist-photo'].includes(url.pathname);
-  if (artworkApi && event.request.method === 'GET') {
+  if (artworkApi) {
     let finishCacheWrite;
     const cacheWriteLifetime = new Promise(resolve => { finishCacheWrite = resolve; });
     event.waitUntil(cacheWriteLifetime);
     event.respondWith((async () => {
       let cache = null;
-      try { cache = await caches.open(CACHE_NAME); } catch (_) {}
+      try { cache = await caches.open(RUNTIME_CACHE_NAME); } catch (_) {}
       try {
         const cached = await cache?.match(event.request).catch(() => null);
         if (cached) {
@@ -99,9 +100,7 @@ self.addEventListener('fetch', event => {
         const expiresPublicly = /public,\s*max-age=\d*[1-9]\d*/i.test(cacheControl);
         const validImage = response.ok && /^image\//i.test(type) && response.headers.get('content-length') !== '0' && expiresPublicly;
         if (cache && validImage) {
-          Promise.resolve().then(() => cache.put(event.request, response.clone()))
-            .catch(() => {})
-            .then(finishCacheWrite);
+          writeRuntimeCache(event.request, response.clone(), cache).then(finishCacheWrite);
         } else {
           finishCacheWrite();
         }
@@ -117,12 +116,12 @@ self.addEventListener('fetch', event => {
   // Audio and lyric streams must remain network-only. Catalog JSON can use
   // stale-while-revalidate so a page switch is instant after first load.
   const networkOnlyApi = /(?:\/proxy|\/play|\/download|\/music\/url|\/lyric|search-lyric|\/search|\/health)$/.test(url.pathname);
-  if (url.pathname.startsWith('/api/') && !networkOnlyApi && event.request.method === 'GET') {
-    event.respondWith(caches.match(event.request).then(cached => {
-      const refresh = fetch(event.request).then(response => {
-        if (response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
-        return response;
-      }).catch(() => cached || Response.error());
+  if (url.pathname.startsWith('/api/') && !networkOnlyApi) {
+    event.respondWith(caches.match(event.request).catch(() => null).then(cached => {
+      const refresh = fetch(event.request).catch(() => cached || Response.error());
+      event.waitUntil(refresh.then(response => {
+        if (response.ok && response !== cached) return writeRuntimeCache(event.request, response.clone());
+      }));
       return cached || refresh;
     }));
     return;
@@ -134,12 +133,15 @@ self.addEventListener('fetch', event => {
   // Artwork and artist photos are immutable enough for a cache-first policy.
   // This keeps already-seen covers visible when users switch pages or reopen
   // the app, while failed requests still fall back to the network.
-  if (event.request.method === 'GET' && event.request.destination === 'image') {
-    event.respondWith(caches.match(event.request).then(cached => {
+  if (event.request.destination === 'image') {
+    // Use the browser's HTTP cache for direct CDN covers. Opaque responses
+    // cannot be validated and browsers may charge large quota padding.
+    if (url.origin !== self.location.origin) return;
+    event.respondWith(caches.match(event.request).catch(() => null).then(cached => {
       if (cached) return cached;
       return fetch(event.request).then(response => {
-        if (response.ok || response.type === 'opaque') {
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, response.clone()));
+        if (response.ok) {
+          event.waitUntil(writeRuntimeCache(event.request, response.clone()));
         }
         return response;
       });
@@ -149,18 +151,16 @@ self.addEventListener('fetch', event => {
 
   // 静态资源（JS/CSS/字体）：Cache First
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css') || url.pathname.endsWith('.woff2') || url.pathname.endsWith('.woff')) {
-    event.respondWith(
-      caches.match(event.request).then(cached => {
-        if (cached) {
-          // 后台更新缓存（stale-while-revalidate）
-          event.waitUntil(fetchAndCache(event.request).catch(() => {}));
-          return cached;
-        }
-        return fetchAndCache(event.request).catch(() => {
-          return caches.match(event.request);
-        });
-      }).catch(() => fetch(event.request))
-    );
+    event.respondWith((async () => {
+      const installed = await caches.open(CACHE_NAME).then(cache => cache.match(event.request)).catch(() => null);
+      if (installed) return installed;
+      const cached = await caches.match(event.request).catch(() => null);
+      if (cached) {
+        event.waitUntil(fetchAndCache(event.request).catch(() => {}));
+        return cached;
+      }
+      return fetchAndCache(event.request);
+    })());
     return;
   }
 
@@ -168,8 +168,7 @@ self.addEventListener('fetch', event => {
   event.respondWith(
     fetch(event.request).then(response => {
       if (response && response.status === 200 && response.type === 'basic') {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        event.waitUntil(writeRuntimeCache(event.request, response.clone()));
       }
       return response;
     }).catch(err => {
@@ -195,6 +194,8 @@ async function navigationResponse(request, refresh) {
       const cached = await cache.match(key);
       if (cached?.ok && !cached.redirected) return cached;
     }
+    const cached = await caches.match(request, { cacheName: RUNTIME_CACHE_NAME });
+    if (cached?.ok && !cached.redirected) return cached;
   } catch (_) { /* Cache storage may be unavailable; the network still works. */ }
   try { return await refresh; } catch (_) { return offlineResponse(); }
 }
@@ -210,11 +211,32 @@ function offlineResponse() {
 function fetchAndCache(request) {
   return fetch(request).then(async response => {
     if (response && response.status === 200 && response.type === 'basic') {
-      const clone = response.clone();
-      // Include persistence in waitUntil without turning storage pressure into
-      // a network failure for an otherwise usable response.
-      try { await (await caches.open(CACHE_NAME)).put(request, clone); } catch (_) {}
+      await writeRuntimeCache(request, response.clone());
     }
     return response;
   });
+}
+
+async function writeRuntimeCache(request, response, cache) {
+  try {
+    cache ||= await caches.open(RUNTIME_CACHE_NAME);
+    await cache.put(request, response);
+    const keys = await cache.keys();
+    await Promise.all(keys.slice(0, Math.max(0, keys.length - RUNTIME_CACHE_LIMIT)).map(key => cache.delete(key)));
+  } catch (_) { /* Storage pressure must not block the network response. */ }
+}
+
+async function removeLegacyRuntimeEntries() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const assets = new Set(STATIC_ASSETS);
+    const keys = await cache.keys();
+    // Keep earlier release scripts and shell URLs for open tabs and offline startup.
+    await Promise.all(keys.filter(({ url }) => {
+      const { pathname, search } = new URL(url);
+      return !assets.has(pathname + search) &&
+        !/\.(?:js|css|woff2?)$/.test(pathname) &&
+        !(pathname === '/' && /^\?v=\d{8}-[\w-]+$/.test(search));
+    }).map(key => cache.delete(key)));
+  } catch (_) { /* Older storage may already be gone. */ }
 }
