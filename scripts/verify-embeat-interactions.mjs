@@ -16,7 +16,7 @@ const context = vm.createContext({ document, console, AbortSignal, encodeURIComp
   $: () => box, resolveMusicResource: value => value, resetArtistPageColors() {}, navigateTo() {}, setShinyText() {},
   loadArtistPhoto() {}, loadArtistBio() {}, renderArtistSections() {}, addLoadMoreButton() {}, addToQueue() {},
 });
-vm.runInContext(between('function esc(', '// 格式化歌手名') + between('function directCoverUrl(', '// Keep upstream resource IDs') +
+vm.runInContext(between('function esc(', '// 格式化歌手名') + between('function resizeCoverUrl(', '// Keep upstream resource IDs') +
   between('function renderAutocomplete(', 'function hideAutocomplete('), context);
 context.autoIndex = -1;
 const title = 'Say "Hello" & stay';

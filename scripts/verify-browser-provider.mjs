@@ -125,7 +125,7 @@ test('late audio resolution cannot replace a later choice or reset its lyrics, e
     CustomEvent: class {}, $: () => element, showToast: text => notices.push(text),
     providerTrackId: item => item.id, resolveMusicResource: x => x, musicResourceQuery: () => 'source=embeat&id=resource',
     fallbackCover() {}, syncNativeNowPlaying() {}, formatTime: String, fetchAndDisplayAlbumInfo() {},
-    directCoverUrl: () => '', updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
+    coverUrlForTrack: () => '', compactCover: () => ({ src: '/icon.svg' }), watchCoverImage() {}, unwatchCoverImage() {}, updateDynamicGradient() {}, setSliderValue() {}, updateLikeUI() {}, updatePlayBtn() {}, updateQueueHighlight() {},
     ampLyricsRequestId: 0, ampLyricsRenderedFor: null, ampIsShowing: false, playTimeout: null,
   });
   vm.runInContext(source.slice(source.indexOf('let playbackRequestId ='), source.indexOf('// ========== Play/Pause')) +
@@ -147,14 +147,14 @@ test('late audio resolution cannot replace a later choice or reset its lyrics, e
 
 test('Embeat CDN image failure falls back to the icon without guessing another catalog', async () => {
   const source = await readFile(new URL('../player.js', import.meta.url), 'utf8');
-  const img = { src: 'https://site.example/api/music/cover?source=embeat&picId=original', dataset: { artist: 'Artist', album: 'Album', name: 'Song' }, style: {} };
-  const context = vm.createContext({ URL, location: { href: 'https://site.example' }, window: { tyMusicProvider: { resource: async () => 'https://cdn.example/broken.jpg' } } });
-  vm.runInContext(source.slice(source.indexOf('function fallbackCover('), source.indexOf('function renderTrackList(')), context);
+  const img = { isConnected: true, src: 'https://site.example/api/music/cover?source=embeat&picId=original', dataset: { artist: 'Artist', album: 'Album', name: 'Song' }, style: {} };
+  const context = vm.createContext({ URL, location: { href: 'https://site.example' }, window: { location: new URL('https://site.example'), tyMusicProvider: { resource: async () => 'https://cdn.example/broken.jpg' } } });
+  vm.runInContext("const LOCAL_TRACK_COVER = '/icon.svg';" + source.slice(source.indexOf('function coverLookup('), source.indexOf('function recentlyPlayedCoverUrl(')) + source.slice(source.indexOf('function fallbackCover('), source.indexOf('function renderTrackList(')), context);
   context.fallbackCover(img);
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(img.src, 'https://cdn.example/broken.jpg');
   context.fallbackCover(img);
-  assert.match(img.src, /^data:image\/svg\+xml/);
+  assert.equal(img.src, '/icon.svg');
 });
 
 test('concurrent Embeat cover lookups share the same provider request and can retry failures', async () => {
@@ -171,4 +171,77 @@ test('concurrent Embeat cover lookups share the same provider request and can re
   assert.equal(pictureRequests, 1);
   assert.equal(await provider.resource(track, 'pic'), 'https://cdn.example/current.webp');
   assert.equal(pictureRequests, 2);
+});
+
+test('visible Embeat artwork takes the first usable path and does not repaint a reused image', async () => {
+  const source = await readFile(new URL('../player.js', import.meta.url), 'utf8');
+  const section = (start, end) => source.slice(source.indexOf(start), source.indexOf(end, source.indexOf(start)));
+  const requests = [], probes = [], observed = new Set();
+  const primary = 'https://site.example/api/music/cover?source=embeat&picId=original&size=300';
+  const alternate = 'https://cdn.example/alternate.jpg';
+  let onIntersection;
+  class Observer {
+    constructor(callback) { onIntersection = callback; }
+    observe(image) { observed.add(image); }
+    unobserve(image) { observed.delete(image); }
+  }
+  const context = vm.createContext({
+    URL, IntersectionObserver: Observer,
+    Image: class { constructor() { probes.push(this); } },
+    window: { location: new URL('https://site.example/'), IntersectionObserver: Observer,
+      tyMusicProvider: { resource: (lookup, kind, options) => new Promise((resolve, reject) => requests.push({ lookup, kind, options, resolve, reject })) } },
+    coverUrlForTrack: track => track.coverSmall,
+    compactCover: src => ({ src }),
+  });
+  vm.runInContext("const LOCAL_TRACK_COVER = '/icon.svg';" +
+    section('function coverLookup(', 'function recentlyPlayedCoverUrl(') +
+    section('function setPlaybackCover(', 'function presentPlaybackTrack(') +
+    section('function fallbackCover(', 'function renderTrackList('), context);
+  const track = { source: 'embeat', picId: 'original', coverSmall: primary };
+  const image = { isConnected: true, dataset: {} };
+  const select = () => {
+    image.complete = false;
+    image.naturalWidth = 0;
+    context.setPlaybackCover(image, track);
+    assert.ok(observed.has(image));
+  };
+  const visible = () => onIntersection([{ target: image, isIntersecting: true }]);
+  const flush = async () => new Promise(resolve => setImmediate(resolve));
+
+  select();
+  assert.equal(requests.length, 0);
+  visible();
+  requests[0].resolve(alternate);
+  await flush();
+  assert.equal(image.src, primary, 'keeps the first image in flight until the alternate decodes');
+  assert.equal(requests[0].lookup.picId, track.picId);
+  assert.equal(requests[0].options.size, 300);
+  probes[0].onload();
+  assert.equal(image.src, alternate);
+
+  select(); visible();
+  requests[1].resolve(alternate);
+  await flush();
+  image.complete = true;
+  image.naturalWidth = 300;
+  probes[1].onload();
+  assert.equal(image.src, primary, 'a successful primary is never overwritten');
+
+  select(); visible();
+  image.onerror.call(image);
+  assert.equal(requests.length, 3, 'image error joins the pending visible lookup');
+  requests[2].resolve(alternate);
+  await flush();
+  assert.equal(image.src, alternate, 'a failed primary need not wait for a second download');
+
+  select(); visible();
+  select(); visible();
+  requests[3].resolve(alternate);
+  await flush();
+  assert.equal(probes.length, 2, 'an earlier selection cannot start a download for the reused DOM node');
+  assert.equal(image.src, primary);
+  image.onerror.call(image);
+  requests[4].reject(new Error('unavailable'));
+  await flush();
+  assert.equal(image.src, '/icon.svg');
 });

@@ -114,8 +114,8 @@ export default function DriftWall({
     if (tile && tile.dataset.tileId !== activeIdRef.current) activate(tile.dataset.tileId, Number(tile.dataset.col));
   };
   const renderTile = (item, id, column) => (
-    <div key={id} tabIndex={0} role="img" aria-label={item.title || '专辑封面'} className={`drift-wall__tile${activeId === id ? ' is-active' : ''}`} data-tile-id={id} data-col={column} onFocus={() => activate(id, column)} onBlur={release}>
-      <span className="drift-wall__inner"><img src={item.image} alt={item.title || ''} loading="lazy" decoding="async" draggable={false} /><span className="drift-wall__overlay" aria-hidden="true" /></span>
+    <div key={`${id}:${item.image}`} tabIndex={0} role="img" aria-label={item.title || '专辑封面'} className={`drift-wall__tile${activeId === id ? ' is-active' : ''}`} data-tile-id={id} data-col={column} onFocus={() => activate(id, column)} onBlur={release}>
+      <span className="drift-wall__inner"><img src={item.image} alt="" data-proxy-cover={item.proxy || undefined} data-embeat-cover={item.embeat ? "1" : undefined} data-decorative-cover="1" referrerPolicy="no-referrer" onError={event => window.fallbackCover?.(event.currentTarget)} loading="lazy" decoding="async" draggable={false} /><span className="drift-wall__overlay" aria-hidden="true" /></span>
     </div>
   );
   const cssVars = { '--dw-tile-w': `${tileWidth}px`, '--dw-tile-h': `${tileHeight}px`, '--dw-gap': `${gap}px`, '--dw-radius': `${radius}px`, '--dw-perspective': `${perspective}px`, '--dw-lift': `${lift}px`, '--dw-dim': dim, '--dw-gray': grayscale ? 1 : 0, '--dw-overlay': overlayColor, '--dw-edge': `${Math.max(0, (1 - fade) * 100)}%`, ...style };

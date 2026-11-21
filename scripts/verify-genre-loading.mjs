@@ -162,7 +162,7 @@ test('genre artwork starts eagerly for the first four cards and switches only a 
   const ctx = vm.createContext({
     URL, window: { location: new URL('https://music.test/') },
     state: { currentPage: 'discover' }, esc: String, escAttr: String, trackMap: new Map(),
-    document: { hidden: false },
+    document: { hidden: false }, resolveMusicResource: value => value,
     Image: class { constructor() { probeImages.push(this); } },
     setTimeout: (fn, delay) => { callbacks.push(fn); assert.equal(delay, 400); },
     $: () => row,
@@ -188,4 +188,35 @@ test('genre artwork starts eagerly for the first four cards and switches only a 
   ctx.document.hidden = true;
   callbacks[1]();
   assert.equal(probeImages.length, 3, 'background tabs do not start alternative downloads');
+});
+
+test('the album wall renders the first catalog independently and never requests full-sized tiles', async () => {
+  const requests = [], painted = [];
+  const ctx = vm.createContext({
+    URL, URLSearchParams, window: { location: new URL('https://music.test/'), dispatchEvent: event => painted.push(event.detail.items) },
+    CustomEvent: class { constructor(_, { detail }) { this.detail = detail; } },
+    state: { currentPage: 'album-favorites', queue: [], trackCache: new Map() },
+    hotCache: [], normalizeNeteaseTrack: track => track, setTimeout() {}, resolveMusicResource: value => value,
+    fetch: url => new Promise(resolve => requests.push({ url, resolve })),
+  });
+  vm.runInContext("const LOCAL_TRACK_COVER = '/icon.svg';" +
+    slice('function resizeCoverUrl(', 'function recentlyPlayedCoverUrl(') +
+    slice('let currentAlbumTracks =', 'async function openAlbumDetail(') +
+    slice('function fallbackCover(', 'function renderTrackList('), ctx);
+  const respond = (request, tracks) => request.resolve({ ok: true, json: async () => ({ songs: tracks }) });
+  ctx.loadDriftWallSourceCovers([]);
+  respond(requests[1], [{ albumId: 'first', cover: 'https://p2.music.126.net/first.jpg?param=1000y1000' }]);
+  await tick();
+  const [first] = painted[0];
+  assert.equal(first.image, 'https://p2.music.126.net/first.jpg?param=300y300');
+  const tile = { src: first.image, dataset: { proxyCover: first.proxy, decorativeCover: '1' } };
+  ctx.fallbackCover(tile);
+  assert.equal(new URL(tile.src, ctx.window.location.href).searchParams.get('url'), first.image);
+  ctx.fallbackCover(tile);
+  assert.equal(tile.src, '/icon.svg');
+
+  respond(requests[0], Array.from({ length: 40 }, (_, i) => ({ albumId: i, cover: 'https://p2.music.126.net/' + i + '.jpg' })));
+  await tick();
+  assert.equal(painted.at(-1).length, 30);
+  assert.ok(painted.at(-1).every(item => item.image.endsWith('?param=300y300')));
 });

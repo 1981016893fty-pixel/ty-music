@@ -494,6 +494,91 @@ function directCoverUrl(cover) {
   return '';
 }
 
+// Use one route policy for compact images and keep fallbacks on the same artwork.
+function compactCover(cover, size = 300) {
+  const proxy = resolveMusicResource(resizeCoverUrl(cover, size));
+  const direct = directCoverUrl(proxy);
+  if (direct) return { src: direct, proxy };
+  if (!window.__TY_MUSIC_DESKTOP__ && /^https:\/\/p\d+\.music\.126\.net\//i.test(proxy)) {
+    return { src: proxy, proxy: '/api/cover?' + new URLSearchParams({ size, url: proxy }) };
+  }
+  return { src: proxy || '/icon.svg', proxy: '' };
+}
+
+function coverLookup(url) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    const origin = new URL(window.__TY_MUSIC_API_BASE__ || window.location.href).origin;
+    const picId = parsed.searchParams.get('picId');
+    if (parsed.origin !== origin || !['/api/cover', '/api/music/cover'].includes(parsed.pathname) || !picId) return null;
+    return { picId, source: parsed.searchParams.get('source') || 'netease', size: Number(parsed.searchParams.get('size')) || 300 };
+  } catch (_) {
+    return null;
+  }
+}
+
+// The visible-image probe and error handler share the same attempt. A player
+// image can be reused even when two tracks happen to have the same primary URL.
+const coverAttempts = new WeakMap();
+let coverProbeObserver;
+function unwatchCoverImage(image) {
+  coverProbeObserver?.unobserve(image);
+  coverAttempts.delete(image);
+}
+
+function watchCoverImage(image) {
+  if (!image?.isConnected || !image.dataset.embeatCover || (image.complete && image.naturalWidth) ||
+      !window.IntersectionObserver) return;
+  coverProbeObserver ||= new IntersectionObserver(entries => {
+    for (const { target, isIntersecting } of entries) {
+      if (!target.isConnected) { unwatchCoverImage(target); continue; }
+      if (!isIntersecting) continue;
+      coverProbeObserver.unobserve(target);
+      tryProviderCover(target);
+    }
+  });
+  coverProbeObserver.observe(image);
+}
+
+function tryProviderCover(image, primaryFailed = false) {
+  if (image.dataset.directCoverTried || !window.tyMusicProvider) return false;
+  const primary = image.src;
+  const lookup = coverLookup(primary);
+  if (!lookup || (!primaryFailed && lookup.source !== 'embeat')) return false;
+  if (lookup.source === 'embeat') image.dataset.embeatCover = '1';
+  const existing = coverAttempts.get(image);
+  if (existing?.primary === primary) {
+    existing.primaryFailed ||= primaryFailed;
+    return true;
+  }
+  const attempt = { primary, primaryFailed };
+  coverAttempts.set(image, attempt);
+  const current = () => image.isConnected && image.src === primary && coverAttempts.get(image) === attempt;
+  const failed = () => {
+    if (!current()) return;
+    coverAttempts.delete(image);
+    image.dataset.directCoverTried = '1';
+    if (attempt.primaryFailed) fallbackCover(image);
+  };
+  const apply = cover => {
+    if (!current() || (!attempt.primaryFailed && image.complete && image.naturalWidth)) return;
+    coverAttempts.delete(image);
+    image.dataset.directCoverTried = '1';
+    image.referrerPolicy = 'no-referrer';
+    image.src = cover;
+  };
+  window.tyMusicProvider.resource(lookup, 'pic', { size: lookup.size }).then(cover => {
+    if (!current() || (!attempt.primaryFailed && image.complete && image.naturalWidth)) return;
+    if (attempt.primaryFailed) { apply(cover); return; }
+    const alternative = new Image();
+    alternative.referrerPolicy = 'no-referrer';
+    alternative.onload = () => apply(cover);
+    alternative.onerror = failed;
+    alternative.src = cover;
+  }).catch(failed);
+  return true;
+}
+
 function recentlyPlayedCoverUrl(value) {
   try {
     const url = new URL(value);
@@ -524,12 +609,17 @@ function rememberRecentCover(id, url) {
 }
 
 function trackCoverMarkup(track, className = '', lazy = true, alt = '', priority = false, recent = false) {
-  const cover = track.coverSmall || track.cover || '';
-  const direct = (recent && recentlyPlayedCoverUrl(track.recentCover)) || directCoverUrl(cover);
+  const { src: compactSrc, proxy } = compactCover(track.coverSmall || track.cover);
+  const saved = recent && recentlyPlayedCoverUrl(track.recentCover);
+  const direct = saved || Boolean(proxy);
+  const cover = saved ? resolveMusicResource(resizeCoverUrl(track.coverSmall || track.cover, 300)) : proxy;
+  const src = saved || compactSrc;
+  const embeat = track.source === 'embeat' && !saved && Boolean(track.picId);
   const loading = priority ? ' loading="eager" fetchpriority="high"' : lazy ? ' loading="lazy"' : '';
-  const fallback = direct && cover && direct !== cover ? ` data-proxy-cover="${escAttr(cover)}"` : '';
+  const fallback = (cover && cover !== src ? ` data-proxy-cover="${escAttr(cover)}"` : '') +
+    (embeat ? ' data-embeat-cover="1"' : '');
+
   const history = recent ? ` data-recent-track-id="${escAttr(track.id)}" onload="rememberRecentCoverImage(this)"` : '';
-  const src = direct || cover || (recent ? LOCAL_TRACK_COVER : '');
   return `<img class="${className}" src="${escAttr(src)}" alt="${escAttr(alt)}" decoding="async"${loading}${direct ? ' referrerpolicy="no-referrer"' : ''}${fallback}${history} data-artist="${escAttr(track.artist || '')}" data-album="${escAttr(track.album || '')}" data-name="${escAttr(track.title || track.name || '')}" onerror="fallbackCover(this)">`;
 }
 
@@ -1109,17 +1199,21 @@ function beginPlaybackSelection() {
   return id;
 }
 
-function setPlaybackCover(img, track) {
-  const cover = track.coverSmall || track.cover || '';
-  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried', 'proxyCover']) delete img.dataset[key];
-  img.dataset.artist = track.artist || '';
-  img.dataset.album = track.album || '';
-  img.dataset.name = track.title || '';
-  img.onerror = track.source === 'local' ? null : function() { fallbackCover(this); };
-  const direct = directCoverUrl(cover);
-  if (direct) img.dataset.proxyCover = cover;
-  if (cover) img.src = direct || cover;
-  else fallbackCover(img);
+function setPlaybackCover(img, track, size = 300) {
+  unwatchCoverImage(img);
+  const cover = coverUrlForTrack(track || {}, size, track?.source);
+  const { src, proxy } = compactCover(cover, size);
+  for (const key of ['fallback', 'albumTried', 'fallbackTried', 'directCoverTried', 'proxyCover', 'embeatCover', 'decorativeCover']) delete img.dataset[key];
+  img.dataset.exactCover = '1';
+  img.dataset.artist = track?.artist || '';
+  img.dataset.album = track?.album || '';
+  img.dataset.name = track?.title || '';
+  img.onerror = track?.source === 'local' ? null : function() { fallbackCover(this); };
+  img.referrerPolicy = proxy ? 'no-referrer' : '';
+  if (proxy) img.dataset.proxyCover = proxy;
+  if (track?.source === 'embeat' && track.picId) img.dataset.embeatCover = '1';
+  img.src = src;
+  if (track?.source !== 'local') watchCoverImage(img);
 }
 
 function presentPlaybackTrack(track) {
@@ -2579,20 +2673,6 @@ function loadMoreSearchResults() {
 }
 
 
-function fixCoverUrl(url) {
-  if (!url) return '';
-  // 已经是完整 http URL 且不含 ? — 追加 ?param=640y640（网易云 CDN，更高清）
-  if (url.startsWith('http') && !url.includes('?')) {
-    return url + '?param=640y640';
-  }
-  // 已经是完整 http URL 且含 ? — 直接用
-  if (url.startsWith('http')) {
-    return url;
-  }
-  // 本服代理 URL — 直接用（已有 size 参数）
-  return url;
-}
-
 function fallbackCover(img) {
   if (img.dataset.fallback) return;
   if (img.dataset.proxyCover) {
@@ -2601,27 +2681,13 @@ function fallbackCover(img) {
     img.src = proxy;
     return;
   }
-  // Cover endpoints return JSON upstream; resolve their URL before assigning
-  // an image src. Never let an old resolution repaint a reused player image.
-  if (window.tyMusicProvider && !img.dataset.directCoverTried) {
-    try {
-      const failedSrc = img.src;
-      const url = new URL(failedSrc, location.href);
-      if (['/api/cover', '/api/music/cover'].includes(url.pathname) && url.searchParams.get('picId')) {
-        img.dataset.directCoverTried = failedSrc;
-        const source = url.searchParams.get('source') || 'netease';
-        if (source === 'embeat') { img.dataset.albumTried = '1'; img.dataset.fallbackTried = '1'; }
-        window.tyMusicProvider.resource({ source, picId: url.searchParams.get('picId') }, 'pic')
-          .then(cover => { if (img.src === failedSrc) img.src = cover; })
-          .catch(() => {
-            if (img.src !== failedSrc) return;
-            fallbackCover(img);
-          });
-        return;
-      }
-    } catch (_) {}
+  if (tryProviderCover(img, true)) return;
+  if (img.dataset.decorativeCover) {
+    img.dataset.fallback = '1';
+    img.src = '/icon.svg';
+    return;
   }
-  if (img.dataset.recentTrackId) {
+  if (img.dataset.recentTrackId || img.dataset.embeatCover || img.dataset.exactCover) {
     img.dataset.fallback = '1';
     img.src = LOCAL_TRACK_COVER;
     img.onerror = null;
@@ -4423,18 +4489,20 @@ function updateAlbumDriftWallCovers(extraTracks) {
   var seenCovers = new Set();
   var sources = [].concat(extraTracks || [], currentAlbumTracks || [], state.queue || [], Array.from(state.trackCache.values()), hotCache || [], driftWallSourceTracks || []);
   sources.forEach(function(track) {
-    var cover = track && (track.cover || track.coverSmall);
-    var albumKey = driftWallAlbumKey(track);
-    if (!cover || !albumKey || seenAlbums.has(albumKey) || seenCovers.has(cover)) return;
+    const raw = track && (track.coverSmall || track.cover);
+    const albumKey = driftWallAlbumKey(track);
+    if (!raw || !albumKey || seenAlbums.has(albumKey)) return;
+    const { src: cover, proxy } = compactCover(raw);
+    if (cover === '/icon.svg' || seenCovers.has(cover) || /^(?:data:|blob:)|^\/api\/(?:artist-photo|artist-avatar|album-cover)/.test(cover)) return;
     seenAlbums.add(albumKey);
     seenCovers.add(cover);
-    pool.push({ image: cover, title: ((track.album || track.title || '专辑封面') + ' · ' + (track.artist || '')) });
+    pool.push({ image: cover, proxy, embeat: track.source === 'embeat' && Boolean(track.picId), title: ((track.album || track.title || '专辑封面') + ' · ' + (track.artist || '')) });
   });
   for (var i = pool.length - 1; i > 0; i -= 1) {
     var j = Math.floor(Math.random() * (i + 1));
     var swap = pool[i]; pool[i] = pool[j]; pool[j] = swap;
   }
-  var items = pool.slice(0, 96);
+  var items = pool.slice(0, 30);
   if (!items.length && Array.isArray(window.albumDriftWallItems)) items = window.albumDriftWallItems;
   if (!items.length) return;
   window.albumDriftWallItems = items;
@@ -4469,21 +4537,23 @@ function refreshDriftWallSourceCovers() {
 }
 
 function loadDriftWallSourceCovers(extraTracks) {
+  updateAlbumDriftWallCovers(extraTracks);
   if (!driftSourceTracksPromise) {
-    driftSourceTracksPromise = Promise.all([
-      fetch('/api/music/hot?source=netease&limit=80').then(function(res) { return res.ok ? res.json() : { songs: [] }; }).catch(function() { return { songs: [] }; }),
-      fetch('/api/album/new?limit=40').then(function(res) { return res.ok ? res.json() : { albums: [] }; }).catch(function() { return { albums: [] }; })
-    ]).then(function(results) {
-      var songs = (results[0].songs || []).map(function(song) { return normalizeNeteaseTrack(song); });
-      var newSongs = (results[1].songs || []).map(function(song) { return normalizeNeteaseTrack(song); });
-      return songs.concat(newSongs);
+    const sources = ['/api/music/hot?source=netease&limit=80', '/api/album/new?limit=40'];
+    driftSourceTracksPromise = Promise.all(sources.map(async url => {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) return;
+        const { songs } = await response.json();
+        const items = Array.isArray(songs) ? songs.map(normalizeNeteaseTrack) : [];
+        driftWallSourceTracks = driftWallSourceTracks.concat(items).slice(-240);
+        if (items.length && state.currentPage === 'album-favorites') updateAlbumDriftWallCovers([]);
+      } catch (_) { /* Keep the wall supplied by other available sources. */ }
+    })).finally(() => {
+      if (!driftWallSourceTracks.length) driftSourceTracksPromise = null;
+      scheduleDriftWallRefresh();
     });
-  }
-  driftSourceTracksPromise.then(function(sourceTracks) {
-    driftWallSourceTracks = driftWallSourceTracks.concat(sourceTracks || []).slice(-240);
-    updateAlbumDriftWallCovers((extraTracks || []).concat(sourceTracks));
-    scheduleDriftWallRefresh();
-  });
+  } else scheduleDriftWallRefresh();
 }
 
 async function openAlbumDetail(albumId) {
@@ -4696,20 +4766,11 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
     
     currentAlbumTracks = tracks;
     updateAlbumDriftWallCovers(tracks);
-    loadDriftWallSourceCovers(tracks);
     
-    // 专辑详情使用高分辨率封面，列表缩略图仍然使用 coverSmall。
     const albumCoverEl = document.getElementById('albumDetailCover');
     albumCoverEl.onload = function() { syncAlbumDetailColorsFromCover(this); };
-    if (tracks[0] && (tracks[0].cover || tracks[0].coverSmall)) {
-      albumCoverEl.src = tracks[0].cover || tracks[0].coverSmall;
-    } else if (tracks[0] && tracks[0].picId) {
-      albumCoverEl.src = '/api/music/cover?picId=' +
-        encodeURIComponent(tracks[0].picId) + '&source=' + (source || 'netease') + '&size=1000';
-    }
+    setPlaybackCover(albumCoverEl, tracks[0], 500);
     if (albumCoverEl.complete) syncAlbumDetailColorsFromCover(albumCoverEl);
-    albumCoverEl.dataset.artist = artistName || (tracks[0] && tracks[0].artist) || '';
-    albumCoverEl.onerror = function() { fallbackCover(this); };
     
     // 更新专辑标题（使用API返回的准确专辑名）
     const accurateAlbumName = tracks[0].album || albumName;
@@ -4796,20 +4857,11 @@ async function openAlbumByName(albumName, artistName, source, picId) {
 
     currentAlbumTracks = tracks;
     updateAlbumDriftWallCovers(tracks);
-    loadDriftWallSourceCovers(tracks);
 
-    // 旧收藏兼容路径同样优先使用高分辨率封面。
     const albumCoverEl = document.getElementById('albumDetailCover');
     albumCoverEl.onload = function() { syncAlbumDetailColorsFromCover(this); };
-    if (tracks[0] && (tracks[0].cover || tracks[0].coverSmall)) {
-      albumCoverEl.src = tracks[0].cover || tracks[0].coverSmall;
-    } else if (tracks[0] && tracks[0].picId) {
-      albumCoverEl.src = '/api/music/cover?picId=' +
-        encodeURIComponent(tracks[0].picId) + '&source=' + (source || 'netease') + '&size=1000';
-    }
+    setPlaybackCover(albumCoverEl, tracks[0], 500);
     if (albumCoverEl.complete) syncAlbumDetailColorsFromCover(albumCoverEl);
-    albumCoverEl.dataset.artist = artistName || (tracks[0] && tracks[0].artist) || '';
-    albumCoverEl.onerror = function() { fallbackCover(this); };
 
     setShinyText('albumDetailTitle', albumName);
     document.getElementById('albumDetailArtist').textContent = artistName || tracks[0].artist || '';
@@ -5356,7 +5408,7 @@ async function renderAlbumFavorites() {
   const html = albums.map(album => {
     const albumId = album.id || album.albumId;
     return '<div class="album-card" data-album-id="' + albumId + '">' +
-      '<img class="album-card-cover" src="' + fixCoverUrl(album.picUrl || album.cover || '') + '" alt="" loading="lazy" data-artist="' + esc(typeof album.artist === 'object' ? album.artist.name || '' : album.artist || '') + '" data-album="' + esc(album.name || '') + '" onerror="fallbackCover(this)">' +
+      trackCoverMarkup({ coverSmall: album.picUrl || album.cover, artist: typeof album.artist === 'object' ? album.artist?.name : album.artist, album: album.name, source: album.source, picId: album.picId }, 'album-card-cover') +
       '<div class="album-card-info">' +
         '<div class="album-card-title">' + esc(album.name || '未知专辑') + '</div>' +
         '<div class="album-card-artist">' + esc((album.artist || {}).name || album.artist || '未知歌手') + '</div>' +
@@ -5486,18 +5538,9 @@ function cfBuildStage() {
   }
   
   cfAlbums.forEach((album, i) => {
-    // 封面 URL：一次准备好足够清晰的正面图，切换时不再临时换源。
-    var cover = (album.picUrl || album.cover || '');
-    // 初始加载用 640px（2x/3x Retina 屏幕下 240px 容器需要更高分辨率）
-    var coverSmall = cover;
-    if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverSmall = cover + '?param=640y640';
-    }
-    // 倒影使用更高分辨率资源；正面保持单一来源，避免切换时解码卡顿。
-    var coverLarge = cover;
-    if (cover && cover.indexOf('/api/music/cover') === -1 && cover.indexOf('?') === -1) {
-      coverLarge = cover + '?param=1280y1280';
-    }
+    const artwork = trackCoverMarkup({
+      coverSmall: album.picUrl || album.cover, source: album.source, picId: album.picId,
+    }).replace('<img ', '<img draggable="false" ');
     var albumId = album.id || album.albumId;
     var albumName = album.name || '';
 
@@ -5507,12 +5550,11 @@ function cfBuildStage() {
     item.style.display = 'none';
     item.dataset.index = i;
     item.dataset.albumId = albumId;
-    item.dataset.coverLarge = coverLarge; // 保存大图 URL
 
     // 正面封面（先用小图快速显示）
     const front = document.createElement('div');
     front.className = 'cf-front';
-    front.innerHTML = '<img src="' + coverSmall + '" alt="" draggable="false">';
+    front.innerHTML = artwork;
     item.appendChild(front);
     
     // 右侧脊 (可见于左旋)
@@ -5559,12 +5601,11 @@ function cfBuildStage() {
     cfItems[i] = item;
     cfSpines[i] = [spineR, spineL, spineT, spineB];
     
-    // 倒影（用高清大图，和正面保持同步）
+    // 正面和倒影共用一张图，让浏览器复用下载和解码。
     const ref = document.createElement('div');
     ref.className = 'cf-reflection-item';
     ref.style.display = 'none';
-    ref.dataset.coverLarge = coverLarge;
-    ref.innerHTML = '<img src="' + coverLarge + '" alt="" draggable="false">';
+    ref.innerHTML = artwork;
     reflection.appendChild(ref);
     cfReflections[i] = ref;
   });
@@ -5894,7 +5935,7 @@ const originalOpenAlbumDetail = openAlbumDetail;
 function createAlbumCard(album) {
   return '<div class="am-card album-card" data-album-id="' + (album.id || '') + '">' +
     '<div class="am-artwork">' +
-      '<img src="' + fixCoverUrl(album.picUrl || album.cover || '') + '" alt="" loading="lazy" onerror="this.parentElement.style.background=\'linear-gradient(135deg,#1a1a30,#15152a)\'">' +
+      trackCoverMarkup({ coverSmall: album.picUrl || album.cover, artist: album.artist?.name, album: album.name }) +
       '<div class="am-play-overlay">' +
         '<div class="am-play-circle"><i class="fa-solid fa-compact-disc"></i></div>' +
       '</div>' +

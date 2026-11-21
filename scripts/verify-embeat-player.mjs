@@ -29,7 +29,7 @@ assert.equal(new URLSearchParams(context.musicResourceQuery(missing, 'url')).get
 const old = context.normalizeTrack({ id: 123, source: 'netease', name: 'Old' });
 assert.equal(old.id, '123');
 assert.equal(new URLSearchParams(context.musicResourceQuery(old, 'url')).get('id'), '123');
-assert.match(between('function loadMoreSearchResults(', 'function fixCoverUrl('), /searchSession.loadMore/);
+assert.match(between('function loadMoreSearchResults(', 'function fallbackCover('), /searchSession.loadMore/);
 console.log('Verified Embeat identity, resource routing, cache/recent round trip.');
 // Execute the actual recent-write expression, not a parallel implementation.
 context.track = track;
