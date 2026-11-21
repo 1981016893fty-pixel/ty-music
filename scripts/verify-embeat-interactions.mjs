@@ -27,7 +27,8 @@ const attributes = Object.fromEntries([...firstTag.matchAll(/\s([\w-]+)="([^"]*)
 assert.equal(attributes.onmouseover, undefined, 'external names cannot create an event attribute');
 const decode = value => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 assert.equal(decode(attributes['data-query']), title + ' ' + artist, 'autocomplete selection retains quotes and ampersands');
-vm.runInContext(between('function resizeCoverUrl', '// 通过本地服务器搜索') + between('var currentArtistTracks', 'function resetArtistPageColors(') +
+vm.runInContext(between('function resizeCoverUrl', 'function directCoverUrl(') +
+  between('// Keep upstream resource IDs', '// 通过本地服务器搜索') + between('var currentArtistTracks', 'function resetArtistPageColors(') +
   between('async function openArtistPage(', 'function addLoadMoreButton(') + between('async function loadMoreArtistSongs(', 'async function loadArtistPhoto('), context);
 const requests = [];
 context.fetch = url => new Promise((resolve, reject) => requests.push({ url, resolve, reject }));

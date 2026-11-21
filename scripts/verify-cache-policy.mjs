@@ -236,6 +236,43 @@ test('returning visitors see the cached shell while a sleeping server is still w
   assert.equal(result, 'cached-shell');
 });
 
+test('an active release serves its installed shell even if the requested URL has an older copy', async () => {
+  const handlers = {};
+  const shell = source.match(/const APP_SHELL = '([^']+)'/)[1];
+  vm.runInNewContext(source, {
+    self: { location: { origin: 'https://example.test' }, addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => { throw new Error('offline'); },
+    caches: { open: async () => ({ match: async key => new Response(key === shell ? 'current shell' : 'previous shell') }) },
+  });
+  for (const path of ['/', '/?v=old-release']) {
+    let response;
+    handlers.fetch({ request: { url: 'https://example.test' + path, method: 'GET', mode: 'navigate' }, respondWith(value) { response = value; }, waitUntil() {} });
+    assert.equal(await (await response).text(), 'current shell', path);
+  }
+});
+
+test('navigating to the installed shell URL keeps its cached release intact', async () => {
+  const handlers = {};
+  const shell = source.match(/const APP_SHELL = '([^']+)'/)[1];
+  let installed = 'installed release';
+  vm.runInNewContext(source, {
+    self: { location: { origin: 'https://example.test' }, addEventListener: (name, handler) => { handlers[name] = handler; } },
+    URL, console, Response,
+    fetch: async () => ({ status: 200, type: 'basic', clone: () => new Response('different release') }),
+    caches: { open: async () => ({
+      match: async () => new Response(installed),
+      put: async (_key, value) => { installed = await value.text(); },
+    }) },
+  });
+  const lifetimes = [];
+  let response;
+  handlers.fetch({ request: { url: 'https://example.test' + shell, method: 'GET', mode: 'navigate' }, respondWith(value) { response = value; }, waitUntil(value) { lifetimes.push(value); } });
+  assert.equal(await (await response).text(), 'installed release');
+  await Promise.all(lifetimes);
+  assert.equal(installed, 'installed release');
+});
+
 test('navigation never returns a redirected cached shell and survives cache/network failures', async () => {
   for (const scenario of ['redirected', 'cache-failed', 'offline', 'cached-offline']) {
     const handlers = {};

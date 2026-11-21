@@ -266,7 +266,9 @@ function fullscreenArtworkPlayer() {
   const node = selector => {
     if (!nodes.has(selector)) {
       const style = { setProperty(key, value) { this[key] = value; }, removeProperty(key) { delete this[key]; } };
-      nodes.set(selector, { style, classList: { remove() {} } });
+      const classes = new Set();
+      nodes.set(selector, { style, classList: { add: key => classes.add(key), remove: key => classes.delete(key),
+        contains: key => classes.has(key) }, querySelectorAll: () => [] });
     }
     return nodes.get(selector);
   };
@@ -277,11 +279,12 @@ function fullscreenArtworkPlayer() {
     window: { location: new URL('https://music.test/'), dispatchEvent: event => events.push(event) },
     state: {}, getQueue: () => [], directCoverUrl: () => '',
     resolveMusicResource: url => url, updateAmpPlayBtn() {}, ampLyricsShowing: false,
-    applyAlbumColors() {}, extractAlbumColors() {}, setTimeout() {},
+    extractAlbumColors() {}, rememberRecentCover() {}, setTimeout() {},
   });
   for (const selector of ['#ampLikeBtn', '#ampShuffleBtn', '#ampRepeatBtn']) nodes.set(selector, null);
   vm.runInContext(section('const LOCAL_TRACK_COVER =', 'function releaseLocalAudio()') +
     section('let ampIsShowing = false;', '// 辅助：在圆角矩形路径上') +
+    section('function applyAlbumColors(', 'function applyAlbumDetailColors(') +
     section('function getActiveTrack()', 'function updateAmpPlayBtn()'), context);
   const select = (id, cover, coverSmall = '') =>
     context.updateAmpFullscreenPlayer({ ...track(id), album: 'Album', cover, coverSmall });
@@ -337,6 +340,38 @@ test('fullscreen skips a malformed stored cover and can still show the song thum
   assert.equal(context.window.ampCoverSrc, '/valid.jpg');
 });
 
+test('fullscreen keeps the same cover behind the player when the palette cannot be read', () => {
+  const { context, select, settle } = fullscreenArtworkPlayer();
+  let settlePalette;
+  context.extractAlbumColors = (_url, callback) => { settlePalette = callback; };
+  select('cross-origin', '/cross-origin.jpg');
+  settle('/cross-origin.jpg', true);
+  const mount = context.$('#ampGridDistortionMount');
+  const backdrop = mount.style;
+  assert.match(backdrop['--amp-cover-backdrop'], /cross-origin\.jpg/);
+  settlePalette(null);
+  assert.match(backdrop['--amp-cover-backdrop'], /cross-origin\.jpg/);
+  select('next', '/next.jpg');
+  assert.equal(backdrop['--amp-cover-backdrop'], undefined);
+  settle('/next.jpg', true);
+  const red = { r: 110, g: 20, b: 10 };
+  settlePalette({ primary: red, secondary: red, tertiary: red });
+  assert.equal(backdrop['--amp-cover-backdrop'], undefined);
+});
+
+test('fullscreen discards the previous song palette before showing a song without cover art', () => {
+  const { context, select, settle } = fullscreenArtworkPlayer();
+  const red = { r: 110, g: 20, b: 10 };
+  context.extractAlbumColors = (_url, callback) => callback({ primary: red, secondary: red, tertiary: red });
+  select('red', '/red.jpg');
+  settle('/red.jpg', true);
+  const player = context.$('#ampFullscreenPlayer');
+  assert.equal(player.style['--amp-accent-rgb'], '110, 20, 10');
+  select('missing', '');
+  assert.equal(player.style['--amp-accent-rgb'], undefined);
+  assert.equal(context.window.ampGridColors, undefined);
+});
+
 test('legacy recent entries keep the Embeat provider and recover missing resource identifiers from cache', () => {
   const { context } = storagePlayer();
   context.cacheTrack({ ...track('embeat:kept'), source: 'embeat', providerId: 'kept',
@@ -349,6 +384,35 @@ test('legacy recent entries keep the Embeat provider and recover missing resourc
   const legacy = context.trackFromRecentEntry({ id: 'embeat:track%3A42', title: 'Original' });
   assert.equal(legacy.source, 'embeat');
   assert.equal(legacy.providerId, 'track:42');
+});
+
+test('recent artwork remembers a decoded CDN thumbnail and retries its original source when the URL expires', () => {
+  const { context, saved } = storagePlayer();
+  const cover = '/api/music/cover?source=embeat&picId=art&size=300';
+  const cdn = 'https://resources.tidal.com/images/example/320x320.jpg';
+  context.URL = URL;
+  context.escAttr = String;
+  context.directCoverUrl = () => '';
+  context.window.location = new URL('https://music.test/');
+  context.coverUrlForTrack = item => item.cover || (item.picId ? cover : '');
+  const timers = [];
+  context.setTimeout = callback => timers.push(callback);
+  vm.runInContext(section('function recentlyPlayedCoverUrl(', '// Keep upstream resource IDs separate'), context);
+  context.state.recentPlays = [{ id: 'embeat:kept', picId: 'art', cover: '/icon.svg', title: 'Original' }];
+  let restored = context.trackFromRecentEntry(context.state.recentPlays[0]);
+  assert.equal(restored.coverSmall, cover, 'legacy placeholder must not hide the saved picture ID');
+  const img = { dataset: { recentTrackId: 'embeat:kept' }, currentSrc: cdn, naturalWidth: 320, isConnected: true };
+  context.rememberRecentCoverImage(img);
+  context.rememberRecentCoverImage({ ...img, currentSrc: 'https://other.example/wrong.jpg' });
+  assert.equal(timers.length, 1);
+  timers[0]();
+  context.state.recentPlays = [];
+  context.loadData();
+  restored = context.trackFromRecentEntry(context.state.recentPlays[0]);
+  const markup = context.trackCoverMarkup(restored, '', true, '', false, true);
+  assert.ok(markup.includes(`src="${cdn}"`));
+  assert.ok(markup.includes(`data-proxy-cover="${cover}"`));
+  assert.match(markup, /loading="lazy"/);
 });
 
 test('Embeat fullscreen can display its backdrop while the proxy is still pending', async () => {
