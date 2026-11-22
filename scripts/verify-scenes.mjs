@@ -63,7 +63,7 @@ test('navigation and visibility changes notify subscribers and release all obser
 
 // Execute the real page wiring and genre component; only DOM mounts and other
 // independently tested widgets are replaced at the browser boundary.
-test('homepage keeps all genre choices through navigation and reduced motion', async () => {
+test('the lightweight homepage mounts every genre and wires the existing detail loader', async () => {
   const { build } = await import('esbuild');
   const { createRequire } = await import('node:module');
   const vm = await import('node:vm');
@@ -76,12 +76,10 @@ test('homepage keeps all genre choices through navigation and reduced motion', a
   ]);
   const gridModule = { exports: {} };
   vm.runInNewContext(grid.outputFiles[0].text, { module: gridModule, exports: gridModule.exports, require, React });
-  let snapshot = 'visible|app|page-discover|||motion';
   let mounted, selected;
   const host = {};
   const document = { body: {}, getElementById: id => id === 'chromaGridMount' ? host : null, querySelectorAll: () => [] };
-  const window = { matchMedia: () => ({ matches: false }), addEventListener() {}, setTimeout() {}, loadGenreDetail: id => { selected = id; } };
-  function Scene({ name, decorative, children }) { return sceneActive(name, snapshot, decorative) ? children : null; }
+  const window = { loadGenreDetail: id => { selected = id; } };
   const unused = new Proxy({}, { get: () => () => null });
   vm.runInNewContext(entry.outputFiles[0].text, {
     React, document, window, Element: class {}, MutationObserver: class { observe() {} },
@@ -89,24 +87,16 @@ test('homepage keeps all genre choices through navigation and reduced motion', a
       if (name === 'react') return React;
       if (name === 'react-dom/client') return { createRoot: target => ({ render: element => { if (target === host) mounted = element; } }) };
       if (name === 'react-dom') return { flushSync: callback => callback() };
-      if (name === './Scene') return { __esModule: true, default: Scene };
       if (name === './ChromaGrid') return { __esModule: true, default: gridModule.exports.default };
       return unused;
     },
   });
   const expected = ['流行乐', '摇滚', '电子', '嘻哈', '爵士', '古典', 'K-Pop', '华语', 'R&B', '拉丁', '动漫', '乡村'];
-  for (const next of ['visible|app|page-discover|||motion', 'visible|app|page-search|||motion', 'hidden|app|page-discover|||motion', 'visible|app|page-discover|||reduced', 'visible|app|page-discover|||motion']) {
-    snapshot = next;
-    const html = renderToStaticMarkup(mounted);
-    if (next.includes('page-search') || next.startsWith('hidden')) {
-      assert.equal(html, '', 'inactive homepage releases its widgets');
-    } else {
-      assert.equal((html.match(/class="chroma-card"/g) || []).length, 12, 'homepage renders every genre');
-      assert.equal((html.match(/&amp;size=640/g) || []).length, 12, 'genre cards request bounded-resolution artist photos');
-      const labels = [...html.matchAll(/<h3 class="name">(.*?)<\/h3>/g)].map(match => match[1].replaceAll('&amp;', '&'));
-      assert.deepEqual(labels, expected);
-    }
-  }
-  mounted.props.children.props.onGenreClick('jazz');
-  assert.equal(selected, 'jazz', 'genre selection reaches the existing detail loader');
+  const html = renderToStaticMarkup(mounted);
+  assert.equal((html.match(/class="chroma-card"/g) || []).length, 12);
+  assert.equal((html.match(/&amp;size=320/g) || []).length, 12);
+  const labels = [...html.matchAll(/<strong class="name">(.*?)<\/strong>/g)].map(match => match[1].replaceAll('&amp;', '&'));
+  assert.deepEqual(labels, expected);
+  mounted.props.onGenreClick('jazz');
+  assert.equal(selected, 'jazz');
 });

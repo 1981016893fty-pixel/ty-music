@@ -1,5 +1,3 @@
-import { useEffect, useRef } from 'react';
-import { gsap } from 'gsap';
 import './ChromaGrid.css';
 
 const GENRES = [
@@ -7,24 +5,10 @@ const GENRES = [
 ];
 
 export default function ChromaGrid({ onGenreClick }) {
-  const rootRef = useRef(null), fadeRef = useRef(null), position = useRef({ x: 0, y: 0 });
-  const setX = useRef(null), setY = useRef(null);
-  useEffect(() => {
-    const root = rootRef.current; if (!root) return undefined;
-    setX.current = gsap.quickSetter(root, '--x', 'px'); setY.current = gsap.quickSetter(root, '--y', 'px');
-    const rect = root.getBoundingClientRect(); position.current = { x: rect.width / 2, y: rect.height / 2 };
-    setX.current(position.current.x); setY.current(position.current.y);
-    const moveTo = (x, y) => gsap.to(position.current, { x, y, duration: .45, ease: 'power3.out', overwrite: true, onUpdate: () => { setX.current?.(position.current.x); setY.current?.(position.current.y); } });
-    const onMove = event => { const r = root.getBoundingClientRect(); moveTo(event.clientX - r.left, event.clientY - r.top); gsap.to(fadeRef.current, { opacity: 0, duration: .25, overwrite: true }); };
-    const onLeave = () => gsap.to(fadeRef.current, { opacity: 1, duration: .6, overwrite: true });
-    root.addEventListener('pointermove', onMove); root.addEventListener('pointerleave', onLeave);
-    return () => { root.removeEventListener('pointermove', onMove); root.removeEventListener('pointerleave', onLeave); };
-  }, []);
-  return <div ref={rootRef} className="chroma-grid" style={{ '--cols': 4, '--r': '220px' }}>
-    {GENRES.map(([title, id, borderColor, gradient, artist]) => <article key={id} className="chroma-card" onMouseMove={event => { const r = event.currentTarget.getBoundingClientRect(); event.currentTarget.style.setProperty('--mouse-x', `${event.clientX - r.left}px`); event.currentTarget.style.setProperty('--mouse-y', `${event.clientY - r.top}px`); }} onClick={() => onGenreClick?.(id)} style={{ '--card-border': borderColor, '--card-gradient': gradient, cursor: 'pointer' }}>
-      <div className="chroma-img-wrapper" aria-hidden="true"><img src={`/api/artist-photo?name=${encodeURIComponent(artist)}&size=640`} alt="" loading="lazy" decoding="async" /></div>
-      <footer className="chroma-info"><h3 className="name">{title}</h3><p className="role">探索此流派</p></footer>
-    </article>)}
-    <div className="chroma-overlay" /><div ref={fadeRef} className="chroma-fade" />
+  return <div className="chroma-grid">
+    {GENRES.map(([title, id, borderColor, gradient, artist]) => <button type="button" key={id} className="chroma-card" onClick={() => onGenreClick?.(id)} style={{ '--card-border': borderColor, '--card-gradient': gradient }}>
+      <span className="chroma-img-wrapper" aria-hidden="true"><img src={`/api/artist-photo?name=${encodeURIComponent(artist)}&size=320`} alt="" loading="lazy" decoding="async" /></span>
+      <span className="chroma-info"><strong className="name">{title}</strong><span className="role">探索此流派</span></span>
+    </button>)}
   </div>;
 }

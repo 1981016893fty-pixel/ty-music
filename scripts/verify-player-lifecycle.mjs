@@ -314,6 +314,8 @@ function fullscreenArtworkPlayer() {
   });
   for (const selector of ['#ampLikeBtn', '#ampShuffleBtn', '#ampRepeatBtn']) nodes.set(selector, null);
   vm.runInContext(section('const LOCAL_TRACK_COVER =', 'function releaseLocalAudio()') +
+    section('function paintSongLike(', 'function updateLikeUI()') +
+    'function isFavorite() { return false; }' +
     section('let ampIsShowing = false;', '// 辅助：在圆角矩形路径上') +
     section('function applyAlbumColors(', 'function applyAlbumDetailColors(') +
     section('function getActiveTrack()', 'function updateAmpPlayBtn()'), context);

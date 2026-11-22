@@ -4,22 +4,22 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v53-quality';
+const CACHE_NAME = 'ty-music-v68-idle';
 const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
 const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261122-desktop-v67';
+const APP_SHELL = '/?v=20261122-idle-v68';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261121-button-v66',
-  '/player.js?v=20261122-desktop-v67',
+  '/style.css?v=20261122-idle-v68',
+  '/player.js?v=20261122-idle-v68',
   '/local-music-db.js?v=20261121-memory-v64',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261121-artwork-v65',
   '/search-session.js?v=20261121-player-search-v63',
-  '/soft-aurora-react.js?v=20261121-button-v66',
-  '/soft-aurora-react.css?v=20261118-quality-v53',
+  '/soft-aurora-react.js?v=20261122-idle-v68',
+  '/soft-aurora-react.css?v=20261122-idle-v68',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',
@@ -29,7 +29,7 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
-  console.log('[SW] Installing v53...');
+  console.log('[SW] Installing', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
       console.log('[SW] Precaching static assets');
@@ -44,7 +44,7 @@ self.addEventListener('install', event => {
 
 // 激活事件：清理旧缓存并立即接管所有客户端
 self.addEventListener('activate', event => {
-  console.log('[SW] Activated v53');
+  console.log('[SW] Activated', CACHE_NAME);
   event.waitUntil(
     caches.keys().then(names =>
       Promise.all(names.map(name => {
