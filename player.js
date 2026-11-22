@@ -1455,9 +1455,13 @@ function updatePlayBtn() {
 }
 
 function updateQueueHighlight() {
-  $$('.track-row.playing').forEach(r => r.classList.remove('playing'));
-  if (state.currentTrack) {
-    $$(`.track-row[data-track-id="${state.currentTrack.id}"]`).forEach(r => r.classList.add('playing'));
+  const currentId = state.currentTrack ? String(state.currentTrack.id) : null;
+  for (const row of $$('.track-row.playing, .track-row[data-track-id]')) {
+    const playing = currentId !== null && row.dataset.trackId === currentId;
+    if (row.classList.contains('playing') !== playing) {
+      row.classList.toggle('playing', playing);
+      window.syncSongGlass?.(row);
+    }
   }
 }
 
@@ -3322,6 +3326,8 @@ function applyAlbumColors(colors) {
       player.style.removeProperty(property);
       player.style.removeProperty(property + '-rgb');
     }
+    player.style.removeProperty('--amp-title-color');
+    player.style.removeProperty('--amp-artist-color');
     return;
   }
   const { primary, secondary, tertiary } = colors;
@@ -3338,6 +3344,9 @@ function applyAlbumColors(colors) {
   player.style.setProperty('--amp-accent-light-rgb', sRgb);
   player.style.setProperty('--amp-accent-dark', `rgb(${tRgb})`);
   player.style.setProperty('--amp-accent-dark-rgb', tRgb);
+  const light = (primary.r * 299 + primary.g * 587 + primary.b * 114) / 1000 > 150;
+  player.style.setProperty('--amp-title-color', light ? 'rgb(' + [primary.r, primary.g, primary.b].map(n => Math.max(0, n - 60)).join(', ') + ')' : '#fff');
+  player.style.setProperty('--amp-artist-color', light ? 'rgba(0,0,0,.5)' : 'rgba(255,255,255,.6)');
   
 }
 

@@ -91,6 +91,7 @@ test('the homepage mounts every genre and wires the existing detail loader', asy
       if (name === './ChromaGrid') return { __esModule: true, default: gridModule.exports.default };
       if (name === './visualScenes') return { mountVisualScenes() {} };
       if (name === './lightweightVisuals.mjs') return { initLightweightVisuals() {} };
+      if (name === './staticGlass.mjs') return { mountStaticGlass() {}, syncSongGlass() {} };
       return unused;
     },
   });

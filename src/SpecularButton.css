@@ -36,6 +36,14 @@
   background: linear-gradient(135deg, rgba(var(--hero-accent-rgb), 0.34), rgba(var(--hero-accent-soft-rgb), 0.16));
   border: 0;
   box-shadow: 0 8px 20px rgba(var(--hero-accent-rgb), 0.16);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+.specular-button.album-play-specular {
+  background: rgba(255,255,255,.08);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .specular-button.hero-play-cyan .specular-button__fx {

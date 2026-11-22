@@ -75,9 +75,9 @@ export function mountVisualScenes(mount) {
     scale={3} hueShift={0.58} colorFrequency={1.25} glow={1.15} noise={0.04} bloom={0.65}
     hoverStrength={0.18} inertia={0.08} transparent suspendWhenOffscreen />);
   if (!coarse && !compact) add('browseSplashCursorMount', 'search', <SplashCursor active />);
-  add('browseScrollExpandMount', 'search', <ScrollExpand src="/assets/browse-listener-hero-960.jpg"
+  mount('browseScrollExpandMount', <Scene name="search"><ScrollExpand src="/assets/browse-listener-hero-960.jpg"
     alt="音乐探索" title="发现下一首喜欢的歌" scrollHint="向下滚动探索" startWidth={48} startHeight={64}
-    startRadius={26} mediaZoom={1.02} scrollDistance={1.05} holdDistance={0.25} className="browse-scroll-expand" />);
+    startRadius={26} mediaZoom={1.02} scrollDistance={1.05} holdDistance={0.25} className="browse-scroll-expand" /></Scene>);
   add('ampGridDistortionMount', 'fullscreen', <FullscreenDistortion />);
   add('libraryGradientWavesMount', 'library', <GradientWaves />);
   add('softAuroraHost', 'aurora', <SoftAurora />);
