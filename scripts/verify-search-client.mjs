@@ -58,6 +58,26 @@ test('desktop search renders only Embeat and does not request NetEase when Embea
   assert.equal(fallbackRequests, 0);
 });
 
+test('a slow Embeat response replaces every provisional NetEase row with the Embeat page', async () => {
+  let resolveEmbeat;
+  const deadlines = new Map();
+  let timer = 0;
+  const player = playerSearch(async () => response('NetEase preview'), {
+    setTimeout: (callback, delay) => { deadlines.set(++timer, { callback, delay }); return timer; },
+    clearTimeout: id => deadlines.delete(id),
+  }, () => new Promise(resolve => { resolveEmbeat = resolve; }));
+  await player.search('song');
+  const preview = [...deadlines.values()].find(({ delay }) => delay < 12000);
+  assert.ok(preview, 'slow searches should offer a provisional result');
+  preview.callback();
+  await setImmediate();
+  assert.equal(player.output(), 'NetEase preview');
+  resolveEmbeat(response('Embeat original', 'embeat'));
+  await setImmediate();
+  assert.equal(player.output(), 'Embeat original');
+  assert.equal(deadlines.size, 0);
+});
+
 test('search pagination renders only newly added rows without changing the queue', async () => {
   let index = 0;
   const player = playerSearch(async () => {
@@ -116,7 +136,7 @@ test('a timed out request ends loading and the next search can recover', async (
   });
   const pending = player.search('timeout');
   await pending;
-  assert.equal(deadlines.size, 1);
+  assert.ok(deadlines.size > 0);
   deadlines.values().next().value();
   await setImmediate();
   assert.match(player.output(), /搜索超时/);

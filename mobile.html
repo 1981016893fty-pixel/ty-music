@@ -7,11 +7,11 @@
   <title>TY Music</title>
   <link rel="icon" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <link rel="stylesheet" href="/mobile.css?v=2">
+  <link rel="stylesheet" href="/mobile.css?v=3">
   <script defer src="/gd-embeat-core.js?v=20261118-quality-v53"></script>
   <script defer src="/browser-provider.js?v=20261121-artwork-v65"></script>
-  <script defer src="/search-session.js?v=20261122-exclusive-search-v79"></script>
-  <script defer src="/mobile.js?v=2"></script>
+  <script defer src="/search-session.js?v=20261122-exclusive-search-v80"></script>
+  <script defer src="/mobile.js?v=4"></script>
 </head>
 <body>
   <header class="top">
@@ -40,7 +40,7 @@
   <footer id="player">
     <div class="player-inner">
       <div class="now">
-        <button id="open-player" aria-label="展开全屏播放" aria-haspopup="dialog" disabled>
+        <button id="open-player" aria-label="展开全屏播放" aria-haspopup="dialog" aria-expanded="false" disabled>
           <span class="cover" aria-hidden="true"><span>♪</span><img id="cover" alt="" width="48" height="48" hidden></span>
           <span class="track-meta"><strong id="song-title">未在播放</strong><small id="song-artist"></small></span>
           <span id="expand-player" aria-hidden="true">⌃</span>
@@ -57,7 +57,6 @@
         <button id="previous" aria-label="上一首" disabled>⏮</button>
         <button id="toggle" aria-label="播放" disabled>▶</button>
         <button id="next" aria-label="下一首" disabled>⏭</button>
-        <button id="open-lyrics" aria-haspopup="dialog" disabled>歌词</button>
       </div>
       <p id="play-status" class="status" role="status" hidden></p>
     </div>
@@ -68,22 +67,22 @@
       <h2 id="full-player-title">正在播放</h2>
       <form method="dialog"><button aria-label="收起全屏播放" autofocus>⌄</button></form>
     </header>
-    <div id="full-artwork" class="cover" aria-hidden="true"><span>♪</span><img id="full-cover" alt="" width="300" height="300" hidden></div>
-  </dialog>
-  <dialog id="panel" aria-labelledby="panel-title">
-    <header class="panel-head">
-      <h2 id="panel-title"></h2>
-      <form method="dialog"><button aria-label="关闭" autofocus>×</button></form>
-    </header>
-    <div class="panel-content">
-      <div id="queue-panel" hidden>
-        <p id="queue-status" class="status"></p>
-        <ul id="queued-tracks" class="tracks"></ul>
-      </div>
-      <div id="lyrics-panel" hidden>
+    <div class="full-stage">
+      <div id="full-artwork" class="cover" aria-hidden="true"><span>♪</span><img id="full-cover" alt="" width="300" height="300" hidden></div>
+      <div id="lyrics-panel" role="region" aria-label="歌词">
         <p id="lyrics-status" class="status" role="status"></p>
         <ol id="lyrics-lines"></ol>
       </div>
+    </div>
+  </dialog>
+  <dialog id="panel" aria-labelledby="panel-title">
+    <header class="panel-head">
+      <h2 id="panel-title">播放队列</h2>
+      <form method="dialog"><button aria-label="关闭" autofocus>×</button></form>
+    </header>
+    <div class="panel-content">
+      <p id="queue-status" class="status"></p>
+      <ul id="queued-tracks" class="tracks"></ul>
     </div>
   </dialog>
   <noscript>请启用 JavaScript 以搜索和播放歌曲。</noscript>

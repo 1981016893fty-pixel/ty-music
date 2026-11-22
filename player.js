@@ -1388,7 +1388,7 @@ function playTrack(track, index, skipRecentUpdate) {
       }).catch(function(e) {
         if (playbackId !== playbackRequestId || attempt !== audioAttempt || pendingAudioResolution === playbackId) return;
         console.warn('[Play] Audio failed:', e.message);
-        showToast(e.name === 'NotAllowedError' ? '请点击播放按钮继续播放' : '播放失败，请换一首试试');
+        showToast(e.name === 'NotAllowedError' ? '请点击播放按钮继续播放' : unavailableAudioMessage(track));
       });
     }
     const direct = window.tyMusicProvider && (!window.__TY_MUSIC_DESKTOP__ || track.source === 'embeat');
@@ -1405,7 +1405,7 @@ function playTrack(track, index, skipRecentUpdate) {
       }).catch(function() {
         if (playbackId !== playbackRequestId) return;
         pendingAudioResolution = 0;
-        if (audio.error) showToast('播放失败，请换一首试试');
+        if (audio.error) showToast(unavailableAudioMessage(track));
       });
     }
     updateLikeUI();
@@ -1550,6 +1550,10 @@ audio.addEventListener('loadedmetadata', () => {
   }
 });
 
+function unavailableAudioMessage(track) {
+  return track.source === 'embeat' ? '这首歌曲的 Embeat 音频暂不可用，可重试。' : '播放失败：该歌曲暂时不可用';
+}
+
 // Error handling — auto skip on playback failure
 let playTimeout = null;
 audio.addEventListener('error', () => {
@@ -1563,7 +1567,7 @@ audio.addEventListener('error', () => {
     const failedPlaybackId = playbackRequestId;
     setTimeout(() => { if (failedPlaybackId === playbackRequestId) playNext(); }, 500);
   } else {
-    showToast('播放失败：该歌曲暂时不可用');
+    showToast(unavailableAudioMessage(state.currentTrack));
   }
 });
 
@@ -2445,9 +2449,11 @@ let activeSearchStatus = null;
 const searchSession = createMusicSearchSession({
   searchPage: window.tyMusicProvider?.search,
   onChange(page) {
+    const sourceChanged = activeSearchStatus?.source !== page.source;
     activeSearchStatus = page;
-    const previousCount = activeSearchTracks.length;
-    activeSearchTracks.push(...page.added.map(normalizeTrack));
+    const previousCount = sourceChanged ? 0 : activeSearchTracks.length;
+    if (sourceChanged) activeSearchTracks = page.songs.map(normalizeTrack);
+    else activeSearchTracks.push(...page.added.map(normalizeTrack));
     activeSearchHasMore = page.hasMore;
     $('#searchSourceLabel').textContent = page.source
       ? '音源：' + (page.source === 'embeat' ? 'Embeat' : '网易云')
@@ -2559,6 +2565,7 @@ const autocompleteSession = createMusicSearchSession({
   limit: 8,
   onChange(page) {
     if (page.songs.length) renderAutocomplete(page.songs);
+    else if (!page.loading) hideAutocomplete();
   },
 });
 

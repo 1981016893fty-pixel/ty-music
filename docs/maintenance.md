@@ -2,9 +2,9 @@
 
 ## 移动版播放器
 
-`mobile.html`、`mobile.css`、`mobile.js` 负责移动版界面和播放。它只复用原有的 `browser-provider.js`、`gd-embeat-core.js` 和 `search-session.js`，不加载桌面播放器、特效、图标字体或首页图集。搜索列表使用懒加载缩略图，点底部歌曲区可展开大封面和原有控制，歌词只在打开时请求。队列随页面关闭清空；喜欢通过原有 `melodybox_fav` 和 `melodybox_tracks` 保存。同一站点的原曲库仍保存在浏览器。
+`mobile.html`、`mobile.css`、`mobile.js` 负责移动版界面和播放。它只复用原有的 `browser-provider.js`、`gd-embeat-core.js` 和 `search-session.js`，不加载桌面播放器、特效、图标字体或首页图集。搜索列表使用懒加载缩略图。点底部歌曲区打开全屏播放器：左侧是专辑封面，右侧是随音频进度更新的歌词；底栏没有独立歌词入口。全屏背景在封面加载后取色一次，以静态渐变显示；缺封面或跨域图片不可读时用默认色。只在全屏打开时请求歌词，切歌会取消旧请求。队列随页面关闭清空；喜欢通过原有 `melodybox_fav` 和 `melodybox_tracks` 保存。同一站点的原曲库仍保存在浏览器。
 
-移动端隐藏音源标识。两端共用的 `search-session.js` 先请求 Embeat，成功（包括空结果）时不请求网易云；首请求失败或超时才启动网易云，分页沿用已选音源。浏览器根据音源是否响应选择结果，无法直接读取 VPN 开关。
+移动端隐藏音源标识。两端共用的 `search-session.js` 先请求 Embeat，2 秒未完成时启动网易云并可先显示其首页。Embeat 在 12 秒内成功（包括空结果）就整批替换网易云，重置分页和去重状态；Embeat 失败则保留网易云，分页只用获选音源。浏览器根据音源响应选择结果。搜索成功不代表音频已获授权或可用：移动端使用同一曲目的媒体 ID，直连地址可在原播放地址失败时尝试一次；上游无可用地址时明确报错。
 
 `mobile-route.cjs` 由本地 Node 和 Pages 首页共用：iPhone、iPad 和 Android 请求跳到 `/mobile`，窄屏桌面窗口仍打开桌面版。使用桌面标识的 iPad 可以直接访问 `/mobile`。旧 Service Worker 可能先显示缓存的旧首页；正常刷新以激活更新，或直接打开 `/mobile`，不用清除站点数据。
 

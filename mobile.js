@@ -5,6 +5,7 @@
   const audio = byId('audio');
   const panel = byId('panel');
   const fullPlayer = byId('full-player');
+  const lyricsPanel = byId('lyrics-panel');
   const playerControls = document.querySelector('.player-inner');
   const cover = byId('cover');
   const seek = byId('seek');
@@ -14,6 +15,7 @@
   let playback;
   let lyrics;
   let activeLine;
+  let fullArtworkTrack;
 
   function asTrack(song) {
     const source = song.source || (String(song.id).startsWith('embeat:') ? 'embeat' : 'netease');
@@ -177,13 +179,19 @@
     }
   }
 
+  let renderedSource = '';
   const search = createMusicSearchSession({
     searchPage: provider.search,
     onChange(page) {
       byId('search-status').textContent = page.loading ? '正在搜索…' : page.error ||
         (page.songs.length ? '' : '未找到歌曲');
       byId('more').hidden = page.loading || !page.hasMore;
-      byId('results').append(...page.added.map(asTrack).filter(Boolean).map(track => trackRow(track, false, true)));
+      const rows = songs => songs.map(asTrack).filter(Boolean).map(track => trackRow(track, false, true));
+      if (renderedSource !== page.source) {
+        renderedSource = page.source;
+        byId('results').replaceChildren(...rows(page.songs));
+        document.querySelector('main').scrollTop = 0;
+      } else byId('results').append(...rows(page.added));
     },
   });
   byId('search-form').addEventListener('submit', event => {
@@ -222,7 +230,7 @@
     const index = queue.findIndex(track => track.id === current?.id);
     byId('previous').disabled = index <= 0;
     byId('next').disabled = index >= queue.length - 1;
-    if (!panel.open || byId('queue-panel').hidden) return;
+    if (!panel.open) return;
     byId('queue-status').textContent = queue.length ? '' : '队列为空。';
     byId('queued-tracks').replaceChildren(...queue.map(track => trackRow(track, true)));
   }
@@ -234,7 +242,7 @@
   }
 
   const coverRequests = new WeakMap();
-  function setCover(track, image = cover, size = 300) {
+  function setCover(track, image = cover, size = 300, onLoad) {
     const attempt = {};
     coverRequests.set(image, attempt);
     image.onerror = null;
@@ -259,7 +267,10 @@
       url = '/api/music/cover?' + new URLSearchParams({ source: track.source, picId, size });
     }
     if (!url) return;
-    image.onload = () => { image.style.opacity = ''; };
+    image.onload = () => {
+      image.style.opacity = '';
+      onLoad?.(image);
+    };
     image.referrerPolicy = 'no-referrer';
     image.onerror = () => {
       image.style.opacity = '0';
@@ -272,13 +283,60 @@
     image.src = url;
   }
 
+  function applyAlbumTint(image) {
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 8;
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0, 8, 8);
+      const pixels = context.getImageData(0, 0, 8, 8).data;
+      const rgb = [0, 0, 0];
+      let total = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const r = pixels[i], g = pixels[i + 1], b = pixels[i + 2];
+        const weight = (pixels[i + 3] / 255) * (1 + (Math.max(r, g, b) - Math.min(r, g, b)) / 64);
+        rgb[0] += r * weight;
+        rgb[1] += g * weight;
+        rgb[2] += b * weight;
+        total += weight;
+      }
+      if (total) {
+        const scale = Math.min(.75 / total, 86 / Math.max(1, ...rgb));
+        fullPlayer.style.setProperty('--album-tint', 'rgb(' + rgb.map(channel => Math.round(channel * scale)).join(' ') + ')');
+      }
+      return true;
+    } catch { return false; }
+  }
+
+  function showFullArtwork(track) {
+    if (fullArtworkTrack === track) return;
+    fullArtworkTrack = undefined;
+    fullPlayer.style.removeProperty('--album-tint');
+    setCover(track, byId('full-cover'), 300, image => {
+      if (current !== track) return;
+      fullArtworkTrack = track;
+      if (applyAlbumTint(image)) return;
+      // A direct CDN cover can display without granting pixel access.
+      const url = image.currentSrc;
+      if (new URL(url, location.origin).origin === location.origin) return;
+      const sample = new Image();
+      sample.crossOrigin = 'anonymous';
+      sample.referrerPolicy = 'no-referrer';
+      sample.onload = () => {
+        if (current === track && image.currentSrc === url) applyAlbumTint(sample);
+      };
+      sample.src = url;
+    });
+  }
+
   byId('open-player').addEventListener('click', () => {
     if (!current || fullPlayer.open) return;
     fullPlayer.append(playerControls);
     byId('open-player').setAttribute('aria-expanded', 'true');
     byId('open-player').tabIndex = -1;
-    setCover(current, byId('full-cover'), 300);
+    showFullArtwork(current);
     fullPlayer.showModal();
+    showLyrics();
   });
   fullPlayer.addEventListener('close', () => {
     byId('player').prepend(playerControls);
@@ -296,9 +354,21 @@
         request.wantsPlay = false;
         showStatus('点播放继续。');
       } else if (!request.resolving) {
-        showStatus('播放失败，请重试或换一首。');
+        showPlaybackFailure();
       }
     });
+  }
+
+  function showPlaybackFailure() {
+    showStatus(current?.source === 'embeat' ? '这首歌曲的 Embeat 音频暂不可用，可重试。' : '播放失败，请重试或换一首。');
+  }
+
+  function tryDirectAudio(request) {
+    if (!request.directUrl) return false;
+    audio.src = request.directUrl;
+    request.directUrl = '';
+    if (request.wantsPlay) requestPlay(request);
+    return true;
   }
 
   function playTrack(track) {
@@ -310,10 +380,9 @@
     byId('song-title').textContent = track.title;
     byId('song-artist').textContent = track.artist;
     byId('toggle').disabled = false;
-    byId('open-lyrics').disabled = false;
     byId('open-player').disabled = false;
     setCover(track);
-    if (fullPlayer.open) setCover(track, byId('full-cover'), 300);
+    if (fullPlayer.open) showFullArtwork(track);
     updateLike();
     for (const node of document.querySelectorAll('main [data-track]')) {
       if (node.dataset.track === track.id) node.setAttribute('aria-current', 'true');
@@ -322,7 +391,7 @@
     updateQueue();
     lyrics?.controller.abort();
     lyrics = undefined;
-    if (panel.open && !byId('lyrics-panel').hidden) showLyrics();
+    if (fullPlayer.open) showLyrics();
     playback?.controller.abort();
     const request = { controller: new AbortController(), attempt: 0, wantsPlay: true, resolving: true };
     playback = request;
@@ -334,13 +403,13 @@
     provider.resource(track, 'url', { signal: request.controller.signal }).then(url => {
       if (request !== playback) return;
       request.resolving = false;
-      if (audio.currentTime > 0 || audio.readyState >= 3) return;
-      audio.src = url;
-      if (request.wantsPlay) requestPlay(request);
+      request.directUrl = url;
+      if (!audio.error && (audio.currentTime > 0 || audio.readyState >= 3)) return;
+      tryDirectAudio(request);
     }).catch(() => {
       if (request !== playback) return;
       request.resolving = false;
-      if (request.wantsPlay && audio.error) showStatus('播放失败，请重试或换一首。');
+      if (request.wantsPlay && audio.error) showPlaybackFailure();
     });
   }
 
@@ -390,7 +459,7 @@
     updateTransport();
   });
   audio.addEventListener('error', () => {
-    if (playback?.wantsPlay && !playback.resolving) showStatus('播放失败，请重试或换一首。');
+    if (audio.error && playback?.wantsPlay && !playback.resolving && !tryDirectAudio(playback)) showPlaybackFailure();
     updateTransport();
   });
   audio.addEventListener('ended', () => {
@@ -399,21 +468,15 @@
     stepQueue(1);
   });
 
-  function openPanel(kind) {
-    byId('panel-title').textContent = kind === 'queue' ? '播放队列' : '歌词';
-    byId('queue-panel').hidden = kind !== 'queue';
-    byId('lyrics-panel').hidden = kind !== 'lyrics';
+  byId('open-queue').addEventListener('click', () => {
     panel.showModal();
-    if (kind === 'queue') updateQueue();
-    else showLyrics();
-  }
-  byId('open-queue').addEventListener('click', () => openPanel('queue'));
-  byId('open-lyrics').addEventListener('click', () => openPanel('lyrics'));
+    updateQueue();
+  });
 
   async function showLyrics() {
     if (!current) return;
     if (lyrics?.track === current) {
-      syncLyrics();
+      syncLyrics(true);
       return;
     }
     const track = current;
@@ -423,6 +486,7 @@
     const output = byId('lyrics-lines');
     const status = byId('lyrics-status');
     output.replaceChildren();
+    lyricsPanel.scrollTop = 0;
     status.textContent = '正在加载歌词…';
     const timer = setTimeout(() => setup.controller.abort(), 20000);
     try {
@@ -464,13 +528,18 @@
     }
   }
 
-  function syncLyrics() {
-    if (!panel.open || byId('lyrics-panel').hidden || !lyrics?.lines.length) return;
+  function syncLyrics(reposition = false) {
+    if (!fullPlayer.open || !lyrics?.lines.length) return;
     const line = lyrics.lines.findLast(entry => entry.at <= audio.currentTime)?.node;
-    if (line === activeLine) return;
-    activeLine?.removeAttribute('aria-current');
-    activeLine = line;
-    line?.setAttribute('aria-current', 'true');
-    line?.scrollIntoView({ block: 'nearest' });
+    if (line !== activeLine) {
+      activeLine?.removeAttribute('aria-current');
+      activeLine = line;
+      line?.setAttribute('aria-current', 'true');
+    } else if (!reposition) return;
+    if (!line) return;
+    const row = line.getBoundingClientRect();
+    const viewport = lyricsPanel.getBoundingClientRect();
+    if (row.top < viewport.top) lyricsPanel.scrollTop += row.top - viewport.top;
+    else if (row.bottom > viewport.bottom) lyricsPanel.scrollTop += row.bottom - viewport.bottom;
   }
 })();

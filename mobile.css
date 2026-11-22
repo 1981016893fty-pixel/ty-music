@@ -89,7 +89,7 @@ main { overflow: auto; padding-bottom: .75rem; }
 .track-thumbnail { width: 44px; height: 44px; }
 .timeline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .5rem; align-items: center; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #seek { width: 100%; min-height: 32px; margin: 0; accent-color: var(--accent); }
-.transport { display: grid; grid-template-columns: repeat(5, 1fr); gap: .15rem; }
+.transport { display: grid; grid-template-columns: repeat(4, 1fr); gap: .15rem; }
 dialog {
   width: min(100%, 44rem);
   max-width: 100%;
@@ -111,27 +111,43 @@ dialog::backdrop { background: #0008; }
   border: 0;
   border-radius: 0;
   padding-top: env(safe-area-inset-top);
-  background: var(--bg);
+  background: linear-gradient(150deg, var(--album-tint, #25252c), var(--bg) 83%);
   overflow: auto;
 }
-#full-player[open] { display: grid; grid-template-rows: auto minmax(8rem, 1fr) auto; }
+#full-player[open] { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; }
+.full-stage {
+  display: grid;
+  container-type: size;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  gap: clamp(.75rem, 4vw, 2rem);
+  width: min(100%, 52rem);
+  min-height: 0;
+  margin-inline: auto;
+  padding: .75rem max(1rem, env(safe-area-inset-right)) .75rem max(1rem, env(safe-area-inset-left));
+}
 #full-artwork {
   align-self: center;
   justify-self: center;
-  width: min(80vw, 48vh, 24rem);
+  width: min(100%, 46vh, 22rem);
+  width: min(100%, 46dvh, 100cqh, 22rem);
   height: auto;
   aspect-ratio: 1;
-  margin-block: .75rem;
   font-size: 3rem;
 }
+#lyrics-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+#lyrics-lines li { padding: .45rem 0; line-height: 1.5; color: #d0cdd4; }
+#lyrics-lines [aria-current="true"] { color: #fff; font-weight: 700; }
 #full-player #open-player { cursor: default; }
 #full-player #open-player .cover, #full-player #expand-player { display: none; }
 #full-player #song-title { font-size: 1.25rem; }
 .panel-head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); }
 .panel-content { min-height: 0; overflow: auto; padding-bottom: .5rem; }
-#lyrics-lines li { padding: .5rem 0; color: var(--muted); }
-#lyrics-lines [aria-current="true"] { color: var(--text); font-weight: 700; }
 @media (max-height: 480px) {
   #open-player .cover { display: none; }
-  #full-artwork { width: min(75vw, 35vh, 24rem); }
 }
