@@ -10,6 +10,8 @@
 
 修改移动界面后，更新 HTML 中的对应资源版本。在手机尺寸下复测搜索源回退、播放与暂停、进度跳转、队列、歌词和喜欢的保存；`npm test` 覆盖服务端分流及缓存策略，`node scripts/verify-deployment.mjs http://localhost:8788` 验证 Pages 分流。旧版回退沿用 [部署指南](../DEPLOY-GUIDE.md#回退)，不涉及数据迁移。Safari 真机与音源在各地的可用性需另测。
 
+`mobile.html` 内联移动控件的图标，`mobile.css` 统一图标大小和触控区；`mobile.js` 更新播放图标和控件状态。播放器和全屏共用这些控件；添加图标时保留按钮名称、键盘焦点和至少 44 × 44 CSS 像素的触控区。图标许可见 [Lucide / Feather](../vendor/mobile-icons/LICENSE.txt)。
+
 ## 动效与渲染开销
 
 以简化前的 `a3aa6ed` 为视觉参考恢复欢迎页流体、首页光线及电流边框、浏览棱镜及涟漪、全屏取色扭曲、资料库背景、专辑墙和 Cover Flow 扫描。轻量过渡版的零绘制来自取消动效，不能用作恢复动效后的性能指标。

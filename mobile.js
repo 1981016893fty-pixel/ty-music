@@ -62,7 +62,6 @@
     button.disabled = !current;
     button.setAttribute('aria-pressed', String(Boolean(liked)));
     button.setAttribute('aria-label', liked ? '取消喜欢当前歌曲' : '喜欢当前歌曲');
-    button.textContent = liked ? '♥' : '♡';
   }
 
   function showStatus(message = '') {
@@ -87,10 +86,19 @@
     } catch { showStatus('无法保存喜欢，请检查浏览器存储。'); }
   }
 
-  function button(text, label, onClick) {
+  function button(icon, label, onClick) {
     const node = document.createElement('button');
     node.type = 'button';
-    if (text) node.textContent = text;
+    if (icon) {
+      const namespace = 'http://www.w3.org/2000/svg';
+      const svg = document.createElementNS(namespace, 'svg');
+      const use = document.createElementNS(namespace, 'use');
+      svg.setAttribute('class', 'icon');
+      svg.setAttribute('aria-hidden', 'true');
+      use.setAttribute('href', '#icon-' + icon);
+      svg.append(use);
+      node.append(svg);
+    }
     if (label) {
       node.setAttribute('aria-label', label);
       node.title = label;
@@ -130,14 +138,14 @@
       select.append(title, artist);
     }
     const action = inQueue
-      ? button('−', '从队列移除 ' + track.title, () => {
+      ? button('remove', '从队列移除 ' + track.title, () => {
           const index = queue.findIndex(item => item.id === track.id);
           if (index >= 0 && current?.id !== track.id) queue.splice(index, 1);
           updateQueue();
           byId('queued-tracks').querySelectorAll('.track-action:not(:disabled)')[index]?.focus();
           if (!panel.contains(document.activeElement)) panel.querySelector('button').focus();
         })
-      : button('+', '加入队列 ' + track.title, () => {
+      : button('add', '加入队列 ' + track.title, () => {
           if (!queue.some(item => item.id === track.id)) {
             queue.push(track);
             showStatus('已加入队列：' + track.title);
@@ -146,7 +154,7 @@
             showStatus('歌曲已在队列中。');
           }
         });
-    action.className = 'track-action';
+    action.className = 'icon-button track-action';
     if (inQueue) action.disabled = current?.id === track.id;
     item.append(select, action);
     return item;
@@ -353,6 +361,7 @@
       if (error.name === 'NotAllowedError') {
         request.wantsPlay = false;
         showStatus('点播放继续。');
+        updateTransport();
       } else if (!request.resolving) {
         showPlaybackFailure();
       }
@@ -430,8 +439,9 @@
   function updateTransport() {
     const busy = playback?.wantsPlay && playback.resolving && !audio.error && !audio.ended;
     const playing = (!audio.paused && !audio.ended) || busy;
-    byId('toggle').textContent = playing ? '⏸' : '▶';
-    byId('toggle').setAttribute('aria-label', playing ? '暂停' : '播放');
+    const toggle = byId('toggle');
+    toggle.querySelector('use').setAttribute('href', playing ? '#icon-pause' : '#icon-play');
+    toggle.setAttribute('aria-label', playing ? '暂停' : '播放');
   }
   function time(value) {
     const sec = Number.isFinite(value) ? Math.floor(value) : 0;
