@@ -11,7 +11,7 @@ TY Music 用 Tauri 2 打包现有网页播放器。安装包内置界面和资�
 | Apple Silicon，macOS 12+ | `TY.Music_<版本>_aarch64.dmg`，拖入「应用程序」 |
 | 64 位 Windows 10/11 | `TY.Music_<版本>_x64-setup.exe` 或 `TY.Music_<版本>_x64_en-US.msi` |
 
-GitHub 构建未配置 Developer ID 公证或 Windows Authenticode 签名，系统可能提示未验证开发者。升级通常会沿用同一客户端的数据目录；升级或回退前可通过「关于 → 个人曲库备份与迁移」备份。历史版本仍在 [Releases](https://github.com/1981016893fty-pixel/ty-music/releases)。
+Mac 构建使用 macOS 临时签名，并校验整个应用包的完整性。当前没有 Apple Developer ID 签名、公证或 Windows Authenticode 签名，系统可能提示未验证开发者。升级通常会沿用同一客户端的数据目录；升级或回退前可通过「关于 → 个人曲库备份与迁移」备份。历史版本仍在 [Releases](https://github.com/1981016893fty-pixel/ty-music/releases)。
 
 ## 开发和构建
 

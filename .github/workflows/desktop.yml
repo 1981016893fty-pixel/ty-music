@@ -34,6 +34,7 @@ jobs:
           - platform: macOS
             os: macos-26
             command: desktop:build
+            signing_identity: '-'
             files: src-tauri/target/release/bundle/dmg/*.dmg
           - platform: Windows
             os: windows-latest
@@ -51,6 +52,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci
       - run: npm run ${{ matrix.command }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ matrix.signing_identity }}
+      - name: Verify macOS application signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict "src-tauri/target/release/bundle/macos/TY Music.app"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}
