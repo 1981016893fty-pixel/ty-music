@@ -807,30 +807,16 @@ body.native-mini-mode #nativeMiniBtn { display: flex !important; }
   overflow: hidden;
   pointer-events: none;
   transform: none;
-  will-change: transform;
+  background: rgba(13, 12, 30, .4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.18);
+  backdrop-filter: blur(14px) saturate(1.18);
   contain: layout paint;
 }
-.top-dock.glass-surface-host { position: fixed !important; }
 html:has(.amp-fullscreen-player.show) .top-dock {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }
-.top-dock .glass-surface--svg {
-  background: rgba(13, 12, 30, .34) !important;
-  box-shadow: none !important;
-}
-.top-dock .glass-surface--fallback {
-  background: rgba(13, 12, 30, .4) !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-.glass-surface-host.browse-search-box {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-.browse-search-box > .glass-surface-mount { border-radius: inherit; }
 .top-dock__brand { position: relative; z-index: 1; display: flex; align-items: center; min-width: 0; }
 .top-dock__client-entry {
   position: relative;
@@ -1821,13 +1807,15 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
 }
 
 .recent-section .am-card.wide {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
+  background: linear-gradient(145deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+  border-color: rgba(255,255,255,.12);
+  box-shadow: inset 0 1px rgba(255,255,255,.16), var(--glass-shadow-soft);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .recent-section .am-card.wide:hover {
-  border-color: transparent;
+  border-color: rgba(255,255,255,.24);
 }
 
 .am-card.wide:hover {
@@ -1913,14 +1901,10 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
 }
 
 .browse-results-section .track-row.playing {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-
-.browse-results-section .track-row.playing > .glass-surface-mount .glass-surface {
-  background: rgba(255,255,255,.08) !important;
-  border-color: rgba(255,255,255,.16) !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 8px 24px rgba(0,0,0,.16) !important;
+  background: rgba(255,255,255,.08);
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 8px 24px rgba(0,0,0,.16);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .track-row .row-cover {
@@ -2172,6 +2156,7 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   padding: 6px;
   min-width: 180px;
   box-shadow:
+    inset 0 1px rgba(255, 255, 255, .20),
     0 16px 48px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.03);
   z-index: 1000;
@@ -2210,18 +2195,6 @@ body.native-mini-mode .player-bar.is-collapsed .player-center {
   color: var(--neon-purple);
 }
 
-.glass-surface-host.track-options-menu {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  overflow: hidden;
-}
-.glass-surface-host.track-options-menu > .glass-surface-mount .glass-surface {
-  background: rgba(255, 255, 255, .13) !important;
-  border: 0 !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.26), 0 16px 48px rgba(0,0,0,.28) !important;
-}
-.glass-surface-host.track-options-menu .track-options-item { position: relative; z-index: 1; }
 
 /* ============================================
    搜索页
@@ -5626,32 +5599,15 @@ body:has(.am-album-page-surface.active) .main-content {
   display: block !important;
 }
 
-/* The biography is a transparent GlassSurface panel, while its photo remains raw. */
 .am-artist-page-surface .am-artist-bio {
-  position: relative;
-  isolation: isolate;
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  overflow: hidden;
-}
-.am-artist-page-surface .am-artist-bio > .glass-surface-mount {
-  inset: 0 !important;
-  z-index: 0 !important;
-}
-.am-artist-page-surface .am-artist-bio > :not(.glass-surface-mount) {
-  position: relative;
-  z-index: 1;
+  background: linear-gradient(145deg, rgba(255,255,255,.13), rgba(255,255,255,.05));
+  border: 1px solid rgba(255,255,255,.14);
+  box-shadow: inset 0 1px rgba(255,255,255,.15), 0 14px 32px rgba(0,0,0,.2);
 }
 
 /* Artist track rows match the album detail page's neutral GlassSurface selection. */
 .am-artist-page-surface .am-artist-list .track-row.playing {
-  background: transparent !important;
-  box-shadow: none !important;
-}
-.am-artist-page-surface .am-artist-list .track-row.playing > .glass-surface-mount .glass-surface {
   background: rgba(255, 255, 255, .14) !important;
-  border: 0 !important;
   box-shadow: inset 0 1px rgba(255,255,255,.28), 0 10px 30px rgba(0,0,0,.2) !important;
 }
 .am-artist-page-surface .am-artist-list .row-title {
@@ -5697,9 +5653,11 @@ body:has(.am-album-page-surface.active) .main-content {
 /* Artist GlassSurface follows the avatar palette; the hero photo remains a raw image layer. */
 .am-artist-page-surface {
   background:
+    linear-gradient(135deg, rgba(var(--artist-primary-rgb, 28, 30, 42), .32), rgba(var(--artist-secondary-rgb, 72, 82, 108), .24)),
     radial-gradient(ellipse 820px 560px at 18% 12%, rgba(var(--artist-secondary-rgb, 72, 82, 108), .42), transparent 72%),
     linear-gradient(135deg, rgba(var(--artist-primary-rgb, 28, 30, 42), .96), rgba(var(--artist-tertiary-rgb, 12, 13, 20), .94)) !important;
   color: var(--artist-text-color, #ffffff);
+  box-shadow: inset 0 1px rgba(255,255,255,.26);
 }
 .am-artist-page-surface > .glass-surface-mount .glass-surface--svg,
 .am-artist-page-surface > .glass-surface-mount .glass-surface--fallback {
@@ -6105,28 +6063,13 @@ button.pl-delete::after { display: none !important; }
   place-content: center;
   border: 1px dashed rgba(255, 255, 255, 0.22);
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.035);
+  background: rgba(28, 30, 42, .66);
+  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 14px 32px rgba(0,0,0,.2);
 }
-.local-workspace .local-upload-area:hover { border-color: rgba(111, 219, 221, 0.65); background: rgba(83, 203, 205, 0.07); }
+.local-workspace .local-upload-area:hover { border-color: rgba(111, 219, 221, 0.65); background: rgba(38, 42, 58, .76); }
 .local-workspace .local-upload-area i { color: #6ed4dc; font-size: 22px; }
 .local-workspace .upload-link { color: #8ce8e8; font-weight: 650; }
 
-/* Upload area uses the real GlassSurface mount; keep the host transparent so
-   the material, not a second opaque panel, defines its appearance. */
-.glass-surface-host.local-upload-area,
-.glass-surface-host.local-upload-area:hover {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-}
-.glass-surface-host.local-upload-area > .glass-surface-mount .glass-surface {
-  border-radius: 14px;
-  background: rgba(28, 30, 42, .66) !important;
-  box-shadow: inset 0 1px rgba(255,255,255,.18), 0 14px 32px rgba(0,0,0,.2) !important;
-}
-.glass-surface-host.local-upload-area:hover > .glass-surface-mount .glass-surface {
-  background: rgba(38, 42, 58, .76) !important;
-}
 
 .playlist-grid,
 .album-grid {
@@ -7191,9 +7134,9 @@ body:has(#page-search.active) #browsePrismMount {
   min-height: 58px;
   border-radius: 16px;
   padding: 12px 18px;
-  background: rgba(21, 20, 39, .72);
+  background: linear-gradient(145deg, rgba(69, 61, 104, .42), rgba(21, 20, 39, .72));
   border-color: rgba(255, 255, 255, .12);
-  box-shadow: 0 18px 46px rgba(0,0,0,.24), inset 0 1px rgba(255,255,255,.08);
+  box-shadow: 0 18px 46px rgba(0,0,0,.24), inset 0 1px rgba(255,255,255,.18);
 }
 
 .browse-search-box input {
@@ -7747,9 +7690,11 @@ body:has(#page-search.active) #browsePrismMount {
 .am-album-page-surface {
   background-color: #0c0d14 !important;
   background:
+    linear-gradient(135deg, rgba(var(--album-primary-rgb, 28, 30, 42), .32), rgba(var(--album-secondary-rgb, 72, 82, 108), .24)),
     radial-gradient(ellipse 820px 560px at 18% 12%, rgba(var(--album-secondary-rgb, 72, 82, 108), .42), transparent 72%),
     linear-gradient(135deg, rgba(var(--album-primary-rgb, 28, 30, 42), .96), rgba(var(--album-tertiary-rgb, 12, 13, 20), .94));
   color: var(--album-text-color, #f7f5fb);
+  box-shadow: inset 0 1px rgba(255,255,255,.42);
 }
 .am-album-page-surface > .glass-surface-mount .glass-surface--svg,
 .am-album-page-surface > .glass-surface-mount .glass-surface--fallback {
@@ -7787,9 +7732,8 @@ body:has(.am-album-page-surface.active) .main-content {
 }
 .am-album-page-surface .glass-surface--selection.glass-surface--svg,
 .am-album-page-surface .glass-surface--selection.glass-surface--fallback,
-.am-album-page-surface .album-track-row.playing > .glass-surface-mount .glass-surface {
+.am-album-page-surface .album-track-row.playing {
   background: rgba(255, 255, 255, .14) !important;
-  border: 0 !important;
   box-shadow: inset 0 1px rgba(255,255,255,.28), 0 10px 30px rgba(0,0,0,.2) !important;
 }
 
@@ -8304,15 +8248,11 @@ body.native-mini-mode #volumeBtn {
 
 .welcome-screen { background: linear-gradient(135deg, #111124, #211432 55%, #101925); }
 .welcome-actions .specular-button { padding: 0 18px; }
-#topDock { background: #151321; will-change: auto; }
 .hero-card { border: 1px solid rgba(var(--hero-accent-rgb, 98, 241, 243), .38); }
 .browse-static-banner { display: grid; position: relative; overflow: hidden; border-radius: 14px; margin-bottom: 16px; }
 #browseScrollExpandMount:has(.scroll-expand) + .browse-static-banner { display: none; }
 .browse-static-banner img { width: 100%; height: clamp(120px, 23vw, 250px); object-fit: cover; }
 .browse-static-banner figcaption { position: absolute; inset: auto 0 0; padding: 20px 16px 14px; font-weight: 650; background: linear-gradient(transparent, #100d1e); }
-.chroma-grid .chroma-card { border-radius: 14px !important; background: var(--card-gradient) !important; text-align: left; }
-.chroma-grid .chroma-card::after { display: none; }
-.chroma-img-wrapper img { filter: none; }
 #ampFullscreenPlayer { will-change: auto; }
 #ampTitle { color: #fff; }
 #ampArtist { color: rgba(255, 255, 255, .75); }
