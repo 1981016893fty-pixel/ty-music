@@ -5,12 +5,14 @@ const path = require('node:path');
 const { gzip, createGzip } = require('node:zlib');
 const { promisify } = require('node:util');
 const { pipeline } = require('node:stream/promises');
+const { mobileHomepage } = require('./mobile-route.cjs');
 const compress = promisify(gzip);
 
 const FILES = new Map([
-  ['/', 'index.html'], ['/index.html', 'index.html'], ['/desktop.html', 'desktop.html'],
+  ['/', 'index.html'], ['/index.html', 'index.html'], ['/desktop.html', 'desktop.html'], ['/mobile', 'mobile.html'],
   ...['library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js', 'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css',
-    'liquid-glass.js', 'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg']
+    'liquid-glass.js', 'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
+    'mobile.html', 'mobile.css', 'mobile.js']
     .map(file => ['/' + file, file]),
 ]);
 const MIME = {
@@ -78,6 +80,12 @@ function createStaticHandler({ root = __dirname, maxCacheBytes = 8 * 1024 * 1024
     if (!['GET', 'HEAD'].includes(req.method)) {
       res.statusCode = 405; res.setHeader('Allow', 'GET, HEAD'); res.end(); return true;
     }
+    const homepage = relative === 'index.html';
+    if (homepage && mobileHomepage(new URL(req.url, 'http://localhost'), req.method, req.headers['user-agent'])) {
+      res.writeHead(302, { Location: '/mobile', 'Cache-Control': 'no-store', Vary: 'User-Agent' });
+      res.end();
+      return true;
+    }
     try {
       const boundary = path.join(root, directory || '');
       const candidate = path.resolve(root, relative);
@@ -99,7 +107,7 @@ function createStaticHandler({ root = __dirname, maxCacheBytes = 8 * 1024 * 1024
       const etag = `W/"${stat.size.toString(16)}-${stat.mtimeMs}-${stat.ctimeMs}"`;
       const hashedChunk = /^\/assets\/aurora\/[^/]+-[a-z0-9]{8}\.(?:js|css)$/i.test(decoded);
       res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
-      res.setHeader('Vary', 'Accept-Encoding');
+      res.setHeader('Vary', homepage ? 'Accept-Encoding, User-Agent' : 'Accept-Encoding');
       res.setHeader('ETag', etag);
       res.setHeader('Cache-Control', hashedChunk ? 'public, max-age=31536000, immutable' : directory ? 'public, max-age=2592000' : 'no-cache');
       if (zipped) res.setHeader('Content-Encoding', 'gzip');

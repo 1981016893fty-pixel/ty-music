@@ -1,5 +1,13 @@
 # TY Music 维护指南
 
+## 移动版播放器
+
+`mobile.html`、`mobile.css`、`mobile.js` 负责移动版界面和播放。它只复用原有的 `browser-provider.js`、`gd-embeat-core.js` 和 `search-session.js`，不加载桌面播放器、特效、图标字体或首页图集。歌曲的封面仅在播放区加载，歌词只在打开时请求。队列随页面关闭清空；喜欢通过原有 `melodybox_fav` 和 `melodybox_tracks` 保存。同一站点的原曲库仍保存在浏览器，手机轻量版不会迁移或清除歌单、专辑或本地音频。
+
+`mobile-route.cjs` 由本地 Node 和 Pages 首页共用：iPhone、iPad 和 Android 请求跳到 `/mobile`，窄屏桌面窗口仍打开桌面版。使用桌面标识的 iPad 可以直接访问 `/mobile`。旧 Service Worker 可能先显示缓存的旧首页；正常刷新以激活更新，或直接打开 `/mobile`，不用清除站点数据。
+
+修改移动界面后，更新 HTML 中的对应资源版本。在手机尺寸下复测搜索源回退、播放与暂停、进度跳转、队列、歌词和喜欢的保存；`npm test` 覆盖服务端分流及缓存策略，`node scripts/verify-deployment.mjs http://localhost:8788` 验证 Pages 分流。旧版回退沿用 [部署指南](../DEPLOY-GUIDE.md#回退)，不涉及数据迁移。Safari 真机与音源在各地的可用性需另测。
+
 ## 动效与渲染开销
 
 以简化前的 `a3aa6ed` 为视觉参考恢复欢迎页流体、首页光线及电流边框、浏览棱镜及涟漪、全屏取色扭曲、资料库背景、专辑墙和 Cover Flow 扫描。轻量过渡版的零绘制来自取消动效，不能用作恢复动效后的性能指标。

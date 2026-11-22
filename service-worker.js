@@ -4,12 +4,13 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v72-original-ui';
+const CACHE_NAME = 'ty-music-v78-mobile';
 const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
 const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
 const APP_SHELL = '/?v=20261122-original-ui-v72';
+const mobileBrowser = /Android|iPhone|iPad|iPod/i.test(self.navigator?.userAgent || '');
 const STATIC_ASSETS = [
   APP_SHELL,
   '/style.css?v=20261122-original-ui-v72',
@@ -29,6 +30,10 @@ const STATIC_ASSETS = [
 
 // 安装事件：预缓存静态资源，跳过等待立即接管
 self.addEventListener('install', event => {
+  if (mobileBrowser) {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
   console.log('[SW] Installing', CACHE_NAME);
   event.waitUntil(
     caches.open(CACHE_NAME).then(async cache => {
@@ -62,6 +67,9 @@ self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
   if (event.request.method !== 'GET') return;
+
+  // A phone with an older worker must reach the server's mobile redirect.
+  if (mobileBrowser && event.request.mode === 'navigate') return;
 
   // A cached shell keeps navigation responsive during platform wake-up.
   // Refresh in the background; search and playback still require the network.

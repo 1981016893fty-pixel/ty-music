@@ -37,7 +37,7 @@ npx --yes wrangler@4.164.0 pages deploy pages-dist --project-name ty-music --bra
 node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 ```
 
-构建把 `git rev-parse HEAD` 写入健康检查 `commit`。工作树未提交时此值仅是基点，不证明改动已经提交；正式部署前核对工作区及哈希。发布不需要提交 `pages-dist/`。不能上传仓库根目录，其中含服务端及用户数据文件。构建显式白名单发布，`_routes.json` 仅让 `/api/*` 进入 Worker，静态文件不占用函数调用额度；无哈希入口重新验证，哈希分块长期缓存。
+构建把 `git rev-parse HEAD` 写入健康检查 `commit`。工作树未提交时此值仅是基点，不证明改动已经提交；正式部署前核对工作区及哈希。发布不需要提交 `pages-dist/`。不能上传仓库根目录，其中含服务端及用户数据文件。构建显式白名单发布：`_routes.json` 让首页和 `/api/*` 进入 Worker，首页负责移动端分流；`/mobile` 及其他静态资源直出。无哈希入口重新验证，哈希分块长期缓存。
 
 ## 验收与排障
 

@@ -15,6 +15,7 @@ test('Pages publishes only public assets, a complete module graph and the API wo
     'index.html', 'desktop.html', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
     'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css', 'liquid-glass.js',
     'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
+    'mobile.html', 'mobile.css', 'mobile.js',
   ];
   assert.deepEqual((await readdir(out)).sort(), [...publicFiles, 'assets', 'vendor', '_worker.js', '_headers', '_routes.json'].sort());
   for (const name of publicFiles.filter(name => name !== 'index.html')) assert.deepEqual(await readFile(path.join(out, name)), await readFile(path.join(root, name)), name);
@@ -22,7 +23,7 @@ test('Pages publishes only public assets, a complete module graph and the API wo
   const releaseTag = `  <meta name="ty-music-commit" content="${release}">\n`;
   assert.ok(homepage.includes(releaseTag + '</head>'));
   assert.equal(homepage.replace(releaseTag, ''), await readFile(path.join(root, 'index.html'), 'utf8'));
-  assert.deepEqual(JSON.parse(await readFile(path.join(out, '_routes.json'), 'utf8')), { version: 1, include: ['/api/*'], exclude: [] });
+  assert.deepEqual(JSON.parse(await readFile(path.join(out, '_routes.json'), 'utf8')), { version: 1, include: ['/', '/index.html', '/api/*'], exclude: [] });
   const worker = await readFile(path.join(out, '_worker.js'), 'utf8');
   assert.ok(worker.includes(release), 'Worker embeds the same release commit as the homepage');
   assert.match(worker, /cloudflare:node/);

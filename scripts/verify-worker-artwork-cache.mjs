@@ -2,10 +2,12 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
+import { mobileHomepage } from '../mobile-route.cjs';
 
 const source = (await readFile(new URL('../cloudflare/worker.mjs', import.meta.url), 'utf8'))
   .replace("import { httpServerHandler } from 'cloudflare:node';", '')
   .replace("import api from '../server-simple.js';", '')
+  .replace("import { mobileHomepage } from '../mobile-route.cjs';", '')
   .replace('export default {', 'globalThis.worker = {');
 
 function setup({ response = new Response('image', { headers: { 'content-type': 'image/jpeg', 'cache-control': 'public, max-age=604800' } }), cacheError = false } = {}) {
@@ -19,7 +21,7 @@ function setup({ response = new Response('image', { headers: { 'content-type': '
       match: async request => { if (cacheError) throw new Error('cache unavailable'); return entries.get(request.url)?.clone(); },
       put: async (request, value) => { writes.push(request.url); entries.set(request.url, value); },
     } },
-    URL, Response, console,
+    URL, Response, console, mobileHomepage,
   };
   vm.runInNewContext(source, context);
   return {
