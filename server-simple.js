@@ -83,9 +83,7 @@ async function httpsGetJSON(url, timeout = 10000, retries = 2) {
   }
 }
 
-// Render's outbound network can handle the GD API more reliably through
-// Node's built-in fetch than through the legacy https client. Keep the latter
-// as a fallback when fetch is unavailable or transiently fails.
+// Prefer native fetch for GD requests, with the HTTPS client as a fallback.
 async function fetchJSONWithFetch(url, timeout = 10000) {
   if (typeof fetch !== 'function') throw new Error('fetch is unavailable');
   const controller = new AbortController();

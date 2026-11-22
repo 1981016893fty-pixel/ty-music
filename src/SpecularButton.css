@@ -36,6 +36,14 @@
   background: linear-gradient(135deg, rgba(var(--hero-accent-rgb), 0.34), rgba(var(--hero-accent-soft-rgb), 0.16));
   border: 0;
   box-shadow: 0 8px 20px rgba(var(--hero-accent-rgb), 0.16);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+}
+
+.specular-button.album-play-specular {
+  background: rgba(255,255,255,.08);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
 }
 
 .specular-button.hero-play-cyan .specular-button__fx {
@@ -50,7 +58,7 @@
 }
 
 /* Existing controls keep their DOM behavior while adopting the same rim light. */
-button:not(.specular-button):not(.magic-bento-card),
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)),
 .nav-item {
   --sb-mx: 50%;
   --sb-my: 50%;
@@ -61,7 +69,7 @@ button:not(.specular-button):not(.magic-bento-card),
 }
 
 /* The Specular treatment is the site-wide control language. */
-button:not(.specular-button):not(.magic-bento-card),
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)),
 .nav-item,
 .nav-item.active {
   background: rgba(255, 255, 255, 0.035) !important;
@@ -71,16 +79,16 @@ button:not(.specular-button):not(.magic-bento-card),
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.25) !important;
   transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease !important;
 }
-button:not(.specular-button):not(.magic-bento-card):hover,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)):hover,
 .nav-item:hover,
 .nav-item.active:hover {
   background: rgba(255, 255, 255, 0.075) !important;
   border-color: rgba(255, 255, 255, 0.42) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.3) !important;
 }
-button:not(.specular-button):not(.magic-bento-card):active,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)):active,
 .nav-item:active { transform: scale(0.97); }
-button:not(.specular-button):not(.magic-bento-card)::after,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card))::after,
 .nav-item::after {
   content: '';
   position: absolute;
@@ -96,10 +104,10 @@ button:not(.specular-button):not(.magic-bento-card)::after,
   mask-composite: exclude;
   padding: 1px;
 }
-button:not(.specular-button):not(.magic-bento-card):hover::after,
-button:not(.specular-button):not(.magic-bento-card):focus-visible::after,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)):hover::after,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)):focus-visible::after,
 .nav-item:hover::after,
 .nav-item:focus-visible::after { opacity: 1; }
 
-button:not(.specular-button):not(.magic-bento-card) > *,
+button:not(.specular-button):not(.magic-bento-card):not(:where(.chroma-card)) > *,
 .nav-item > * { position: relative; z-index: 1; }

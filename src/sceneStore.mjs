@@ -9,6 +9,7 @@ export function createSceneStore(document, motionPreference) {
     document.getElementById('ampFullscreenPlayer')?.classList.contains('show') ? 'fullscreen' : '',
     document.getElementById('page-album-favorites')?.classList.contains('cover-flow-active') ? 'coverflow' : '',
     motionPreference.matches ? 'reduced' : 'motion',
+    document.body?.classList.contains('native-mini-mode') ? 'mini' : '',
   ].join('|');
   const notify = () => listeners.forEach(listener => listener());
   return {
@@ -19,6 +20,7 @@ export function createSceneStore(document, motionPreference) {
         document.querySelectorAll('.page, #welcomeScreen, #ampFullscreenPlayer').forEach(element => {
           observer.observe(element, { attributes: true, attributeFilter: ['class'] });
         });
+        if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ['class'] });
         document.addEventListener('visibilitychange', notify);
         motionPreference.addEventListener('change', notify);
       }
@@ -36,8 +38,8 @@ export function createSceneStore(document, motionPreference) {
 }
 
 export function sceneActive(scene, snapshot, decorative = false) {
-  const [visibility, entry, page, fullscreen, coverflow, motion] = snapshot.split('|');
-  if (visibility === 'hidden' || decorative && motion === 'reduced') return false;
+  const [visibility, entry, page, fullscreen, coverflow, motion, mode] = snapshot.split('|');
+  if (visibility === 'hidden' || mode === 'mini' || decorative && motion === 'reduced') return false;
   if (scene === 'welcome') return entry === 'welcome';
   if (entry === 'welcome') return false;
   if (scene === 'fullscreen') return Boolean(fullscreen);

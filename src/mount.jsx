@@ -6,6 +6,9 @@ import ChromaGrid from './ChromaGrid';
 import ElasticSlider from './ElasticSlider';
 import MagicBento from './MagicBento';
 import { GlassIcon } from './GlassIcons';
+import { mountVisualScenes } from './visualScenes';
+import { initLightweightVisuals } from './lightweightVisuals.mjs';
+import { mountStaticGlass, syncSongGlass } from './staticGlass.mjs';
 
 function mount(id, element) {
   const target = document.getElementById(id);
@@ -16,6 +19,8 @@ mount('bubbleMenuMount', <BubbleMenu />);
 mount('playerBubbleMount', <PlayerBubbleMenu />);
 mount('chromaGridMount', <ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
 mount('browseQuickGrid', <MagicBento />);
+mountVisualScenes(mount);
+initLightweightVisuals();
 
 for (const [id, icon] of [
   ['libraryFavoritesIconMount', 'fa-heart'],
@@ -51,8 +56,7 @@ sliderMounts.forEach(([mountId, value, showIcons, showValue, interactive, hoverS
   }
 });
 
-// Only artwork needs observation. Text updates and removed decorative layers
-// should never schedule a frame or scan the entire document.
+// Artwork and glass for dynamically rendered cards share one insertion observer.
 const coverSelector = 'img[data-embeat-cover]';
 function visitCovers(node, visit) {
   if (!(node instanceof Element)) return;
@@ -63,11 +67,17 @@ const watchCover = image => window.watchCoverImage?.(image);
 const unwatchCover = image => {
   if (!image.isConnected) window.unwatchCoverImage?.(image);
 };
-const coverObserver = new MutationObserver(records => {
+const contentObserver = new MutationObserver(records => {
   for (const record of records) {
     record.removedNodes.forEach(node => visitCovers(node, unwatchCover));
-    record.addedNodes.forEach(node => visitCovers(node, watchCover));
+    record.addedNodes.forEach(node => {
+      if (!(node instanceof Element) || !node.isConnected || node.matches('.glass-surface-mount')) return;
+      visitCovers(node, watchCover);
+      mountStaticGlass(node);
+    });
   }
 });
-coverObserver.observe(document.body, { childList: true, subtree: true });
+contentObserver.observe(document.body, { childList: true, subtree: true });
 visitCovers(document.body, watchCover);
+mountStaticGlass(document.body);
+window.syncSongGlass = syncSongGlass;

@@ -4,7 +4,7 @@
 
 ## 决定
 
-当前首选 **Cloudflare Pages 静态前端＋仅处理 `/api/*` 的 Workers/Pages Functions**，使用 `pages.dev` 域名，暂不引入 InsForge。先完成真实运行验收，再退出 Render。
+正式站使用 **Cloudflare Pages 静态前端＋仅处理 `/api/*` 的 Workers/Pages Functions**，使用 `pages.dev` 域名，暂不引入 InsForge。
 
 这是针对当前项目的工程判断，不是所有免费服务器的通用排名：本站没有应用账号或服务端曲库数据库，个人收藏、歌单和最近播放使用浏览器 `localStorage`，本地音频使用 IndexedDB；已有后端主要提供音乐目录与媒体 API。为这些接口额外运行数据库、认证与存储平台会增加维护工作。数据边界见[维护指南](maintenance.md#数据备份与删除边界)。
 
@@ -37,7 +37,7 @@ Cloudflare 已提供 `node:http` 和原生 `httpServerHandler`，可先复用已
 1. 核对现有 25 个 API 地址的状态码、别名、响应及调用方；保留搜索分页、来源身份、错误隔离和无结果的区别。二进制封面不能统一替换为跨域 302。
 2. 用真实 Workers/Pages 运行时验证构建加载、健康检查、上游请求与错误，记录 CPU、子请求和内存；本地 Node 测试通过不能代替这一步。
 3. 在实际 `pages.dev` 页面验证网易云基础结果、Embeat 成功追加及失败隔离、播放、歌词、封面、榜单、专辑、艺人和 Range 拖动；不承诺每个音源或 Cloudflare 出口均可用。
-4. 域名从 Render 改为 `pages.dev` 会改变浏览器 origin，原站收藏、歌单和 IndexedDB 不会自动出现在新站。必须先明确并验证保留或迁移办法，不清除旧站数据，不把新域名空曲库称作数据已迁移。
-5. 核对静态缓存、service worker 更新、同源 `/api/*`、桌面 API 地址、发布文件与秘密暴露边界；所有关键路径通过后才切换入口并退出 Render，保留可操作回退。
+4. 切换域名后，浏览器不会跨站点共享收藏、歌单及 IndexedDB；使用[曲库备份与迁移](../DEPLOY-GUIDE.md#曲库备份与迁移)迁移数据。
+5. 核对静态缓存、Service Worker 更新、同源 `/api/*`、桌面 API 地址和发布文件，并保留可操作的回退路径。
 
 生产搜索、封面、音频跳转及Range已验证；CPU／内存完整测量、Safari曲库与全目录验收未完成。当前部署与合并状态见[维护指南](maintenance.md#cloudflare-迁移2026-11-18)。上游拒绝、区域网络差异、免费额度增长以及浏览器动效发热仍是独立风险；更换后端不会自动修复 GPU 动画负载，也不能保证零延迟或完全无冷初始化。

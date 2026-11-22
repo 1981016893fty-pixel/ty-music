@@ -1,12 +1,22 @@
 # TY Music 维护指南
 
-## 轻量界面与移动端
+## 动效与渲染开销
 
-旧版首页即使没有操作也会运行多套 WebGL 特效。桌面 ego lite 前台的 5 秒对照中，旧版首页提交 552 次 WebGL 绘制；新版同尺寸本地首页为 0。390px 触屏模拟同样为 0，仍显示全部 12 个分类。这是浏览器内的观测，不能替代 Safari 真机或整机温度测试。
+以简化前的 `a3aa6ed` 为视觉参考恢复欢迎页流体、首页光线及电流边框、浏览棱镜及涟漪、全屏取色扭曲、资料库背景、专辑墙和 Cover Flow 扫描。轻量过渡版的零绘制来自取消动效，不能用作恢复动效后的性能指标。
 
-`src/mount.jsx` 只挂载仍需交互的菜单、分类、快捷入口和滑块。欢迎页和全屏背景使用静态 CSS；全屏继续根据当前曲目封面更新配色。装饰专辑墙及其预取、定时刷新已移除，专辑列表和 Cover Flow 仍在。避免在此入口重新引入 WebGL 渲染器、页面级指针跟踪或无限动画。构建回归检查实际依赖图，同时覆盖分类回调和原有封面身份。
+`src/visualScenes.jsx` 配置视觉参数，由 `Scene` 和 `sceneEffects.jsx` 控制按需加载、切页/隐藏时卸载和减少动态效果模式。全屏背景复用原 WebGL 上下文，只替换当前歌曲的渐变纹理，鼠标停下后波纹衰减到静止。首页光线与平滑背景使用不超过 1× 的绘图缓冲，保留图层和配色。流体模拟保留运算步数，省去未使用的通道、缓冲和深度处理；专辑墙最多取 15 张实际载入的收藏封面，不启动装饰专用目录或封面预取。
 
-歌曲喜欢状态统一由 `player.js#paintSongLike` 同步，歌曲和专辑使用各自的存储与按钮状态。修改交互后，分别验证搜索列表、全屏和播放栏；移动验收包含 320px 横滑分类、390px 播放控件、菜单贴底展开、歌词、队列和本地音乐。更新静态资源时同步 `index.html` 与 `service-worker.js` 的缓存标记。当前变更不涉及个人曲库迁移。
+按钮扫光、标题逐字入场与封面倾斜在 `src/lightweightVisuals.mjs` 和 `src/lightweight-visuals.css` 维护。增加动效时先复用场景槽，保持控制和文字的静态回退。检查空闲、指针进入和离开、切页、原生迷你窗口、后台及减少动态效果。运行 `npm test`（含懒加载、全屏波纹、GPU 资源释放回归）、`npm run test:genre`、`npm run build:pages` 及 `npm run desktop:prepare`。桌面和移动视口可在同尺寸下用浏览器复测；Safari 真机的帧时间、GPU 使用率和温升需要单独测量。
+
+v70 本地核对：205 项 Node 回归、播放器与特效检查、Pages 构建检查、6 项分类回归及 Tauri 前端准备通过。ego lite 在 1060×708、DPR 2 下确认全屏指针移动唤醒画布、静止后停止、配色更新继续使用同一画布；390px 触屏模拟仍显示 12 个分类，减少动态效果后不挂载装饰画布。此次检查未测量 Safari 真机温升，也未重新签名客户端安装包。
+
+v71 将顶栏玻璃、最近播放卡片、浏览搜索框、播放气泡、详情页与播放行的底色和高光直接应用于现有元素。顶栏保留原磨砂，小卡片用半透明渐变和内阴影；没有为材质增加 React 挂载、尺寸监听或绘图循环。分类按钮由 `src/ChromaGrid.css` 保持原圆角与封面色彩，避免 `src/SpecularButton.css` 的通用规则覆盖。修改后核对首页、搜索和详情页，并检查分类的键盘焦点。ego lite 在桌面和 390px 视口核对了顶栏和 12 个分类；旧本地缓存正常导航后更新至 v71。Safari 真机温升和帧率仍待核对。
+
+v72 以 `a3aa6ed` 为布局和材质基准。浏览页在四个快捷入口前保留一个原有滚动视觉区；它使用压缩图，去掉后来额外加的备用横幅。全屏恢复原来的控制显隐，保留取色文字、进度条玻璃胶囊与双栏歌词。原有 23 类玻璃目标从 `src/staticGlass.mjs` 挂载：复用 `src/GlassSurface.css` 中原 Safari 的磨砂、边缘和内高光，动态插入复用现有子树观察器，选中行由播放器切换时同步。这里不启动单独的 React 根、逐面尺寸监听或绘图循环；Chromium 也用同一套 CSS 玻璃，旧浏览器专用 SVG 位移折射不在此实现内。
+
+修改玻璃材质时维护 `src/GlassSurface.css` 和 `style.css` 对应局部规则，在列表、浮层、详情和全屏检查材质与控件点击。v72 本地通过完整回归与 Pages、Tauri 前端准备；ego lite 核对了桌面和 390px 视口、分类点击、浏览区顺序、全屏进度条命中及控制显隐。Safari 真机和已安装桌面包未验收。回退时重新构建并发布上一应用提交，个人曲库无需迁移。
+
+歌曲喜欢状态由 `player.js#paintSongLike` 同步；专辑收藏由 `updateAlbumFavButton` 更新。两者分开存储，通过 `aria-pressed` 控制 `style.css` 里的图标、边框和底色。修改后验证搜索列表、播放栏和专辑详情的收藏与取消状态。欢迎页与「桌面客户端」按钮共用单层 CSS 边缘，避免原生边框和阴影叠加。更新静态资源时同步 `index.html` 与 `service-worker.js` 的缓存标记。
 
 ## 歌曲封面加载
 
@@ -17,11 +27,13 @@ v64 的专辑漂浮墙曾以 1000px 图片填充约 190px 的卡片，并等待�
 
 普通搜索和输入建议复用 `search-session.js`。Embeat 经访客网络直连，在 6 秒内返回有效首批（包括空列表）时独占显示；若失败，使用已经并发发出的网易云请求，避免串行等待。网易云站内请求上限 12.5 秒，必要时在总计 15 秒内尝试直连 GD 网易云目录。分页沿用当前来源。查询变化时取消旧请求，站点不读取 VPN 状态。
 
+本地 v71 搜索实测：当前访客线路的 GD 校时返回 200，但搜索两次返回 401，页面显示网易云结果。在验收标签页模拟 GD 不可达也得到网易云结果。首批 Embeat 成功和合法空结果由 `node --test scripts/verify-search-session.mjs scripts/verify-browser-provider.mjs` 验证；未取得本轮真实线路的 Embeat 成功响应。排查时先看「音源」标签，再区分连接失败、上游拒绝和正常空结果；VPN 连接本身不证明目录可用。
+
 只提供封面 ID 的网易云结果仍由 API 解析图片地址。Cloudflare Workers 用原生 `fetch` 下载并校验封面，失败响应不进入边缘缓存。外部目录、只有 ID 的封面和直连失败后的回退仍受上游网络影响。检查搜索首屏时记录歌名出现和封面显示两个时间点，分别定位目录查询和图片下载。
 
 验证时运行 `npm test`、`npm run test:genre`、`npm run build:pages`，再用 Wrangler Pages 运行 `node scripts/verify-deployment.mjs <URL> --network`。从首页点分类、搜索歌曲并尝试播放，检查前几张图片、切歌及全屏封面；再打开「专辑」，看漂浮墙是否出现破图。慢目录、图片失败和 Embeat 代理慢响应可分别用 `npm run test:genre` 与 `node --test scripts/verify-browser-provider.mjs` 回归。第三方 CDN、VPN 路由与实际 Safari 耗时需在对应网络和设备核实。使用 [部署指南](../DEPLOY-GUIDE.md#回退) 退回上一版。
 
-全屏由 `player.js#updateAmpArtwork` 更新歌曲封面和静态背景的配色。切歌立即显示占位图，依次尝试该条目的大图、缩略图和同源封面 ID。图片和取色回调都须属于当前选择。封面缺失时保留占位图，避免把歌手照看成专辑图。上游若已把错误图片关联给歌曲，播放器无法仅凭图片 URL 判断原版权封面。排查具体歌曲时先记录音源、歌曲 ID、专辑及大小图地址。运行 `node --test scripts/verify-player-lifecycle.mjs` 验证。
+全屏由 `player.js#updateAmpArtwork` 更新歌曲封面和背景配色。切歌立即显示占位图，依次尝试该条目的大图、缩略图和同源封面 ID。图片和取色回调都须属于当前选择。封面缺失时保留占位图，避免把歌手照看成专辑图。上游若已把错误图片关联给歌曲，播放器无法仅凭图片 URL 判断原版权封面。排查具体歌曲时先记录音源、歌曲 ID、专辑及大小图地址。运行 `node --test scripts/verify-player-lifecycle.mjs` 验证。
 
 ## Embeat 优先、最近播放与专辑预览
 
@@ -29,7 +41,7 @@ v64 的专辑漂浮墙曾以 1000px 图片填充约 190px 的卡片，并等待�
 
 当前版本中，最近播放会跳过历史条目里的占位图和猜测图，按同源封面 ID 恢复。成功显示的网易云或 Tidal 封面地址写回最近播放，刷新后可直接重用。地址失效时重新尝试原曲封面路径。旧记录可直接读取，无需迁移。
 
-全屏切歌先清除旧配色，取色成功后更新静态背景，两条取色路径均失败时使用默认配色。过期的封面和取色回调不能覆盖当前曲目。搜索与输入建议共用过滤规则。首批命中完整歌手名时，同一查询的后续页也按完整歌手名筛选，合作曲保留。其他多词查询按歌曲、歌手及专辑字段匹配。过滤后仍有后续候选时可继续加载。
+全屏切歌先清除旧配色，取色成功后更新背景，两条取色路径均失败时使用默认配色。过期的封面和取色回调不能覆盖当前曲目。搜索与输入建议共用过滤规则。首批命中完整歌手名时，同一查询的后续页也按完整歌手名筛选，合作曲保留。其他多词查询按歌曲、歌手及专辑字段匹配。过滤后仍有后续候选时可继续加载。
 
 Embeat 专辑入口打开音源提供的专辑名称、封面及当前歌曲预览。现有接口未提供可核实的完整曲目列表，因此不支持整张专辑收藏，也不会从网易云拼接同名专辑。检查时用 `node --test scripts/verify-search-session.mjs scripts/verify-search-client.mjs scripts/verify-player-lifecycle.mjs` 和 `node scripts/verify-embeat-player.mjs`；浏览器验收应覆盖 Embeat 有结果、合法空结果及失败、最近播放回点、全屏背景和专辑入口。
 
@@ -114,7 +126,7 @@ Embeat 专辑入口打开音源提供的专辑名称、封面及当前歌曲预�
 
 本次发布后的维护记录属于文档更新，不改变生产应用提交。回退可使用此前 v52 部署 `d9c14ce5-ad93-45ec-b23d-0c7055e6c466`，步骤见 [DEPLOY-GUIDE](../DEPLOY-GUIDE.md#回退)。
 
-剩余范围：F10 清单／HTML 场景契约及桌面 CI 输入尚未统一；Safari 个人曲库迁移、真机帧率／温升和全部第三方目录未验证。Cover Flow 静止零调度是计算边界证据，不能据此保证整站零发热。Render 保留至 Safari 资料迁移验收完成，不将旧服务留存当作新站仍依赖 Render。
+剩余范围：F10 清单／HTML 场景契约及桌面 CI 输入尚未统一；Safari 个人曲库迁移、真机帧率／温升和全部第三方目录未验证。Cover Flow 静止零调度是计算边界证据，不能据此保证整站零发热。
 
 ## Cloudflare 迁移（2026-11-18）
 
@@ -131,11 +143,10 @@ Workers 不跨请求共享进行中 I/O；仅保留已完成结果缓存，Embea
 | 远端CI | 应用提交2726f89的[Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44239616058)通过，含真实Workers运行检查 |
 | 正式部署 | [ty-music.pages.dev](https://ty-music.pages.dev)，部署502707f8，应用提交2726f89ff3ac1a6b5afb2565a4c08555ae0bd34e；生产并发搜索／封面／302／Range206通过；ego lite真实Blinding Lights起播，时长200.046秒；歌词API返回原词及译词，歌词UI未完成验证 |
 | PR／合并 | [PR #6](https://github.com/1981016893fty-pixel/ty-music/pull/6) 已建立，合并状态以 PR 为准；文档提交735f463的 [Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44242736241)通过。生产应用提交与文档提交分开记录 |
-| Render／Safari曲库 | 旧站工具已随2726f89发布，[Render部署](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbuitoojo6nc73a84h50)成功；[旧站导出](https://ty-music.onrender.com/library-transfer.html)可用。服务仍保留，AutoDeploy为Off；待Safari导入新站验收后退役 |
 
 独立复审发现并已修复大音频Base64重复正则耗尽栈的问题，5MiB真实字节往返通过。浏览器下载、跨测试origin预览不写入、IndexedDB导入后音频字节一致已验证。Workers生产CPU／内存完整指标、Safari个人曲库和全部第三方目录尚未验证。
 
-新运行时不再有 Render 的闲置休眠唤醒，但不能承诺零延迟、无限额度或所有音源均可用。当前迁移沿用v49动效修复，未新增整机温度或Safari帧率结论。已安装的旧桌面包仍引用旧 API，源码更新只影响后续构建。
+当前托管的初始化、网络与上游仍可能带来延迟。安装早期桌面包的用户需要升级至使用正式 API 的版本。迁移前后的曲库备份步骤见[部署指南](../DEPLOY-GUIDE.md#曲库备份与迁移)。
 
 ## 首页流派入口修复（v51）
 
@@ -235,7 +246,7 @@ HTTP/2 同一客户端复用会话；gzip、br、deflate 响应先流式解压�
 
 本轮进一步将场景资源改成 ESM 分包，`src/sceneEffects.jsx` 仅在活动场景首次打开时加载相应重型引擎，未打开场景不请求；局部错误边界隔离装饰模块加载失败，切离再进入场景会新建 lazy 实例尝试恢复。核心入口静态 import graph 从 2,139,169 字节降至556,727 字节（原始构建大小，约减 74%，不包含页面打开后按需下载的效果，不是 gzip 传输量或帧率指标）；测试预算为 900 KB。`assets/aurora/manifest.json` 必须与所有分块同步部署，CI 核对生成结果。播放器拖动使用操作时查询的滑块节点，避免模块晚加载时捕获空节点；晚挂载标题和音量／进度从现有状态回读。
 
-service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` 等待后台刷新及缓存写入；搜索、音频、歌词与健康检查绕过缓存。安装时预缓存整个核心 ESM 图，未成功安装新缓存则保留可用旧 worker。返访外壳快显不等于后端免唤醒；首次访问无缓存时仍受平台休眠影响。2026-11-17 Render 控制台确认既有实例为 Free，并提示闲置后唤醒可能延迟 50 秒以上；本轮未等待一次完整闲置周期测量实际冷唤醒，不创建保活定时器，不升级付费。
+service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` 等待后台刷新及缓存写入；搜索、音频、歌词与健康检查绕过缓存。安装时预缓存整个核心 ESM 图，未成功安装新缓存则保留可用旧 worker。返访外壳快显不等于后端免唤醒。这条历史记录不代表当前托管的延迟。
 
 2026-11-17 本轮 ego lite 搜索页 4 轮首页↔浏览切换后画布均稳定为 3；3 秒观测 88 帧、p95 帧间隔约 50.1ms，长任务为零。该结果未证明总体帧率提高。全屏仅保留其场景画布，原曲歌词与拖动同步可用；新 GridDistortion 在真实浏览器两次 450ms 静置窗口均无绘制，指针移动后观测到 10 次绘制并最终再次停止。一次浏览器全屏操作后出现渲染器无响应，刷新后可恢复，暂未复现和归因；不能将其当作已解决。
 
@@ -255,7 +266,7 @@ service worker 返访导航优先返回已缓存外壳，并通过 `waitUntil` �
 
 生命周期回归新增高光静置／唤醒、离屏／隐藏、原生扫光时序、同色跳过和卸载迟到回调等边界；将旧源码字符串匹配改为实际缓存采样器的周期闭合检查。完整本地 `npm test` 118/118 node:test 以及播放器／交互／边框／网格检查通过，前端构建通过。本地真实页面仍显示网易云20首＋Embeat20首，Embeat 晴天原曲 readyState=4、paused=false、duration=269.747秒。连续切换首页／浏览页10轮，再静置约60秒，四次观察均保持首页5个画布及2个有效原生扫光，没有观察到数量增长；这不是完整的内存或温度长测。工程复审修复角度跟随与迟到回调两项回归后，直接相关模块未发现新的阻断问题；不代表全仓库认证。
 
-当前阶段：已实现、本地验证通过，应用提交 `7824f265fae6c0cdc9eb79224c403086fe8acb72` 的 [push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079563111) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079952839) 均通过。[Render 部署 dep-dbu47eu7bikc7388ln1g](https://dashboard.render.com/web/srv-d8psc5jsq97s738eemk0/deploys/dep-dbu47eu7bikc7388ln1g) 已确认 Live，生产 `/api/health` 返回上述应用提交与 Node 22.22.2。[PR #5](https://github.com/1981016893fty-pixel/ty-music/pull/5) 记录维护说明的后续检查与实际合并状态；应用部署与文档提交分开记载，AutoDeploy 保持关闭。
+当前阶段：已实现、本地验证通过，应用提交 `7824f265fae6c0cdc9eb79224c403086fe8acb72` 的 [push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079563111) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44079952839) 均通过。[PR #5](https://github.com/1981016893fty-pixel/ty-music/pull/5) 记录维护说明的后续检查与实际合并状态；应用部署与文档提交分开记载，AutoDeploy 保持关闭。
 
 生产页面未绕过 service worker 或清除资料，普通刷新更新至 `20261117-thermal-v49`。实际搜索仍返回网易云20首＋Embeat20首，点击 Embeat 晴天原曲起播，readyState=4、paused=false、duration=269.747秒；验收后暂停。阻断 `music.gdstudio.xyz` 后搜索林俊杰仍返回20首网易云，基础及补充加载结束、无错误；随后解除阻断。首页实际文字扫光为原生 `Animation`，同色桌面入口无文字时间轴。欢迎页原生自动点击发生工具节点断开／坐标命中偏移，程序化按钮点击可正常进入，因此不把该入口的完整原生点击链路记为通过。Safari 发热与帧率、长时间功耗仍未实测。回退可部署上一应用提交 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`；保留浏览器曲库，正常 service worker 更新后刷新，不清除站点数据。
 
@@ -277,9 +288,9 @@ ego lite 的 v47 真实页面搜索“周杰伦”返回网易云 20 条与 Embe
 
 同一页面通过 CDP 阻断 `source=embeat` 后搜索“林俊杰”，仍显示 20 条网易云结果、补充为零且加载结束；解除阻断后新查询恢复 40 条双源结果。此前尝试在页面替换 fetch 未覆盖已捕获的会话传输，因此不把那次尝试作为失败隔离证据。分页、15 秒截止与忽略 abort 的传输边界另由自动测试覆盖。
 
-PR #2 已合并为 `84b2e2b`，[push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44051046088) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44053169845) 通过。Render 部署 `dep-dbu1lh6c6qcc73esubu0` 已 Live，健康提交 `66c00e6`；但实际服务端搜索仍失败：官方网易云 code=-462、GD 网易云403、Embeat 校时403。部署成功不代表搜索恢复。
+PR #2 已合并为 `84b2e2b`，[push CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44051046088) 与 [PR CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44053169845) 通过。当时实际服务端搜索仍失败：官方网易云 code=-462、GD 网易云403、Embeat 校时403。部署成功不代表搜索恢复。
 
-v48 浏览器直连修复已通过 [PR #3 的两项 CI](https://github.com/1981016893fty-pixel/ty-music/pull/3/checks)，[PR #3](https://github.com/1981016893fty-pixel/ty-music/pull/3) 已合并为 `4183bc3`。Render 部署 `dep-dbu31e0u01pc73dh6gp0` 于 2026-11-17 18:48:41 GMT+8 显示 Live；健康检查确认运行提交 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`、Node `22.22.2`、基础源 `netease` 与补充源 `embeat`。后续仅文档更新不触发重新部署，应用提交与文档提交分别记录。
+v48 浏览器直连修复已通过 [PR #3 的两项 CI](https://github.com/1981016893fty-pixel/ty-music/pull/3/checks)，[PR #3](https://github.com/1981016893fty-pixel/ty-music/pull/3) 已合并为 `4183bc3`。当时的健康检查确认运行提交 `e4f4e9421b6bc7697a35824be16c694f2b6e9395`、Node `22.22.2`、基础源 `netease` 与补充源 `embeat`。后续仅文档更新不触发重新部署，应用提交与文档提交分别记录。
 
 浏览器与 Node 共用签名核心，不新增依赖；直连使用 `credentials: 'omit'` 与 `cache: 'no-store'`，只请求固定 GD 主机。音频在用户点击内同步启动原同源代理路径，以保持 Safari 播放许可；网页同时按原 urlId 直连解析，代理尚未实际播放时切到直连结果。代理已实际播放则不打断；桌面保持同步 stream=1。歌词按 lyricId 独立解析，字面换行规范化；封面代理失败按同源 picId 直连解析。切歌取消旧解析，并以递增代次保护同一首重复点击；旧播放回调不再清空新歌词。复审发现的 Embeat CDN 图片失败后跨目录猜封面已修复，失败仅显示默认图标；同步媒体调用与图片二次失败都有回归覆盖。Safari 真机首次点击仍待实际验证。
 
@@ -295,7 +306,7 @@ git diff --exit-code -- soft-aurora-react.js soft-aurora-react.css assets/aurora
 test -z "$(git ls-files --others --exclude-standard -- assets/aurora)"
 ```
 
-最后一个命令应在生成资源已提交且与源码同步时无差异退出；首次更新源码后应先审阅并提交预期的生成资源。默认测试不访问真实音乐上游，fork 子进程显式清空 `GD_EMBEAT_CONNECT_HOST`，避免继承 Render 配置后绕开夹具。发布前另以 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz npm test` 验证生产变量不会污染测试；`npm run test:data` 另行验证联网数据。CI 在 PR 与分支推送上使用 Node.js 22，依次安装锁定依赖、测试、构建及检查生成资源同步；既有桌面工作流独立保留。
+最后一个命令应在生成资源已提交且与源码同步时无差异退出；首次更新源码后应先审阅并提交预期的生成资源。默认测试不访问真实音乐上游，fork 子进程显式清空 `GD_EMBEAT_CONNECT_HOST`，避免继承本机部署环境配置后绕开夹具。发布前另以 `GD_EMBEAT_CONNECT_HOST=music-api.gdstudio.xyz npm test` 验证生产变量不会污染测试；`npm run test:data` 另行验证联网数据。CI 在 PR 与分支推送上使用 Node.js 22，依次安装锁定依赖、测试、构建及检查生成资源同步；既有桌面工作流独立保留。
 
 ### 历史排障记录（以下不代表当前线上状态）
 
@@ -303,14 +314,12 @@ Embeat 默认搜索与资源路由曾在本地实现；2026-11-16 完整 `npm te
 
 本次 Embeat 版本另经 ego lite 页面检查：本地页面可打开，搜索请求超时时结束加载并显示失败，不显示为零结果；探索区正确收起，默认标签为 Embeat，无手动切源控件。一次刷新报告渲染器无响应，关闭该任务页并在同一 Space 新建页面后，正常动效模式加载/刷新成功，尚未确定单次异常根因。这不能替代真实成功结果、音频、歌词或 Safari 流畅度验收。独立审查发现的问题由主代理修复并回归验证，审查范围限本次改动与直接调用方。
 
-动效提交 `7496567` 已通过两项 [Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44043737345)，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 已合并为 `efaef0d`。后续双源搜索变更沿用部署分支 `codex/deploy-embeat-search`，本地验证与远端发布分别确认。此前初版 `2ac858d` 在 Render 因测试继承生产传输变量而构建失败，隔离问题已修复。性能提交 `a4e8dfa` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 与部署通过；传输修复 `4f513a0582b60c8ffde4f447e7694af6d4a0be13` 已通过 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44024742320)，Render 部署 `dep-dbtue1m7bikc73fp4rp0` 已 Live。后续标准 fetch 配置部署 `dep-dbtugb3l550s739d6mu0` 也已 Live，健康检查确认同一提交、Node 22.22.2 和旧默认 Embeat。
+动效提交 `7496567` 已通过两项 [Web checks](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44043737345)，[PR #1](https://github.com/1981016893fty-pixel/ty-music/pull/1) 已合并为 `efaef0d`。后续双源搜索变更沿用部署分支 `codex/deploy-embeat-search`，本地验证与远端发布分别确认。此前初版 `2ac858d` 因测试继承生产传输变量而构建失败，隔离问题已修复。性能提交 `a4e8dfa` 的 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44022861429) 与部署通过；传输修复 `4f513a0582b60c8ffde4f447e7694af6d4a0be13` 已通过 [CI](https://github.com/1981016893fty-pixel/ty-music/actions/runs/44024742320)。
 
-**当时的服务端生产搜索未通过验收。** 本地同代码返回20首；Render 经网站主机 HTTP/2 的校时日志明确为 HTTP 403、`text/html; charset=UTF-8`、无内容编码。切换 API 连接主机及标准 fetch 后仍有 `GD_CLOCK_ERROR`；不能把这一错误解释为 Render 冷启动、压缩错误或无歌曲。已确认并修复的压缩处理与失败响应流释放问题是独立缺陷，77个 node:test、播放器／动效检查和生产构建均通过，独立复审未发现阻止提交的问题，但并未消除生产上游拒绝。后续 v48 网页直连的生产成功证据见上方当前状态；服务端回退的可用性仍受 Render 出口与上游规则影响。
+**当时的服务端生产搜索未通过验收。** 本地同代码返回20首；当时的服务端经网站主机 HTTP/2 的校时日志明确为 HTTP 403、`text/html; charset=UTF-8`、无内容编码。切换 API 连接主机及标准 fetch 后仍有 `GD_CLOCK_ERROR`；不能把这一错误解释为 部署环境休眠、压缩错误或无歌曲。已确认并修复的压缩处理与失败响应流释放问题是独立缺陷，77个 node:test、播放器／动效检查和生产构建均通过，独立复审未发现阻止提交的问题，但并未消除生产上游拒绝。后续 v48 网页直连的生产成功证据见上方当前状态；服务端回退的可用性仍受服务端出口与上游规则影响。
 
 线上静态清单及3个核心模块、v45 worker 均可访问；hash 分块为 JavaScript MIME 和 immutable 缓存，条件请求返回304。浏览器搜索失败会结束加载并显示错误，不伪装为空结果。线上原曲播放、拖动和歌词同步因搜索阻塞尚未完成本轮验收，本地成功证据不能替代生产结果。
 
-此前确认 GD 网站校时对该 Render 运行环境 HTTP 拒绝；是否连带拒绝 `/api.php` 尚未取得探针结果，不能扩大为“GD 封禁所有 Render IP”。一次临时探针配置保存报 `Failed to fetch (api.render.com)`，没有取得探针结果。2026-11-17 后续控制台恢复，重新读取实际 Start Command 为 `node server-simple.js`，Auto-Deploy 为 Off，无需修复启动命令。新规则将网易云作为基础、Embeat 按实际可用性补充；仍不得引入第三方代理、付费升级或新建资源。
-
-既有 Render Free 服务部署分支已设为上述任务分支，Auto-Deploy 为 Off（手动发布），`NODE_VERSION=22.22.2` 已保存；最后确认上线的 `GD_EMBEAT_CONNECT_HOST` 为空，使用标准 fetch。生产连接入口需在生产环境单独验证，不可直接套用本机网络绕行配置。构建命令为 `npm ci --include=dev && npm test && npm run build:aurora`；启动 `node server-simple.js`，健康检查 `/api/health`。健康响应包含 `commit`、`node`、`searchSource`，自身不访问 GD。操作步骤及后续真实发布状态见[部署指南](../DEPLOY-GUIDE.md)。
+当时只验证了旧运行环境的校时请求被拒，未取得 `/api.php` 的探针结果。上游连通性仍需在当前部署环境独立验证；本站 `/api/health` 不访问 GD。
 
 回退时由维护者使用 `git revert <本次PR提交>` 保留历史，再运行测试和构建、提交生成资源；部署所有者按既有授权流程重新部署并核对健康、搜索、播放和个人曲库。不要使用强推或硬重置覆盖其他改动。第三方服务、媒体及依赖的授权/分发条件需要各自核实，当前没有替代权利人的许可声明。

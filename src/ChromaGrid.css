@@ -2,7 +2,9 @@
 .chroma-grid::-webkit-scrollbar { display:none; }
 #genreCards { display:none; }
 .chroma-card { position:relative; flex:0 0 168px; height:142px; display:flex; flex-direction:column; border-radius:20px; overflow:hidden; border:1px solid #333; transition:border-color .3s ease; background:var(--card-gradient); --mouse-x:50%; --mouse-y:50%; --spotlight-color:rgba(255,255,255,.3); }
+.chroma-card { appearance:none; padding:0; text-align:left; cursor:pointer; }
 .chroma-card:hover { border-color:var(--card-border); }
+.chroma-card:focus-visible { outline:2px solid #fff; outline-offset:2px; }
 .chroma-card::before { content:''; position:absolute; inset:0; background:radial-gradient(circle at var(--mouse-x) var(--mouse-y),var(--spotlight-color),transparent 70%); pointer-events:none; opacity:0; transition:opacity .5s ease; z-index:2; }
 .chroma-card:hover::before { opacity:1; }
 .chroma-img-wrapper { position:relative; z-index:1; flex:1; min-height:0; padding:10px; box-sizing:border-box; overflow:hidden; background:rgba(0,0,0,.16); }

@@ -79,7 +79,7 @@ export default function GradientWaves({
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
-    const renderer = new Renderer({ webgl: 2, alpha: true, premultipliedAlpha: true, antialias: false, dpr: Math.min(window.devicePixelRatio || 1, 2) });
+    const renderer = new Renderer({ webgl: 2, alpha: true, premultipliedAlpha: true, antialias: false, dpr: 1 });
     const gl = renderer.gl;
     gl.clearColor(0, 0, 0, 0);
     const canvas = gl.canvas;
@@ -103,8 +103,12 @@ export default function GradientWaves({
     if (mouseInteraction) { window.addEventListener('pointermove', onMove, { passive: true }); window.addEventListener('pointerleave', onLeave); }
     let raf = 0, active = true;
     const start = performance.now();
+    let lastDraw = -Infinity;
     const loop = time => {
       if (!active) return;
+      raf = requestAnimationFrame(loop);
+      if (document.hidden || time - lastDraw + 0.25 < 1000 / 30) return;
+      lastDraw = time;
       program.uniforms.iTime.value = (time - start) * 0.001;
       const tx = mouseEnabled.current ? target[0] : 0.5;
       const ty = mouseEnabled.current ? target[1] : 0.5;
@@ -113,7 +117,6 @@ export default function GradientWaves({
       program.uniforms.uMouse.value[0] = current[0];
       program.uniforms.uMouse.value[1] = current[1];
       renderer.render({ scene: mesh });
-      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
     return () => {

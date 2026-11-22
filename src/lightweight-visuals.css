@@ -1,0 +1,92 @@
+/* The original fallback expected a data attribute that is no longer set. */
+.hero-title:not([data-shiny-text]) { color: #fff; }
+[data-theme="light"] .hero-title:not([data-shiny-text]) { color: #1d1d1f; }
+
+#ampArtwork {
+  pointer-events: none;
+  transition: transform 240ms cubic-bezier(.2, .7, .3, 1);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ty-shuffle-active { position: relative; -webkit-text-fill-color: transparent; }
+  .ty-shuffle-letters { position: absolute; inset: 0; pointer-events: none; white-space: nowrap; -webkit-text-fill-color: currentColor; }
+  .ty-shuffle-letters > span { display: inline-block; }
+
+  #topDock .top-dock__glitch { position: relative; }
+  #topDock .top-dock__glitch::before,
+  #topDock .top-dock__glitch::after {
+    content: attr(data-text);
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    animation: ty-brand-glitch 1.7s steps(1, end) infinite;
+  }
+  #topDock .top-dock__glitch::after { animation-duration: 2.55s; }
+  .ty-motion-paused #topDock .top-dock__glitch::before,
+  .ty-motion-paused #topDock .top-dock__glitch::after { animation-play-state: paused; }
+
+  @media (any-hover: hover) {
+    .am-artwork { perspective: 800px; }
+    .am-artwork > img {
+      transition: transform 240ms cubic-bezier(.2, .7, .3, 1);
+    }
+  }
+  :is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry, .hero-play-cyan, .album-play-specular) {
+    overflow: hidden;
+  }
+
+  :is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry, .hero-play-cyan, .album-play-specular)::before {
+    content: '';
+    position: absolute;
+    inset: 1px;
+    border-radius: inherit;
+    background: linear-gradient(115deg, transparent 34%, rgba(255, 255, 255, .22) 49%, transparent 64%);
+    opacity: 0;
+    pointer-events: none;
+    animation: ty-button-sheen 4.2s ease-in-out infinite;
+  }
+
+  .ty-motion-paused .specular-button::before,
+  #welcomeScreen.is-dismissed .specular-button::before,
+  body:has(#ampFullscreenPlayer.show) .specular-button::before,
+  .page:not(.active) .specular-button::before {
+    animation: none;
+  }
+
+  .ty-heading-sheen.ty-heading-sheen {
+    --heading-base: linear-gradient(currentColor, currentColor);
+    background-image: linear-gradient(120deg, transparent 38%, #fff 50%, transparent 62%), var(--heading-base);
+    background-position: 150% center, center;
+    background-repeat: no-repeat;
+    background-size: 200% 100%, 100% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: ty-heading-sheen 900ms ease-in-out;
+  }
+
+  .section-title.ty-heading-sheen {
+    --heading-base: linear-gradient(135deg, var(--neon-purple), var(--neon-cyan));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #ampArtwork { transition: none; }
+}
+
+@keyframes ty-button-sheen {
+  from { transform: translateX(-65%); opacity: 0; }
+  12%, 38% { opacity: 1; }
+  50%, to { transform: translateX(65%); opacity: 0; }
+}
+
+@keyframes ty-brand-glitch {
+  0%, 16%, 40%, 62%, 83%, 100% { clip-path: inset(46% 0 38%); }
+  8%, 31%, 70% { clip-path: inset(20% 0 59%); }
+  23%, 49%, 91% { clip-path: inset(62% 0 20%); }
+}
+
+@keyframes ty-heading-sheen {
+  from { background-position: 150% center, center; }
+  to { background-position: -50% center, center; }
+}

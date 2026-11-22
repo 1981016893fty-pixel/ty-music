@@ -16,10 +16,10 @@
     .welcome-screen.is-dismissed { opacity: 0; visibility: hidden; pointer-events: none; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260814">
-  <link rel="preload" href="style.css?v=20261122-idle-v68" as="style">
-  <link rel="preload" href="player.js?v=20261122-idle-v68" as="script">
+  <link rel="preload" href="style.css?v=20261122-original-ui-v72" as="style">
+  <link rel="preload" href="player.js?v=20261122-original-ui-v72" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20261122-idle-v68">
+  <link rel="stylesheet" href="style.css?v=20261122-original-ui-v72">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -44,6 +44,7 @@
 <body>
   <!-- 首次进入欢迎页；点击开始使用后进入播放器主页 -->
   <section class="welcome-screen" id="welcomeScreen" aria-labelledby="welcomeTitle">
+    <div class="welcome-liquid-ether-mount" id="welcomeLiquidEtherMount" aria-hidden="true"></div>
     <div class="welcome-vignette" aria-hidden="true"></div>
     <div class="welcome-content">
       <div class="welcome-kicker">欢迎来到 TY MUSIC</div>
@@ -99,10 +100,14 @@
 
   <!-- 播放器根据当前封面更新底色。 -->
   <div class="bg-gradient" id="bgGradient"></div>
+  <div id="homeFloatingLinesMount" aria-hidden="true"></div>
+  <div id="softAuroraHost" aria-hidden="true"></div>
   <div id="libraryGradientWavesMount" aria-hidden="true"></div>
+  <div id="browsePrismMount" aria-hidden="true"></div>
+  <div id="browseSplashCursorMount" aria-hidden="true"></div>
 
   <header class="top-dock" id="topDock" aria-label="TY Music 顶部栏">
-    <div class="top-dock__brand top-dock__glitch">TY MUSIC</div>
+    <div class="top-dock__brand top-dock__glitch" data-text="TY MUSIC">TY MUSIC</div>
     <span id="topDockClientMount"><a class="specular-button top-dock__client-entry" href="desktop.html"><i class="fa-solid fa-desktop" aria-hidden="true"></i>桌面客户端</a></span>
   </header>
 
@@ -190,6 +195,7 @@
     <section class="page active" id="page-discover">
       <div class="hero-section">
         <div class="hero-card" id="heroCard" onclick="playHeroTrack()">
+          <div id="heroElectricBorderMount" aria-hidden="true"></div>
           <div class="hero-info">
             <div class="hero-badge">精选推荐</div>
             <h1 class="hero-title" id="heroTitle">Blinding Lights</h1>
@@ -199,6 +205,7 @@
           </div>
           <div class="hero-art">
             <img class="hero-art-fallback" src="/assets/demo/cs1.webp" alt="">
+            <div id="heroElasticMeshMount" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -270,10 +277,7 @@
             <div><span class="browse-kicker">快速开始</span><h2 id="browseQuickTitle">今天想听什么</h2></div>
             <span class="browse-section-meta">精选入口</span>
           </div>
-          <figure class="browse-static-banner">
-            <img src="/assets/browse-listener-hero-960.jpg" alt="" loading="lazy" decoding="async">
-            <figcaption>发现下一首喜欢的歌</figcaption>
-          </figure>
+          <div id="browseScrollExpandMount" aria-label="音乐探索视觉区"></div>
           <div class="browse-quick-grid" id="browseQuickGrid" aria-label="快速音乐入口"></div>
         </section>
 
@@ -411,6 +415,7 @@
 
     <!-- 专辑收藏页 -->
     <section class="page library-page" id="page-album-favorites">
+      <div id="albumDriftWallMount" aria-hidden="true" inert></div>
       <header class="library-header">
         <div class="library-heading">
           <div class="library-icon library-icon--orange" aria-hidden="true"><span id="libraryAlbumsIconMount"></span></div>
@@ -586,6 +591,7 @@
 
   <!-- Apple Music 风格全屏播放器 -->
   <div class="amp-fullscreen-player" id="ampFullscreenPlayer">
+    <div id="ampGridDistortionMount" aria-hidden="true"></div>
     
     <div class="amp-header">
       <button class="amp-header-btn" id="ampCloseBtn">
@@ -744,13 +750,13 @@
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20261122-idle-v68">
-  <script type="module" src="soft-aurora-react.js?v=20261122-idle-v68" fetchpriority="low"></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20261122-original-ui-v72">
+  <script type="module" src="soft-aurora-react.js?v=20261122-original-ui-v72" fetchpriority="low"></script>
   <script src="gd-embeat-core.js?v=20261118-quality-v53" defer></script>
   <script src="browser-provider.js?v=20261121-artwork-v65" defer></script>
   <script src="search-session.js?v=20261121-player-search-v63" defer></script>
   <script src="local-music-db.js?v=20261121-memory-v64" defer></script>
-  <script src="player.js?v=20261122-idle-v68" defer></script>
+  <script src="player.js?v=20261122-original-ui-v72" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>

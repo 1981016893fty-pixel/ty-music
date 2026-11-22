@@ -34,6 +34,7 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
   const imageAspectRef = useRef(1);
   const animationIdRef = useRef(null);
   const resizeObserverRef = useRef(null);
+  const textureUpdateRef = useRef(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -49,11 +50,11 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
     sceneRef.current = scene;
 
     const renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: false,
       alpha: true,
-      powerPreference: 'high-performance'
+      powerPreference: 'low-power'
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(1);
     renderer.setClearColor(0x000000, 0);
     rendererRef.current = renderer;
 
@@ -90,7 +91,7 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       transparent: true
     });
 
-    const geometry = new THREE.PlaneGeometry(1, 1, size - 1, size - 1);
+    const geometry = new THREE.PlaneGeometry(1, 1);
     const plane = new THREE.Mesh(geometry, material);
     planeRef.current = plane;
     scene.add(plane);
@@ -214,19 +215,23 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
     });
     fullscreenObserver?.observe(fullscreenPlayer, { attributes: true, attributeFilter: ['class', 'style'] });
 
-    function animate() {
+    let lastDrawAt;
+    function animate(now) {
       animationIdRef.current = null;
       if (disposed) return;
 
       uniforms.time.value += 0.05;
+      const frameMs = 1000 / 60;
+      const decay = relaxation ** (lastDrawAt == null ? 1 : Math.max(1, (now - lastDrawAt) / frameMs));
+      lastDrawAt = now;
 
       const data = dataTexture.image.data;
       let peak = 0;
       let changed = false;
       for (let i = 0; i < size * size; i++) {
         changed ||= data[i * 4] !== 0 || data[i * 4 + 1] !== 0;
-        data[i * 4] *= relaxation;
-        data[i * 4 + 1] *= relaxation;
+        data[i * 4] *= decay;
+        data[i * 4 + 1] *= decay;
         peak = Math.max(peak, Math.abs(data[i * 4]), Math.abs(data[i * 4 + 1]));
       }
 
@@ -234,16 +239,18 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       const gridMouseY = size * mouseState.y;
       const maxDist = size * mouse;
 
-      for (let i = 0; i < size; i++) {
-        for (let j = 0; j < size; j++) {
-          const distSq = Math.pow(gridMouseX - i, 2) + Math.pow(gridMouseY - j, 2);
-          if (distSq < maxDist * maxDist) {
-            const index = 4 * (i + size * j);
-            const power = Math.min(maxDist / Math.sqrt(distSq), 10);
-            data[index] += strength * 100 * mouseState.vX * power;
-            data[index + 1] -= strength * 100 * mouseState.vY * power;
-            peak = Math.max(peak, Math.abs(data[index]), Math.abs(data[index + 1]));
-            changed ||= mouseState.vX !== 0 || mouseState.vY !== 0;
+      if (mouseState.vX !== 0 || mouseState.vY !== 0) {
+        for (let i = Math.max(0, Math.ceil(gridMouseX - maxDist)); i <= Math.min(size - 1, gridMouseX + maxDist); i++) {
+          for (let j = Math.max(0, Math.ceil(gridMouseY - maxDist)); j <= Math.min(size - 1, gridMouseY + maxDist); j++) {
+            const distSq = (gridMouseX - i) ** 2 + (gridMouseY - j) ** 2;
+            if (distSq < maxDist * maxDist) {
+              const index = 4 * (i + size * j);
+              const power = Math.min(maxDist / Math.sqrt(distSq), 10);
+              data[index] += strength * 100 * mouseState.vX * power;
+              data[index + 1] -= strength * 100 * mouseState.vY * power;
+              peak = Math.max(peak, Math.abs(data[index]), Math.abs(data[index + 1]));
+              changed = true;
+            }
           }
         }
       }
@@ -259,24 +266,37 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       if (changed) dataTexture.needsUpdate = true;
       renderer.render(scene, camera);
       if (!settled && relaxation !== 1) wake();
+      else lastDrawAt = undefined;
     }
 
     const textureLoader = new THREE.TextureLoader();
-    const imageTexture = textureLoader.load(imageSrc, texture => {
-      if (disposed) { texture.dispose(); return; }
-      texture.minFilter = THREE.LinearFilter;
-      texture.magFilter = THREE.LinearFilter;
-      texture.wrapS = THREE.ClampToEdgeWrapping;
-      texture.wrapT = THREE.ClampToEdgeWrapping;
-      imageAspectRef.current = texture.image.width / texture.image.height;
-      uniforms.uTexture.value = texture;
-      handleResize();
-    });
+    let pendingTexture;
+    textureUpdateRef.current = source => {
+      pendingTexture?.dispose();
+      const candidate = textureLoader.load(source, texture => {
+        if (disposed || pendingTexture !== texture) return;
+        pendingTexture = null;
+        texture.minFilter = THREE.LinearFilter;
+        texture.magFilter = THREE.LinearFilter;
+        texture.generateMipmaps = false;
+        imageAspectRef.current = texture.image.width / texture.image.height;
+        uniforms.uTexture.value?.dispose();
+        uniforms.uTexture.value = texture;
+        wake();
+      }, undefined, () => {
+        if (pendingTexture === candidate) {
+          pendingTexture = null;
+          candidate.dispose();
+        }
+      });
+      pendingTexture = candidate;
+    };
 
     handleResize();
 
     return () => {
       disposed = true;
+      textureUpdateRef.current = null;
       if (animationIdRef.current !== null) {
         cancelAnimationFrame(animationIdRef.current);
         animationIdRef.current = null;
@@ -304,13 +324,18 @@ const GridDistortion = ({ grid = 15, mouse = 0.1, strength = 0.15, relaxation = 
       if (geometry) geometry.dispose();
       if (material) material.dispose();
       if (dataTexture) dataTexture.dispose();
-      imageTexture.dispose();
+      pendingTexture?.dispose();
+      pendingTexture = null;
+      uniforms.uTexture.value?.dispose();
 
       sceneRef.current = null;
       rendererRef.current = null;
       cameraRef.current = null;
       planeRef.current = null;
     };
+  }, [grid, mouse, strength, relaxation]);
+  useEffect(() => {
+    textureUpdateRef.current?.(imageSrc);
   }, [grid, mouse, strength, relaxation, imageSrc]);
 
   return (

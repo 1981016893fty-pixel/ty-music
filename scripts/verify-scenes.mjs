@@ -12,6 +12,7 @@ test('only the visible scene renders and reduced motion suppresses decoration', 
   assert.equal(sceneActive('discover', app.replace('visible', 'hidden')), false);
   assert.equal(sceneActive('discover', app.replace('motion', 'reduced'), true), false);
   assert.equal(sceneActive('discover', app.replace('motion', 'reduced')), true, 'controls remain available');
+  assert.equal(sceneActive('discover', app + '|mini', true), false, 'native mini player hides the main scene');
   assert.equal(sceneActive('fullscreen', 'visible|app|page-discover|fullscreen||motion'), true);
   assert.equal(sceneActive('discover', 'visible|app|page-discover|fullscreen||motion'), false);
   assert.equal(sceneActive('coverflow', 'visible|app|page-album-favorites||coverflow|motion'), true);
@@ -63,7 +64,7 @@ test('navigation and visibility changes notify subscribers and release all obser
 
 // Execute the real page wiring and genre component; only DOM mounts and other
 // independently tested widgets are replaced at the browser boundary.
-test('the lightweight homepage mounts every genre and wires the existing detail loader', async () => {
+test('the homepage mounts every genre and wires the existing detail loader', async () => {
   const { build } = await import('esbuild');
   const { createRequire } = await import('node:module');
   const vm = await import('node:vm');
@@ -88,6 +89,9 @@ test('the lightweight homepage mounts every genre and wires the existing detail 
       if (name === 'react-dom/client') return { createRoot: target => ({ render: element => { if (target === host) mounted = element; } }) };
       if (name === 'react-dom') return { flushSync: callback => callback() };
       if (name === './ChromaGrid') return { __esModule: true, default: gridModule.exports.default };
+      if (name === './visualScenes') return { mountVisualScenes() {} };
+      if (name === './lightweightVisuals.mjs') return { initLightweightVisuals() {} };
+      if (name === './staticGlass.mjs') return { mountStaticGlass() {}, syncSongGlass() {} };
       return unused;
     },
   });
