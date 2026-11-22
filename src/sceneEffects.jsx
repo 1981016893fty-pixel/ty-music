@@ -29,3 +29,5 @@ export const GradientWaves = sceneEffect(() => import('./GradientWaves'));
 export const DriftWall = sceneEffect(() => import('./DriftWall'));
 export const LiquidEther = sceneEffect(() => import('./LiquidEther'));
 export const GridScan = sceneEffect(() => import('./GridScan').then(module => ({ default: module.GridScan })));
+export const SplashCursor = sceneEffect(() => import('./SplashCursor'));
+export const ScrollExpand = sceneEffect(() => import('./ScrollExpand'));

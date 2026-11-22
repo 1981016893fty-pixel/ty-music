@@ -26,18 +26,26 @@ export default function ElectricBorder({
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
     let loop;
+    let disposed = false;
     let points = [];
     let sampleNoise;
+    let lastWidth;
+    let lastHeight;
+    let lastDpr;
     const updateSize = () => {
+      if (disposed) return;
       const rect = container.getBoundingClientRect();
       const width = rect.width + borderOffset * 2;
       const height = rect.height + borderOffset * 2;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      if (width === lastWidth && height === lastHeight && dpr === lastDpr) return;
+      lastWidth = width;
+      lastHeight = height;
+      lastDpr = dpr;
       canvas.width = width * dpr;
       canvas.height = height * dpr;
       canvas.style.width = `${width}px`;
       canvas.style.height = `${height}px`;
-      ctx.scale(dpr, dpr);
       const borderWidth = rect.width;
       const borderHeight = rect.height;
       const radius = Math.min(borderRadius, Math.min(borderWidth, borderHeight) / 2);
@@ -49,17 +57,13 @@ export default function ElectricBorder({
       loop?.request();
     };
     updateSize();
-    let lastDpr = Math.min(window.devicePixelRatio || 1, 2);
     let lastDraw = 0;
     lastFrameTimeRef.current = performance.now();
     const drawElectricBorder = currentTime => {
       if (currentTime - lastDraw < 1000 / 30) return true;
       lastDraw = currentTime;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      if (dpr !== lastDpr) {
-        lastDpr = dpr;
-        updateSize();
-      }
+      if (dpr !== lastDpr) updateSize();
       timeRef.current += Math.min((currentTime - lastFrameTimeRef.current) / 1000, 0.1) * speed;
       lastFrameTimeRef.current = currentTime;
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -88,6 +92,7 @@ export default function ElectricBorder({
     resizeObserver.observe(container);
     loop.request();
     return () => {
+      disposed = true;
       loop.dispose();
       resizeObserver.disconnect();
     };

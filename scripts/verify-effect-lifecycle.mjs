@@ -3,14 +3,15 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
+import * as THREE from 'three';
 
 // Bundle the actual component and local helpers. Only React and browser/GPU
 // boundaries are substituted; a scheduler helper must execute its real code.
-const compiled = new Map(await Promise.all(['ElasticMesh', 'Prism', 'ElectricBorder', 'SpecularButton', 'ShinyText'].map(async name => {
+const compiled = new Map(await Promise.all(['ElasticMesh', 'Prism', 'ElectricBorder', 'SpecularButton', 'ShinyText', 'FloatingLines', 'LiquidEther'].map(async name => {
   const result = await build({
     entryPoints: [fileURLToPath(new URL(`../src/${name}.jsx`, import.meta.url))],
     bundle: true, write: false, platform: 'node', format: 'cjs',
-    external: ['react', 'ogl', '*.css'],
+    external: ['react', 'ogl', 'three', '*.css'],
   });
   return [name, result.outputFiles[0].text];
 })));
@@ -19,6 +20,8 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   let now = 0, nextFrame = 0, draws = 0, lostContexts = 0, hookIndex = 0, sineCalls = 0, floorCalls = 0;
   let renderProps = props;
   let lastUniforms;
+  let createdTargets = 0;
+  const passes = [];
   const frames = new Map(), hooks = [], pendingEffects = [], images = [];
   const resizeObservers = [], intersectionObservers = [], canvases = [];
   const paths = [];
@@ -45,6 +48,7 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   }
   const container = {
     ...eventTarget(),
+    style: {},
     animate(keyframes, options) {
       const animation = { keyframes, options, playState: 'running', currentTime: 0,
         pause() { this.playState = 'paused'; }, play() { this.playState = 'running'; }, cancel() { this.playState = 'idle'; } };
@@ -54,12 +58,38 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
     offsetWidth: width, offsetHeight: height, clientWidth: width, clientHeight: height,
     getBoundingClientRect() { return { left: 0, top: 0, width: this.clientWidth, height: this.clientHeight, right: this.clientWidth, bottom: this.clientHeight }; },
     appendChild(canvas) { canvas.parentElement = canvas.parentNode = this; canvases.push(canvas); },
+    prepend(canvas) { this.appendChild(canvas); },
     removeChild(canvas) { assert.equal(canvas.parentElement, this); canvas.parentElement = canvas.parentNode = null; },
   };
   const media = { ...eventTarget(), matches: false };
   const window = { ...eventTarget(), innerWidth: width, innerHeight: height, devicePixelRatio: dpr,
     matchMedia: () => media };
   const document = { ...eventTarget(), hidden: false };
+  const three = {
+    ...THREE,
+    Clock: class { getElapsedTime() { return now / 1000; } },
+    WebGLRenderTarget: class extends THREE.WebGLRenderTarget {
+      constructor(...options) { super(...options); createdTargets++; }
+    },
+    WebGLRenderer: class {
+      domElement = { style: {} };
+      setClearColor() {}
+      setDrawingBufferSize(w, h, dpr) {
+        this.domElement.width = Math.floor(w * dpr);
+        this.domElement.height = Math.floor(h * dpr);
+      }
+      setRenderTarget(target) { this.target = target; }
+      render(scene) {
+        const material = scene.children[0].material;
+        lastUniforms = material.uniforms;
+        if (this.target) {
+          passes.push({ fragment: material.fragmentShader, format: this.target.texture.format });
+        } else draws++;
+      }
+      dispose() {}
+      forceContextLoss() { lostContexts++; }
+    },
+  };
   const ogl = {
     Renderer: class {
       constructor({ dpr = 1 } = {}) {
@@ -134,6 +164,7 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   const module = { exports: {} };
   const context = {
     module, exports: module.exports, React: react, window, document,
+    navigator: { userAgent: 'desktop test' },
     Math: Object.assign(Object.create(Math), { sin(value) { sineCalls++; return Math.sin(value); }, floor(value) { floorCalls++; return Math.floor(value); } }),
     performance: { now: () => now }, ResizeObserver,
     ...(intersectionObserver ? { IntersectionObserver } : {}),
@@ -143,6 +174,7 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
     require(specifier) {
       if (specifier === 'react') return react;
       if (specifier === 'ogl') return ogl;
+      if (specifier === 'three') return three;
       if (specifier.endsWith('.css')) return {};
       throw Error(`Unexpected unbundled dependency: ${specifier}`);
     },
@@ -165,6 +197,7 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
   return {
     get uniforms() { return lastUniforms; },
     globalPointer(x = 200, y = 100) { window.emit('pointermove', { clientX: x, clientY: y }); },
+    globalMouse(x = 200, y = 100) { window.emit('mousemove', { clientX: x, clientY: y }); },
     globalLeave() { window.emit('mouseleave'); },
     captureIntersection() { const observer = intersectionObservers.at(-1); return visible => observer?.callback([{ target: container, isIntersecting: visible }]); },
     get animations() { return animations; },
@@ -173,6 +206,8 @@ function mount(name, props = {}, { intersectionObserver = true, width = 800, hei
     get pending() { return frames.size; }, get draws() { return draws; },
     get sineCalls() { return sineCalls; }, get floorCalls() { return floorCalls; }, get paths() { return paths; },
     get lostContexts() { return lostContexts; },
+    get targets() { return createdTargets; },
+    get passes() { return passes; },
     get listenerCount() { return container.listenerCount + window.listenerCount + document.listenerCount + media.listenerCount; },
     get liveObservers() { return [...resizeObservers, ...intersectionObservers].filter(observer => !observer.disconnected).length; },
     get attachedCanvases() { return canvases.filter(canvas => canvas.parentElement).length; },
@@ -589,4 +624,56 @@ test('ShinyText ignores already queued observer deliveries after unmount', () =>
   effect.cleanup();
   lateIntersection(true);
   assert.equal(effect.animations[0].playState, 'idle', 'a released native timeline must never restart');
+});
+
+test('FloatingLines keeps its motion and pointer response with a bounded backing buffer', () => {
+  const effect = mount('FloatingLines', { maxFps: 30 }, { width: 3840, height: 2160, dpr: 2 });
+  try {
+    effect.globalPointer(1920, 1080);
+    effect.step(60);
+    assert.ok(effect.draws >= 28 && effect.draws <= 31, 'retain the 30 fps motion budget');
+    assert.ok(effect.canvasSize.width * effect.canvasSize.height <= 2000000);
+    assert.ok(effect.uniforms.bendInfluence.value > 0, 'retain cursor bending');
+    effect.intersect(false);
+    const draws = effect.draws;
+    effect.globalPointer(300, 250);
+    effect.step(60);
+    assert.equal(effect.draws, draws);
+    assert.equal(effect.pending, 0);
+    effect.intersect(true);
+    effect.step(2);
+    assert.ok(effect.draws > draws);
+  } finally { effect.cleanup(); }
+  assert.equal(effect.lostContexts, 1);
+  assert.equal(effect.listenerCount, 0);
+});
+
+test('LiquidEther retains the full fluid solve and only draws force when the pointer moves', () => {
+  const effect = mount('LiquidEther', {
+    autoDemo: false, iterationsPoisson: 16, resolution: 0.34, BFECC: false,
+  }, { width: 1920, height: 1080, dpr: 2 });
+  const lateResize = effect.captureResize();
+  try {
+    effect.step();
+    assert.equal(effect.draws, 1);
+    assert.equal(effect.targets, 5, 'viscosity is off; skip its two render targets');
+    assert.equal(effect.passes.length, 19, 'retain advection, divergence, all pressure iterations and projection');
+    const scalarPasses = effect.passes.filter(pass => pass.format === THREE.RedFormat);
+    assert.equal(scalarPasses.length, 17, 'divergence and pressure only need one channel');
+    assert.ok(effect.canvasSize.width * effect.canvasSize.height <= 2000000);
+    effect.globalMouse(1295, 652);
+    effect.step();
+    assert.equal(effect.passes.length, 39, 'pointer motion adds the force pass');
+    effect.visibility(true);
+    effect.step(60);
+    assert.equal(effect.draws, 2);
+    assert.equal(effect.pending, 0);
+  } finally { effect.cleanup(); }
+  lateResize();
+  effect.visibility(false);
+  effect.step(2);
+  assert.equal(effect.draws, 2);
+  assert.equal(effect.lostContexts, 1);
+  assert.equal(effect.listenerCount, 0);
+  assert.equal(effect.liveObservers, 0);
 });

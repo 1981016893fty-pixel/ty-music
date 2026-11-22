@@ -53,7 +53,8 @@ const Prism = ({
     const renderer = new Renderer({
       dpr: 1,
       alpha: transparent,
-      antialias: false
+      antialias: false,
+      depth: false
     });
     const gl = renderer.gl;
     gl.disable(gl.DEPTH_TEST);
@@ -148,7 +149,6 @@ const Prism = ({
         float z = 5.0;
         float d = 0.0;
 
-        vec3 p;
         vec4 o = vec4(0.0);
 
         float centerShift = uCenterShift;
@@ -163,11 +163,12 @@ const Prism = ({
           wob = mat2(c0, c1, c2, c0);
         }
 
+        // The wobble and rotation are linear; only the distance along the ray changes.
+        vec3 rayOrigin = uRot * vec3(f.x * wob[0].x, f.y, f.x * wob[1].x);
+        vec3 rayDirection = uRot * vec3(wob[0].y, 0.0, wob[1].y);
         const int STEPS = 100;
         for (int i = 0; i < STEPS; i++) {
-          p = vec3(f, z);
-          p.xz = p.xz * wob;
-          p = uRot * p;
+          vec3 p = rayOrigin + z * rayDirection;
           vec3 q = p;
           q.y += centerShift;
           d = 0.1 + 0.2 * abs(sdPyramidUpInv(q));

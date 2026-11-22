@@ -2252,7 +2252,10 @@ async function loadDiscoverData(retryCount) {
 function setHeroCover(coverUrl, trackId) {
   if (!coverUrl) return;
   const image = document.querySelector('.hero-art-fallback');
-  if (image) image.src = resolveMusicResource(coverUrl);
+  if (image) {
+    image.src = resolveMusicResource(coverUrl);
+    window.dispatchEvent(new Event('ty:herochange'));
+  }
   extractAlbumColors(coverUrl, function(colors) {
     if (trackId && String(state.heroTrack?.id) !== String(trackId)) return;
     applyHeroColors(colors);
@@ -2271,6 +2274,7 @@ function applyHeroColors(colors) {
   if (card) {
     card.style.setProperty('--hero-accent-rgb', rgb);
     card.style.setProperty('--hero-accent-soft-rgb', `${primary.r}, ${primary.g}, ${primary.b}`);
+    window.dispatchEvent(new Event('ty:herocolors'));
   }
 }
 
@@ -3312,6 +3316,7 @@ function applyAlbumColors(colors) {
   const player = $('#ampFullscreenPlayer');
   if (!player) return;
   window.ampGridColors = colors;
+  window.dispatchEvent(new CustomEvent('ty:ampgridcolors', { detail: colors }));
   if (!colors) {
     for (const property of ['--amp-accent', '--amp-accent-light', '--amp-accent-dark']) {
       player.style.removeProperty(property);
@@ -5213,12 +5218,17 @@ function updateAlbumFavButton(albumId) {
 }
 
 // 渲染专辑收藏页面（网格视图）
+let albumWallCoverListener;
 async function renderAlbumFavorites() {
   const container = document.getElementById('albumGrid');
   if (!container) return;
   
   // 获取所有收藏的专辑 ID
   const albumIds = [...state.albumFavorites];
+  albumWallCoverListener?.abort();
+  albumWallCoverListener = null;
+  window.albumDriftWallItems = [];
+  window.dispatchEvent(new Event('ty:albumdriftcovers'));
   const albumCount = document.getElementById('albumCount');
   if (albumCount) albumCount.textContent = albumIds.length + ' 张专辑';
   
@@ -5260,6 +5270,23 @@ async function renderAlbumFavorites() {
   }).join('');
   
   container.innerHTML = html;
+
+  // Reuse covers after the real grid has loaded them, including any fallback.
+  const wallItems = new Map();
+  const collectCover = event => {
+    const image = event.target;
+    if (!image.matches?.('img.album-card-cover') || image.naturalWidth === 0 ||
+        wallItems.has(image.currentSrc) || wallItems.size >= 15) return;
+    wallItems.set(image.currentSrc, { image: image.currentSrc });
+    window.albumDriftWallItems = [...wallItems.values()];
+    window.dispatchEvent(new Event('ty:albumdriftcovers'));
+    if (wallItems.size >= 15) container.removeEventListener('load', collectCover, true);
+  };
+  albumWallCoverListener = new AbortController();
+  container.addEventListener('load', collectCover, { capture: true, signal: albumWallCoverListener.signal });
+  container.querySelectorAll('img.album-card-cover').forEach(image => {
+    if (image.complete) collectCover({ target: image });
+  });
   
   // 添加点击事件
   container.querySelectorAll('.album-card').forEach(el => {

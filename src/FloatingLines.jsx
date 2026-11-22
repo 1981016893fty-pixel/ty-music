@@ -12,6 +12,9 @@ import {
 } from 'three';
 
 import './FloatingLines.css';
+import { createRenderLoop } from './renderLoop.mjs';
+
+const MAX_DRAWING_PIXELS = 2000000;
 
 const vertexShader = `
 precision highp float;
@@ -101,20 +104,10 @@ vec3 getLineColor(float t, vec3 baseColor) {
   return gradientColor * 0.5;
 }
 
-  float wave(vec2 uv, float offset, vec2 screenUv, vec2 mouseUv, bool shouldBend) {
-  float time = iTime * animationSpeed;
-
-  float x_offset   = offset;
+float wave(vec2 uv, float offset, float time, float bendOffset) {
   float x_movement = time * 0.1;
   float amp        = sin(offset + time * 0.2) * 0.3;
-  float y          = sin(uv.x + x_offset + x_movement) * amp;
-
-  if (shouldBend) {
-    vec2 d = screenUv - mouseUv;
-    float influence = exp(-dot(d, d) * bendRadius); // radial falloff around cursor
-    float bendOffset = (mouseUv.y - screenUv.y) * influence * bendStrength * bendInfluence;
-    y += bendOffset;
-  }
+  float y          = sin(uv.x + offset + x_movement) * amp + bendOffset;
 
   float m = uv.y - y;
   return 0.0175 / max(abs(m) + 0.01, 1e-3) + 0.01;
@@ -132,63 +125,56 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
   vec3 b = lineGradientCount > 0 ? vec3(0.0) : background_color(baseUv);
 
-  vec2 mouseUv = vec2(0.0);
-  if (interactive) {
-    mouseUv = (2.0 * iMouse - iResolution.xy) / iResolution.y;
+  float bendOffset = 0.0;
+  if (interactive && bendInfluence > 0.0) {
+    vec2 mouseUv = (2.0 * iMouse - iResolution.xy) / iResolution.y;
     mouseUv.y *= -1.0;
+    vec2 d = baseUv - mouseUv;
+    float influence = exp(-dot(d, d) * bendRadius);
+    bendOffset = (mouseUv.y - baseUv.y) * influence * bendStrength * bendInfluence;
   }
+  float radialAngle = log(length(baseUv) + 1.0);
+  float time = iTime * animationSpeed;
   
   if (enableBottom) {
+    vec2 ruv = baseUv * rotate(bottomWavePosition.z * radialAngle);
     for (int i = 0; i < bottomLineCount; ++i) {
       float fi = float(i);
       float t = fi / max(float(bottomLineCount - 1), 1.0);
       vec3 lineCol = getLineColor(t, b);
       
-      float angle = bottomWavePosition.z * log(length(baseUv) + 1.0);
-      vec2 ruv = baseUv * rotate(angle);
       col += lineCol * wave(
         ruv + vec2(bottomLineDistance * fi + bottomWavePosition.x, bottomWavePosition.y),
-        1.5 + 0.2 * fi,
-        baseUv,
-        mouseUv,
-        interactive
+        1.5 + 0.2 * fi, time, bendOffset
       ) * 0.2;
     }
   }
 
   if (enableMiddle) {
+    vec2 ruv = baseUv * rotate(middleWavePosition.z * radialAngle);
     for (int i = 0; i < middleLineCount; ++i) {
       float fi = float(i);
       float t = fi / max(float(middleLineCount - 1), 1.0);
       vec3 lineCol = getLineColor(t, b);
       
-      float angle = middleWavePosition.z * log(length(baseUv) + 1.0);
-      vec2 ruv = baseUv * rotate(angle);
       col += lineCol * wave(
         ruv + vec2(middleLineDistance * fi + middleWavePosition.x, middleWavePosition.y),
-        2.0 + 0.15 * fi,
-        baseUv,
-        mouseUv,
-        interactive
+        2.0 + 0.15 * fi, time, bendOffset
       );
     }
   }
 
   if (enableTop) {
+    vec2 ruv = baseUv * rotate(topWavePosition.z * radialAngle);
+    ruv.x *= -1.0;
     for (int i = 0; i < topLineCount; ++i) {
       float fi = float(i);
       float t = fi / max(float(topLineCount - 1), 1.0);
       vec3 lineCol = getLineColor(t, b);
       
-      float angle = topWavePosition.z * log(length(baseUv) + 1.0);
-      vec2 ruv = baseUv * rotate(angle);
-      ruv.x *= -1.0;
       col += lineCol * wave(
         ruv + vec2(topLineDistance * fi + topWavePosition.x, topWavePosition.y),
-        1.0 + 0.2 * fi,
-        baseUv,
-        mouseUv,
-        interactive
+        1.0 + 0.2 * fi, time, bendOffset
       ) * 0.1;
     }
   }
@@ -288,11 +274,7 @@ export default function FloatingLines({
     const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
     camera.position.z = 1;
 
-    const renderer = new WebGLRenderer({ antialias: true, alpha: false });
-    // Keep the fluid background crisp while avoiding excessive fragment work
-    // on Retina displays. The visual size remains unchanged via CSS sizing.
-    const coarsePointer = window.matchMedia('(hover: none), (pointer: coarse)').matches;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1));
+    const renderer = new WebGLRenderer({ antialias: false, alpha: false, depth: false });
     renderer.domElement.style.width = '100%';
     renderer.domElement.style.height = '100%';
     container.appendChild(renderer.domElement);
@@ -361,7 +343,9 @@ export default function FloatingLines({
     const material = new ShaderMaterial({
       uniforms,
       vertexShader,
-      fragmentShader
+      fragmentShader,
+      depthTest: false,
+      depthWrite: false
     });
 
     const geometry = new PlaneGeometry(2, 2);
@@ -369,17 +353,21 @@ export default function FloatingLines({
     scene.add(mesh);
 
     const clock = new Clock();
+    let loop;
 
     const setSize = () => {
       if (!active) return;
       const width = container.clientWidth || 1;
       const height = container.clientHeight || 1;
 
-      renderer.setSize(width, height, false);
+      const dpr = Math.min(window.devicePixelRatio || 1, 1, Math.sqrt(MAX_DRAWING_PIXELS / (width * height)));
+      const canvas = renderer.domElement;
+      if (canvas.width !== Math.floor(width * dpr) || canvas.height !== Math.floor(height * dpr)) {
+        renderer.setDrawingBufferSize(width, height, dpr);
+      }
 
-      const canvasWidth = renderer.domElement.width;
-      const canvasHeight = renderer.domElement.height;
-      uniforms.iResolution.value.set(canvasWidth, canvasHeight, 1);
+      uniforms.iResolution.value.set(canvas.width, canvas.height, 1);
+      loop?.request();
     };
 
     setSize();
@@ -402,14 +390,13 @@ export default function FloatingLines({
       if (!rect.width || !rect.height) return;
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const dpr = renderer.getPixelRatio();
 
       if (x < 0 || x > rect.width || y < 0 || y > rect.height) {
         targetInfluenceRef.current = 0.0;
         return;
       }
 
-      targetMouseRef.current.set(x * dpr, (rect.height - y) * dpr);
+      targetMouseRef.current.set(x / rect.width, 1 - y / rect.height);
       targetInfluenceRef.current = 1.0;
 
       if (parallax) {
@@ -419,10 +406,12 @@ export default function FloatingLines({
         const offsetY = -(y - centerY) / rect.height;
         targetParallaxRef.current.set(offsetX * parallaxStrength, offsetY * parallaxStrength);
       }
+      loop?.request();
     };
 
     const handlePointerLeave = () => {
       targetInfluenceRef.current = 0.0;
+      loop?.request();
     };
 
     if (interactive) {
@@ -431,24 +420,21 @@ export default function FloatingLines({
       document.addEventListener('visibilitychange', handlePointerLeave);
     }
 
-    let raf = 0;
-    let lastRenderedAt = 0;
+    let lastRenderedAt = -Infinity;
     const frameInterval = 1000 / Math.max(1, maxFps);
 
-    const renderLoop = now => {
-      if (!active) return;
-
-      if (now - lastRenderedAt < frameInterval) {
-        raf = requestAnimationFrame(renderLoop);
-        return;
-      }
+    loop = createRenderLoop(container, now => {
+      if (now - lastRenderedAt + 0.25 < frameInterval) return true;
       lastRenderedAt = now;
 
       uniforms.iTime.value = clock.getElapsedTime();
 
       if (interactive) {
         currentMouseRef.current.lerp(targetMouseRef.current, mouseDamping);
-        uniforms.iMouse.value.copy(currentMouseRef.current);
+        uniforms.iMouse.value.set(
+          currentMouseRef.current.x * uniforms.iResolution.value.x,
+          currentMouseRef.current.y * uniforms.iResolution.value.y
+        );
 
         currentInfluenceRef.current += (targetInfluenceRef.current - currentInfluenceRef.current) * mouseDamping;
         uniforms.bendInfluence.value = currentInfluenceRef.current;
@@ -460,14 +446,14 @@ export default function FloatingLines({
       }
 
       renderer.render(scene, camera);
-      raf = requestAnimationFrame(renderLoop);
-    };
-    raf = requestAnimationFrame(renderLoop);
+      return animationSpeed !== 0 || interactive;
+    });
+    loop.request();
 
     return () => {
       active = false;
 
-      cancelAnimationFrame(raf);
+      loop.dispose();
 
       if (ro) ro.disconnect();
 

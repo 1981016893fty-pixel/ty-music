@@ -6,6 +6,8 @@ import ChromaGrid from './ChromaGrid';
 import ElasticSlider from './ElasticSlider';
 import MagicBento from './MagicBento';
 import { GlassIcon } from './GlassIcons';
+import { mountVisualScenes } from './visualScenes';
+import { initLightweightVisuals } from './lightweightVisuals.mjs';
 
 function mount(id, element) {
   const target = document.getElementById(id);
@@ -16,6 +18,8 @@ mount('bubbleMenuMount', <BubbleMenu />);
 mount('playerBubbleMount', <PlayerBubbleMenu />);
 mount('chromaGridMount', <ChromaGrid onGenreClick={genre => window.loadGenreDetail?.(genre)} />);
 mount('browseQuickGrid', <MagicBento />);
+mountVisualScenes(mount);
+initLightweightVisuals();
 
 for (const [id, icon] of [
   ['libraryFavoritesIconMount', 'fa-heart'],

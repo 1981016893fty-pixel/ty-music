@@ -3,11 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { browserBuild } from '../build.mjs';
 
-test('the shared web and desktop entry cannot load the retired graphics engines', async () => {
+test('the shared web and desktop entry loads graphics engines only on demand', async () => {
   const outputs = browserBuild.metafile.outputs;
-  for (const path of Object.keys(browserBuild.metafile.inputs)) {
-    assert.doesNotMatch(path, /(?:^|\/)node_modules\/(?:three|ogl|postprocessing|gsap|face-api\.js)\//);
-  }
   const initial = new Set();
   function visit(name) {
     if (initial.has(name)) return;
@@ -18,6 +15,15 @@ test('the shared web and desktop entry cannot load the retired graphics engines'
     }
   }
   visit('soft-aurora-react.js');
+  for (const name of initial) {
+    for (const path of Object.keys(outputs[name].inputs)) {
+      assert.doesNotMatch(path, /(?:^|\/)node_modules\/(?:three|ogl|postprocessing|gsap|face-api\.js)\//);
+    }
+  }
+  for (const effect of ['FloatingLines', 'GridDistortion', 'LiquidEther', 'GridScan']) {
+    const chunk = Object.keys(outputs).find(name => name.startsWith(`assets/aurora/${effect}-`));
+    assert.ok(chunk && !initial.has(chunk), `${effect} must have an on-demand chunk`);
+  }
   const bytes = [...initial].reduce((sum, name) => sum + outputs[name].bytes, 0);
   assert.ok(bytes < 900_000, `initial UI JavaScript is ${bytes} bytes; budget is 900000`);
   const manifest = JSON.parse(await readFile(new URL('../assets/aurora/manifest.json', import.meta.url), 'utf8'));

@@ -26,7 +26,8 @@ console.log('Verified GridDistortion pointer reset and fullscreen lifecycle hand
 // Execute the real component effect; only browser/GPU boundaries are simulated.
 const compiled = await transform(source, { loader: 'jsx', format: 'cjs' });
 function mount(props = {}) {
-  let effect, cleanup, textureReady, resize, draws = 0, lost = 0, uploaded = 0, refs = 0;
+  let cleanup, textureReady, resize, draws = 0, lost = 0, uploaded = 0, refs = 0;
+  const effects = [];
   let frameId = 0;
   const frames = new Map(), windowEvents = new Map(), documentEvents = new Map();
   const listeners = events => ({
@@ -58,7 +59,7 @@ function mount(props = {}) {
     exports: {}, module: { exports: {} },
     React: { createElement: () => null },
     require(name) {
-      if (name === 'react') return { useEffect(callback) { effect = callback; }, useRef: value => ({ current: refs++ === 0 ? container : value }) };
+      if (name === 'react') return { useEffect(callback) { effects.push(callback); }, useRef: value => ({ current: refs++ === 0 ? container : value }) };
       if (name === 'three') return THREE;
       if (name.endsWith('.css')) return {};
       throw Error(`Unexpected import ${name}`);
@@ -73,7 +74,8 @@ function mount(props = {}) {
   };
   vm.runInNewContext(compiled.code, context);
   context.module.exports.default({ imageSrc: 'fixture.jpg', ...props });
-  cleanup = effect();
+  cleanup = effects[0]();
+  effects[1]();
   function run(limit = 500) {
     let steps = 0;
     while (frames.size && steps++ < limit) {

@@ -1,4 +1,3 @@
-import * as faceapi from 'face-api.js';
 import { BloomEffect, ChromaticAberrationEffect, EffectComposer, EffectPass, RenderPass } from 'postprocessing';
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
@@ -423,7 +422,7 @@ export const GridScan = ({
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     rendererRef.current = renderer;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(1);
     renderer.setSize(container.clientWidth, container.clientHeight);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.NoToneMapping;
@@ -510,8 +509,9 @@ export const GridScan = ({
     window.addEventListener('resize', onResize);
 
     let last = performance.now();
-    const tick = () => {
-      const now = performance.now();
+    const tick = now => {
+      rafRef.current = requestAnimationFrame(tick);
+      if (document.hidden || now - last + 0.25 < 1000 / 30) return;
       const dt = Math.max(0, Math.min(0.1, (now - last) / 1000));
       last = now;
 
@@ -541,8 +541,7 @@ export const GridScan = ({
       yawCurrent.current = yawSm.value;
       yawVel.current = yawSm.v;
 
-      const skew = new THREE.Vector2(lookCurrent.current.x * skewScale, -lookCurrent.current.y * yBoost * skewScale);
-      material.uniforms.uSkew.value.set(skew.x, skew.y);
+      material.uniforms.uSkew.value.set(lookCurrent.current.x * skewScale, -lookCurrent.current.y * yBoost * skewScale);
       material.uniforms.uTilt.value = tiltCurrent.current * tiltScale;
       material.uniforms.uYaw.value = THREE.MathUtils.clamp(yawCurrent.current * yawScale, -0.6, 0.6);
 
@@ -553,7 +552,6 @@ export const GridScan = ({
       } else {
         renderer.render(scene, camera);
       }
-      rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
 
@@ -675,6 +673,8 @@ export const GridScan = ({
     let canceled = false;
     const load = async () => {
       try {
+        const faceapi = await import('face-api.js');
+        if (canceled) return;
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(modelsPath),
           faceapi.nets.faceLandmark68TinyNet.loadFromUri(modelsPath)
@@ -688,7 +688,7 @@ export const GridScan = ({
     return () => {
       canceled = true;
     };
-  }, [modelsPath]);
+  }, [enableWebcam, modelsPath]);
 
   useEffect(() => {
     let stop = false;
@@ -699,11 +699,18 @@ export const GridScan = ({
       if (!enableWebcam || !modelsReady) return;
       if (!video) return;
 
+      let faceapi;
       try {
+        faceapi = await import('face-api.js');
+        if (stop) return;
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
           audio: false
         });
+        if (stop) {
+          stream.getTracks().forEach(track => track.stop());
+          return;
+        }
         video.srcObject = stream;
         await video.play();
       } catch {
