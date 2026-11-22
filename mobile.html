@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111114">
+  <title>TY Music</title>
+  <link rel="icon" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon-192.png">
+  <link rel="stylesheet" href="/mobile.css?v=3">
+  <script defer src="/gd-embeat-core.js?v=20261118-quality-v53"></script>
+  <script defer src="/browser-provider.js?v=20261121-artwork-v65"></script>
+  <script defer src="/search-session.js?v=20261122-exclusive-search-v80"></script>
+  <script defer src="/mobile.js?v=4"></script>
+</head>
+<body>
+  <header class="top">
+    <h1>TY Music</h1>
+    <nav aria-label="曲库">
+      <button type="button" id="show-search" aria-pressed="true">搜索</button>
+      <button type="button" id="show-likes" aria-pressed="false">喜欢</button>
+    </nav>
+  </header>
+  <main>
+    <section id="search">
+      <form id="search-form" role="search">
+        <input id="query" type="search" aria-label="歌曲、歌手或专辑" placeholder="歌曲、歌手或专辑" required maxlength="512" enterkeyhint="search">
+        <button type="submit">搜索</button>
+      </form>
+      <p id="search-status" class="status" role="status"></p>
+      <ul id="results" class="tracks" aria-label="搜索结果"></ul>
+      <button type="button" id="more" hidden>加载更多</button>
+    </section>
+    <section id="likes" hidden aria-labelledby="likes-title">
+      <h2 id="likes-title">喜欢的歌曲</h2>
+      <p id="likes-status" class="status"></p>
+      <ul id="liked-tracks" class="tracks"></ul>
+    </section>
+  </main>
+  <footer id="player">
+    <div class="player-inner">
+      <div class="now">
+        <button id="open-player" aria-label="展开全屏播放" aria-haspopup="dialog" aria-expanded="false" disabled>
+          <span class="cover" aria-hidden="true"><span>♪</span><img id="cover" alt="" width="48" height="48" hidden></span>
+          <span class="track-meta"><strong id="song-title">未在播放</strong><small id="song-artist"></small></span>
+          <span id="expand-player" aria-hidden="true">⌃</span>
+        </button>
+        <button id="like" aria-label="喜欢当前歌曲" aria-pressed="false" disabled>♡</button>
+      </div>
+      <div class="timeline">
+        <time id="elapsed">0:00</time>
+        <input id="seek" type="range" min="0" max="1" value="0" step="0.1" aria-label="播放进度" disabled>
+        <time id="duration">0:00</time>
+      </div>
+      <div class="transport">
+        <button id="open-queue" aria-haspopup="dialog">队列</button>
+        <button id="previous" aria-label="上一首" disabled>⏮</button>
+        <button id="toggle" aria-label="播放" disabled>▶</button>
+        <button id="next" aria-label="下一首" disabled>⏭</button>
+      </div>
+      <p id="play-status" class="status" role="status" hidden></p>
+    </div>
+    <audio id="audio" preload="none"></audio>
+  </footer>
+  <dialog id="full-player" aria-labelledby="full-player-title">
+    <header class="panel-head">
+      <h2 id="full-player-title">正在播放</h2>
+      <form method="dialog"><button aria-label="收起全屏播放" autofocus>⌄</button></form>
+    </header>
+    <div class="full-stage">
+      <div id="full-artwork" class="cover" aria-hidden="true"><span>♪</span><img id="full-cover" alt="" width="300" height="300" hidden></div>
+      <div id="lyrics-panel" role="region" aria-label="歌词">
+        <p id="lyrics-status" class="status" role="status"></p>
+        <ol id="lyrics-lines"></ol>
+      </div>
+    </div>
+  </dialog>
+  <dialog id="panel" aria-labelledby="panel-title">
+    <header class="panel-head">
+      <h2 id="panel-title">播放队列</h2>
+      <form method="dialog"><button aria-label="关闭" autofocus>×</button></form>
+    </header>
+    <div class="panel-content">
+      <p id="queue-status" class="status"></p>
+      <ul id="queued-tracks" class="tracks"></ul>
+    </div>
+  </dialog>
+  <noscript>请启用 JavaScript 以搜索和播放歌曲。</noscript>
+</body>
+</html>

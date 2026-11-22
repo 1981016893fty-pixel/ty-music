@@ -18,11 +18,25 @@ const index = await get('/');
 assert.equal(index.status, 200);
 const releaseTag = `<meta name="ty-music-commit" content="${expectedCommit}">`;
 assert.ok((await index.text()).includes(releaseTag), 'Homepage must serve the expected Git commit');
+const phone = { headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' }, redirect: 'manual' };
+for (const entry of ['/', '/index.html']) {
+  const mobileRedirect = await get(entry, phone);
+  assert.equal(mobileRedirect.status, 302, entry);
+  assert.equal(mobileRedirect.headers.get('location'), '/mobile');
+  assert.match(mobileRedirect.headers.get('cache-control'), /no-store/);
+}
+const mobile = await get('/mobile', phone);
+assert.equal(mobile.status, 200);
+assert.match(mobile.headers.get('content-type'), /text\/html/);
+const mobileHtml = await mobile.text();
+assert.match(mobileHtml, /id="search"/);
+assert.doesNotMatch(mobileHtml, /player\.js|soft-aurora|font-awesome/);
 // Browsers reject a redirected cached response for manual navigation.
 const sw = await get('/service-worker.js').then(r => r.text());
 const shellPath = sw.match(/const APP_SHELL = '([^']+)'/)?.[1];
 assert.ok(shellPath, 'service worker declares its cached shell');
 const shell = await get(shellPath, { redirect: 'manual' });
+assert.equal((await get(shellPath, phone)).status, 200, 'old mobile service worker precache must not redirect');
 assert.equal(shell.status, 200, 'precache URL must not redirect');
 assert.match(shell.headers.get('content-type'), /text\/html/);
 assert.ok((await shell.text()).includes(releaseTag), 'Precached homepage must serve the expected Git commit');

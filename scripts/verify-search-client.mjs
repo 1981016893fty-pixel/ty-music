@@ -7,7 +7,7 @@ import { setImmediate } from 'node:timers/promises';
 const source = await readFile(new URL('../player.js', import.meta.url), 'utf8');
 const sessionSource = await readFile(new URL('../search-session.js', import.meta.url), 'utf8');
 
-function playerSearch(fetch, timers = {}) {
+function playerSearch(fetch, timers = {}, embeat = async () => ({ ok: false, status: 502 })) {
   const elements = new Map();
   const queued = [];
   const rendered = [];
@@ -20,7 +20,7 @@ function playerSearch(fetch, timers = {}) {
   };
   const context = vm.createContext({
     fetch: (url, options) => url.includes('source=embeat')
-      ? Promise.resolve({ ok: false, status: 502 }) : fetch(url, options),
+      ? embeat(url, options) : fetch(url, options),
     AbortController, setTimeout, clearTimeout, ...timers, URL, URLSearchParams, console,
     $: element, state: { currentSource: 'netease' },
     SOURCE_LABELS: { netease: '全网搜索' }, browseResultTitleOverride: '',
@@ -45,9 +45,38 @@ function playerSearch(fetch, timers = {}) {
     cancel: () => context.cancelSearch(), quickStartVisible: () => element('#page-search .browse-quick-section').style.display !== 'none', output: () => element('#searchResults').innerHTML };
 }
 
-function response(name) {
-  return { ok: true, json: async () => ({ songs: [{ id: name, name, source: 'netease' }], nextOffset: 1, hasMore: false }) };
+function response(name, source = 'netease') {
+  return { ok: true, json: async () => ({ songs: [{ id: name, name, source }], nextOffset: 1, hasMore: false }) };
 }
+
+test('desktop search renders only Embeat and does not request NetEase when Embeat responds', async () => {
+  let fallbackRequests = 0;
+  const player = playerSearch(async () => { fallbackRequests++; return response('NetEase result'); }, {},
+    async () => response('Embeat result', 'embeat'));
+  await player.search('song');
+  assert.equal(player.output(), 'Embeat result');
+  assert.equal(fallbackRequests, 0);
+});
+
+test('a slow Embeat response replaces every provisional NetEase row with the Embeat page', async () => {
+  let resolveEmbeat;
+  const deadlines = new Map();
+  let timer = 0;
+  const player = playerSearch(async () => response('NetEase preview'), {
+    setTimeout: (callback, delay) => { deadlines.set(++timer, { callback, delay }); return timer; },
+    clearTimeout: id => deadlines.delete(id),
+  }, () => new Promise(resolve => { resolveEmbeat = resolve; }));
+  await player.search('song');
+  const preview = [...deadlines.values()].find(({ delay }) => delay < 12000);
+  assert.ok(preview, 'slow searches should offer a provisional result');
+  preview.callback();
+  await setImmediate();
+  assert.equal(player.output(), 'NetEase preview');
+  resolveEmbeat(response('Embeat original', 'embeat'));
+  await setImmediate();
+  assert.equal(player.output(), 'Embeat original');
+  assert.equal(deadlines.size, 0);
+});
 
 test('search pagination renders only newly added rows without changing the queue', async () => {
   let index = 0;
@@ -69,12 +98,14 @@ test('a later query wins even if an earlier server ignores cancellation', async 
   const player = playerSearch((url, options) => new Promise(resolve => pending.push({ url, options, resolve })));
   const first = player.search('first');
   assert.equal(player.quickStartVisible(), false, 'search results replace the tall browse introduction');
+  await first;
   const second = player.search('second');
+  await second;
   assert.equal(pending.length, 2, 'the second search must actually be sent');
   pending[1].resolve(response('second result'));
-  await second;
+  await setImmediate();
   pending[0].resolve(response('stale first result'));
-  await first;
+  await setImmediate();
   assert.equal(player.output(), 'second result');
 });
 
@@ -94,15 +125,20 @@ test('a valid empty search is distinct from an upstream failure', async () => {
 });
 
 test('a timed out request ends loading and the next search can recover', async () => {
-  let fireTimeout;
+  const deadlines = new Map();
+  let timer = 0;
   let count = 0;
   const player = playerSearch((url, { signal }) => ++count === 1 ? new Promise((resolve, reject) => {
     signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
   }) : Promise.resolve(response('recovered')), {
-    setTimeout: callback => { fireTimeout ||= callback; return 1; }, clearTimeout() {},
+    setTimeout: callback => { deadlines.set(++timer, callback); return timer; },
+    clearTimeout: key => deadlines.delete(key),
   });
   const pending = player.search('timeout');
-  fireTimeout(); await pending;
+  await pending;
+  assert.ok(deadlines.size > 0);
+  deadlines.values().next().value();
+  await setImmediate();
   assert.match(player.output(), /搜索超时/);
   await player.search('retry'); assert.equal(player.output(), 'recovered');
 });
@@ -111,6 +147,7 @@ test('clearing input invalidates a response that ignores abort', async () => {
   let resolve;
   const player = playerSearch(() => new Promise(done => { resolve = done; }));
   const pending = player.search('old');
-  player.cancel(); resolve(response('old result')); await pending;
+  await pending;
+  player.cancel(); resolve(response('old result')); await setImmediate();
   assert.doesNotMatch(player.output(), /old result/);
 });

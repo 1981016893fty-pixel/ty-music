@@ -1,5 +1,6 @@
 import { httpServerHandler } from 'cloudflare:node';
 import api from '../server-simple.js';
+import { mobileHomepage } from '../mobile-route.cjs';
 
 api.createServer({ staticFiles: false }).listen(8899);
 const backend = httpServerHandler({ port: 8899 });
@@ -33,6 +34,11 @@ async function fetchArtwork(request, env, context) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (mobileHomepage(url, request.method, request.headers.get('User-Agent'))) {
+      return new Response(null, {
+        status: 302, headers: { Location: '/mobile', 'Cache-Control': 'no-store', Vary: 'User-Agent' },
+      });
+    }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     if (request.method === 'GET' && artworkPaths.has(url.pathname)) return fetchArtwork(request, env, context);
     return backend.fetch(request, env, context);

@@ -28,8 +28,7 @@ function relevantSearchSongs(session, songs) {
   });
 }
 
-// Choose one catalog for a query. A speculative NetEase request keeps
-// fallback latency independent of the Embeat deadline.
+// A slow Embeat request may show a provisional NetEase page, never mixed results.
 function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, onChange, limit = 20 }) {
   let current = null;
   function cancel() {
@@ -44,7 +43,7 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
     const cancel = () => controller.abort();
     session.controller.signal.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(() => controller.abort({ name: 'TimeoutError' }),
-      source === 'embeat' && offset === 0 ? 6000 : 15000);
+      source === 'embeat' && offset === 0 ? 12000 : 15000);
     let onAbort;
     const aborted = new Promise((_, reject) => {
       onAbort = () => reject(signal.reason);
@@ -77,9 +76,70 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
       source: session.source,
       songs: session.songs.slice(), added,
       loading: session.loading && !session.songs.length,
-      hasMore: session.hasMore,
+      hasMore: !session.loading && session.hasMore,
       error: !session.songs.length ? session.error || null : null,
     });
+  }
+
+  function acceptPage(session, source, page) {
+    if (current !== session) return;
+    if (session.source !== source) {
+      session.source = source;
+      session.offset = 0;
+      session.songs = [];
+      session.seen.clear();
+    }
+    const added = relevantSearchSongs(session, page.songs).filter(song => {
+      const key = String(song.providerId ?? song.id);
+      if (session.seen.has(key)) return false;
+      session.seen.add(key);
+      return true;
+    });
+    session.offset = page.nextOffset;
+    session.hasMore = page.hasMore === true;
+    session.songs.push(...added);
+    publish(session, added);
+  }
+
+  function fail(session, error) {
+    if (current !== session) return;
+    session.loading = false;
+    session.hasMore = false;
+    session.error = error?.name === 'TimeoutError' ? '搜索超时，请稍后重试' : '搜索失败，请稍后重试';
+    publish(session);
+  }
+
+  async function loadFirst(session) {
+    const fallback = new AbortController();
+    let pendingFallback;
+    const requestFallback = () => pendingFallback ||= requestPage(session, 'netease', fallback)
+      .then(page => ({ page }), error => ({ error }));
+    const embeat = requestPage(session, 'embeat', new AbortController());
+    let waitingForEmbeat = true;
+    const previewTimer = setTimeout(async () => {
+      if (current !== session) return;
+      const { page } = await requestFallback();
+      if (waitingForEmbeat && page?.songs.length) acceptPage(session, 'netease', page);
+    }, 2000);
+    try {
+      const page = await embeat;
+      fallback.abort();
+      session.loading = false;
+      acceptPage(session, 'embeat', page);
+    } catch {
+      waitingForEmbeat = false;
+      clearTimeout(previewTimer);
+      if (current !== session) return;
+      const { page, error } = await requestFallback();
+      if (current !== session) return;
+      session.loading = false;
+      if (!page) fail(session, error);
+      else if (session.source === 'netease') publish(session);
+      else acceptPage(session, 'netease', page);
+    } finally {
+      waitingForEmbeat = false;
+      clearTimeout(previewTimer);
+    }
   }
 
   async function loadMore() {
@@ -87,52 +147,18 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
     if (!session || session.loading || !session.hasMore) return;
     session.loading = true;
     try {
-      let page;
-      if (session.source) {
-        page = await requestPage(session, session.source, new AbortController());
-      } else {
-        const fallback = new AbortController();
-        const netease = requestPage(session, 'netease', fallback)
-          .then(result => ({ result }), error => ({ error }));
-        try {
-          page = await requestPage(session, 'embeat', new AbortController());
-          session.source = 'embeat';
-          fallback.abort();
-        } catch {
-          if (current !== session) return;
-          session.source = 'netease';
-          const { result, error } = await netease;
-          if (error) throw error;
-          page = result;
-        }
-      }
-      if (current !== session) return;
-      const added = relevantSearchSongs(session, page.songs).filter(song => {
-        const key = String(song.providerId ?? song.id);
-        if (session.seen.has(key)) return false;
-        session.seen.add(key);
-        return true;
-      });
-      session.offset = page.nextOffset;
-      session.hasMore = page.hasMore === true;
-      session.songs.push(...added);
+      const page = await requestPage(session, session.source, new AbortController());
       session.loading = false;
-      publish(session, added);
-    } catch (error) {
-      if (current !== session) return;
-      session.loading = false;
-      session.hasMore = false;
-      session.error = error?.name === 'TimeoutError' ? '搜索超时，请稍后重试' : '搜索失败，请稍后重试';
-      publish(session);
-    }
+      acceptPage(session, session.source, page);
+    } catch (error) { fail(session, error); }
   }
 
   return {
     search(query) {
       cancel();
       current = { query, normalizedQuery: normalizeSearchText(query), source: '', offset: 0,
-        songs: [], seen: new Set(), hasMore: true, loading: false, controller: new AbortController() };
-      void loadMore();
+        songs: [], seen: new Set(), hasMore: false, loading: true, controller: new AbortController() };
+      void loadFirst(current);
       publish(current);
     },
     loadMore,

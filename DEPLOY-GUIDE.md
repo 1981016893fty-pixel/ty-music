@@ -37,7 +37,7 @@ npx --yes wrangler@4.164.0 pages deploy pages-dist --project-name ty-music --bra
 node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 ```
 
-构建把 `git rev-parse HEAD` 写入健康检查 `commit`。工作树未提交时此值仅是基点，不证明改动已经提交；正式部署前核对工作区及哈希。发布不需要提交 `pages-dist/`。不能上传仓库根目录，其中含服务端及用户数据文件。构建显式白名单发布，`_routes.json` 仅让 `/api/*` 进入 Worker，静态文件不占用函数调用额度；无哈希入口重新验证，哈希分块长期缓存。
+构建把 `git rev-parse HEAD` 写入健康检查 `commit`。工作树未提交时此值仅是基点，不证明改动已经提交；正式部署前核对工作区及哈希。发布不需要提交 `pages-dist/`。不能上传仓库根目录，其中含服务端及用户数据文件。构建显式白名单发布：`_routes.json` 让首页和 `/api/*` 进入 Worker，首页负责移动端分流；`/mobile` 及其他静态资源直出。无哈希入口重新验证，哈希分块长期缓存。
 
 ## 验收与排障
 
@@ -47,7 +47,7 @@ node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 
 每次发布更新 `service-worker.js` 中的 `APP_SHELL` URL，避免两个 Worker 共用同一个预缓存键。导航优先读取当前 Worker 安装的首页；该版本键只在安装时写入，普通访问不能用其它版本覆盖。HTML 始终注册同一个 `/service-worker.js` URL，让浏览器检查脚本更新。离线回退与封面缓存沿用原策略。回归命令：`node --test scripts/verify-cache-policy.mjs`。
 
-网页优先请求同源 API 获取网易云结果和封面地址，失败时由访问者网络直连 GD 网易云。Embeat 由访问者网络直连；首批成功时独占显示（含空列表），首批失败或超过 6 秒时回退网易云。已选源的分页不会混用另一个目录。Workers 出口也可能被音源限流。遇到 `GD_CLOCK_ERROR` 或 `GD_TIMEOUT` 时，检查上游连接与请求耗时。
+网页优先请求 Embeat，等候 2 秒后可先显示同源 API 返回的网易云结果。Embeat 在 12 秒内成功便替换列表（含空列表），失败或超时则留用网易云。只对最终选定的音源分页。Workers 出口也可能被音源限流。遇到 `GD_CLOCK_ERROR` 或 `GD_TIMEOUT` 时，检查上游连接与请求耗时。
 
 Pages 首次新域名或预览证书可能需要等待；握手失败时先核对部署状态再重试，不能禁用 TLS。Workers 的初始化、网络与上游可能带来延迟。免费额度属于账号共享，有请求及 CPU 上限；音频默认以 302 跳转至提供方。详情见选型说明。
 

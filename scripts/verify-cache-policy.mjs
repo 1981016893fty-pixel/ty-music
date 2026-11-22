@@ -4,6 +4,27 @@ import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
 
 const source = await readFile(new URL('../service-worker.js', import.meta.url), 'utf8');
+test('mobile upgrade skips desktop precaching and lets home navigation reach the network', async () => {
+  const handlers = {};
+  let skipped = false;
+  vm.runInNewContext(source, {
+    self: {
+      navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' },
+      addEventListener: (name, handler) => { handlers[name] = handler; },
+      skipWaiting: async () => { skipped = true; },
+    },
+    URL,
+  });
+  let install;
+  handlers.install({ waitUntil(promise) { install = promise; } });
+  await install;
+  assert.equal(skipped, true);
+  handlers.fetch({
+    request: { url: 'https://example.test/', method: 'GET', mode: 'navigate' },
+    respondWith() { assert.fail('The mobile redirect must come from the network'); },
+  });
+});
+
 test('install precaches the complete eager ESM graph and rejects off-site modules', async () => {
   for (const valid of [true, false]) {
     const handlers = {};

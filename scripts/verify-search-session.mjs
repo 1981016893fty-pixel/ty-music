@@ -31,12 +31,18 @@ for (const kind of ['http', 'malformed', 'rejected', 'stalled-cursor', 'timeout'
       clearTimeout: key => timers.delete(key),
     });
     session.search('failure');
-    requests[0].resolve(response([song('base')], 20, true));
-    if (kind === 'timeout') [...timers.values()].find(timer => timer.delay === 6000).fn();
-    else if (kind === 'rejected') requests[1].reject(new Error('network failure'));
-    else requests[1].resolve(kind === 'http' ? { ok: false, status: 403 }
+    assert.deepEqual(requests.map(request => request.params.get('source')), ['embeat']);
+    if (kind === 'timeout') {
+      const deadline = [...timers.values()][0];
+      assert.equal(deadline.delay, 12000);
+      deadline.fn();
+    } else if (kind === 'rejected') requests[0].reject(new Error('network failure'));
+    else requests[0].resolve(kind === 'http' ? { ok: false, status: 403 }
       : kind === 'malformed' ? { ok: true, json: async () => ({ songs: {} }) }
         : response([song('extra', 'embeat')], 0, true));
+    await setImmediate();
+    assert.deepEqual(requests.map(request => request.params.get('source')), ['embeat', 'netease']);
+    requests[1].resolve(response([song('base')], 20, true));
     await setImmediate();
     assert.equal(latest().source, 'netease');
     assert.deepEqual(Array.from(latest().songs, s => s.id), ['base']);
@@ -56,57 +62,58 @@ for (const kind of ['http', 'malformed', 'rejected', 'stalled-cursor', 'timeout'
 test('an Embeat pagination error does not mix sources', async () => {
   const { session, requests, latest } = setup();
   session.search('more');
-  requests[1].resolve(response([song('original', 'embeat')], 20, true));
+  requests[0].resolve(response([song('original', 'embeat')], 20, true));
   await setImmediate();
   session.loadMore();
-  requests[2].reject(new Error('network failure'));
+  requests[1].reject(new Error('network failure'));
   await setImmediate();
   assert.deepEqual(Array.from(latest().songs, s => s.id), ['original']);
   assert.equal(latest().hasMore, false);
-  assert.equal(requests.length, 3);
+  assert.equal(requests.length, 2);
 });
 
-test('new queries and clearing abort both catalogs and discard late results', async () => {
+test('a new query aborts stale fallback; clearing aborts pending Embeat without falling back', async () => {
   const { session, requests, latest, updates } = setup();
-  session.search('old'); session.search('new');
-  assert.ok(requests.slice(0, 2).every(request => request.signal.aborted));
+  session.search('old');
+  requests[0].reject(new Error('unreachable'));
+  await setImmediate();
+  session.search('new');
+  assert.equal(requests[1].signal.aborted, true);
   const count = updates.length;
-  requests[0].resolve(response([song('stale')])); requests[1].reject(new Error('stale failure'));
+  requests[1].resolve(response([song('stale')]));
   await setImmediate();
   assert.equal(updates.length, count);
-  session.loadMore(); assert.equal(requests.length, 4);
-  requests[2].resolve(response([song('new')])); requests[3].reject(new Error('unreachable'));
+  session.loadMore(); assert.equal(requests.length, 3);
+  requests[2].resolve(response([song('new', 'embeat')]));
   await setImmediate();
   assert.deepEqual(Array.from(latest().songs, s => s.id), ['new']);
   session.search('cleared'); session.cancel();
   const afterClear = updates.length;
-  assert.ok(requests.slice(4).every(request => request.signal.aborted));
-  requests[4].resolve(response([song('cleared')])); requests[5].resolve(response([song('cleared-extra', 'embeat')]));
+  assert.equal(requests[3].signal.aborted, true);
+  requests[3].reject(new Error('unreachable'));
   await setImmediate();
   assert.equal(updates.length, afterClear);
+  assert.equal(requests.length, 4);
 });
 
-test('Embeat wins without waiting for or publishing NetEase', async () => {
+test('successful Embeat searches and subsequent pages never request NetEase', async () => {
   const { session, requests, latest } = setup();
   session.search('November Rain Kris Wu');
   const embeat = requests.find(r => r.params.get('source') === 'embeat');
-  const netease = requests.find(r => r.params.get('source') === 'netease');
+  assert.equal(requests.length, 1);
   embeat.resolve(response([{ ...song('original', 'embeat'), name: 'November Rain', artist: 'Kris Wu' }], 20, true));
   await setImmediate();
   assert.deepEqual(Array.from(latest().songs, s => s.id), ['original']);
   assert.equal(latest().source, 'embeat');
-  assert.equal(netease.signal.aborted, true);
   session.loadMore();
-  assert.equal(requests.length, 3);
-  assert.equal(requests[2].params.get('source'), 'embeat');
-  assert.equal(requests[2].params.get('offset'), '20');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].params.get('source'), 'embeat');
+  assert.equal(requests[1].params.get('offset'), '20');
 });
 
-test('valid empty Embeat result suppresses even faster NetEase results', async () => {
+test('valid empty Embeat results never fall back to NetEase', async () => {
   const { session, requests, latest, updates } = setup();
   session.search('empty');
-  requests.find(r => r.params.get('source') === 'netease').resolve(response([song('unwanted')]));
-  await setImmediate();
   assert.equal(latest().loading, true);
   assert.ok(updates.every(update => !update.songs.length && !update.added.length));
   requests.find(r => r.params.get('source') === 'embeat').resolve(response([]));
@@ -115,20 +122,21 @@ test('valid empty Embeat result suppresses even faster NetEase results', async (
   assert.equal(latest().error, null);
   assert.equal(latest().loading, false);
   assert.equal(latest().songs.length, 0);
+  assert.equal(requests.length, 1);
 });
 
 test('artist searches exclude near names and unrelated titles across pages', async () => {
   const { session, requests, latest } = setup();
   session.search('  KRIS   WU ');
   const result = (id, artist, name = id) => ({ ...song(id, 'embeat'), name, artist });
-  requests[1].resolve(response([
+  requests[0].resolve(response([
     result('near', 'kriswwu'), result('original', 'Kris Wu'),
     result('collaboration', 'Travis Scott, Kris Wu'), result('tribute', 'Other', 'Kris Wu tribute'),
   ], 20, true));
   await setImmediate();
   assert.deepEqual(Array.from(latest().songs, s => s.id), ['original', 'collaboration']);
   session.loadMore();
-  requests[2].resolve(response([result('near-2', 'Kris Wuu'), result('second', ['Kris Wu', 'Other'])], 40));
+  requests[1].resolve(response([result('near-2', 'Kris Wuu'), result('second', ['Kris Wu', 'Other'])], 40));
   await setImmediate();
   assert.deepEqual(Array.from(latest().added, s => s.id), ['second']);
 });
@@ -136,7 +144,7 @@ test('artist searches exclude near names and unrelated titles across pages', asy
 test('song plus artist keywords can match both fields and a fuzzy artist alone does not match', async () => {
   const { session, requests, latest } = setup();
   session.search('November Rain Kris Wu');
-  requests[1].resolve(response([
+  requests[0].resolve(response([
     { ...song('original', 'embeat'), name: 'November Rain', artist: 'Kris Wu' },
     { ...song('near', 'embeat'), name: 'November Rain', artist: 'kriswwu' },
   ]));

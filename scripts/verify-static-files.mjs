@@ -37,6 +37,20 @@ test('real application respects gzip refusal and emits a cache variation header'
       assert.equal(response.headers['content-encoding'], undefined, path);
       assert.match(response.headers.vary, /Accept-Encoding/i);
     }
+    const phone = { headers: { 'user-agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)' } };
+    for (const path of ['/', '/index.html']) {
+      const redirect = await request(port, path, phone);
+      assert.equal(redirect.status, 302);
+      assert.equal(redirect.headers.location, '/mobile');
+      assert.equal(redirect.headers['cache-control'], 'no-store');
+    }
+    const desktop = await request(port, '/', { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' } });
+    assert.equal(desktop.status, 200);
+    assert.match(desktop.body.toString(), /id="welcomeScreen"/);
+    const mobile = await request(port, '/mobile', phone);
+    assert.equal(mobile.status, 200);
+    assert.match(mobile.body.toString(), /id="search"/);
+    assert.doesNotMatch(mobile.body.toString(), /player\.js|soft-aurora|font-awesome/);
     const health = JSON.parse((await request(port, '/api/health')).body);
     assert.equal(health.status, 'ok');
     assert.equal(health.searchSource, 'netease');

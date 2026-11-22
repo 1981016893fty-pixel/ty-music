@@ -19,6 +19,7 @@ const publicFiles = [
   'index.html', 'desktop.html', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
   'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css', 'liquid-glass.js',
   'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
+  'mobile.html', 'mobile.css', 'mobile.js',
 ];
 for (const file of [...publicFiles, 'assets', 'vendor']) {
   await cp(path.join(root, file), path.join(out, file), {
@@ -61,11 +62,12 @@ await build({
   },
 });
 
-await writeFile(path.join(out, '_routes.json'), JSON.stringify({ version: 1, include: ['/api/*'], exclude: [] }, null, 2) + '\n');
+await writeFile(path.join(out, '_routes.json'), JSON.stringify({ version: 1, include: ['/', '/index.html', '/api/*'], exclude: [] }, null, 2) + '\n');
 
-// Only API requests invoke the Worker. Revalidate unhashed files after deploys;
+// The Worker handles API requests and chooses the mobile home entry.
+// Revalidate unhashed files after deploys;
 // immutable caching belongs exclusively to content-addressed browser chunks.
-const headerBlocks = ['/', ...publicFiles.map(file => '/' + file), '/assets/aurora/manifest.json']
+const headerBlocks = ['/', '/mobile', ...publicFiles.map(file => '/' + file), '/assets/aurora/manifest.json']
   .map(url => `${url}\n  Cache-Control: no-cache`);
 for (const file of await readdir(path.join(out, 'assets/aurora'))) {
   if (/^[\w-]+-[A-Z0-9]{8}\.js$/.test(file)) {
