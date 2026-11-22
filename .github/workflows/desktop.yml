@@ -54,9 +54,17 @@ jobs:
       - run: npm run ${{ matrix.command }}
         env:
           APPLE_SIGNING_IDENTITY: ${{ matrix.signing_identity }}
-      - name: Verify macOS application signature
+      - name: Verify application inside the macOS installer
         if: runner.os == 'macOS'
-        run: codesign --verify --deep --strict "src-tauri/target/release/bundle/macos/TY Music.app"
+        shell: bash
+        run: |
+          shopt -s nullglob
+          installers=(src-tauri/target/release/bundle/dmg/*.dmg)
+          test "${#installers[@]}" -eq 1
+          mount="$(mktemp -d)"
+          trap 'hdiutil detach "$mount" >/dev/null 2>&1 || true; rmdir "$mount" 2>/dev/null || true' EXIT
+          hdiutil attach "${installers[0]}" -mountpoint "$mount" -readonly -nobrowse
+          codesign --verify --deep --strict "$mount/TY Music.app"
       - uses: actions/upload-artifact@v4
         with:
           name: desktop-${{ matrix.platform }}
