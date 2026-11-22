@@ -8282,17 +8282,20 @@ body.native-mini-mode #volumeBtn {
   #browseSplashCursorMount { display: none !important; }
 }
 
-/* Keep the frosted face inside a single border. */
+/* Let the button clip its sheen; nested blur and clipping can draw another edge. */
 .specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry) {
   -webkit-appearance: none;
   appearance: none;
   border: 1px solid rgba(255, 255, 255, .65);
   border-radius: 999px;
-  background: rgba(255, 255, 255, .02) padding-box;
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  background: rgba(255, 255, 255, .02);
+  overflow: hidden;
   color: #fff;
   box-shadow: none;
+}
+.specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry)::before {
+  inset: 0;
+  border-radius: 0;
 }
 .specular-button.welcome-learn-more { background-color: rgba(255, 255, 255, .045); }
 .specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry):hover,

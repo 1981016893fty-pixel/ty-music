@@ -4,15 +4,15 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v72-original-ui';
+const CACHE_NAME = 'ty-music-v77-entry-edge';
 const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
 const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261122-original-ui-v72';
+const APP_SHELL = '/?v=20261122-entry-edge-v77';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261122-original-ui-v72',
+  '/style.css?v=20261122-entry-edge-v77',
   '/player.js?v=20261122-original-ui-v72',
   '/local-music-db.js?v=20261121-memory-v64',
   '/gd-embeat-core.js?v=20261118-quality-v53',
