@@ -32,7 +32,10 @@ button {
 }
 button:disabled { opacity: .42; cursor: default; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-button[aria-pressed="true"] { color: var(--accent); background: #35242a; }
+.icon-defs { position: absolute; }
+.icon { flex: none; width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.icon-button { display: inline-grid; place-items: center; padding: 0; }
+.icon-button:not(:disabled):active, #more:active { background: var(--line); }
 .top, main, .player-inner { width: min(100%, 44rem); margin-inline: auto; }
 .top, main, .player-inner, .panel-head, .panel-content {
   padding-inline: max(1rem, env(safe-area-inset-left)) max(1rem, env(safe-area-inset-right));
@@ -47,6 +50,9 @@ button[aria-pressed="true"] { color: var(--accent); background: #35242a; }
 h1 { margin: 0; font-size: 1.375rem; }
 h2 { margin: .5rem 0; font-size: 1.125rem; }
 nav, #search-form { display: flex; gap: .4rem; }
+.top nav { gap: .2rem; padding: .2rem; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+.top nav button { color: var(--muted); font-size: .875rem; font-weight: 600; }
+.top nav button[aria-pressed="true"] { color: var(--text); background: #37343b; }
 main { overflow: auto; padding-bottom: .75rem; }
 #search-form { margin-top: .25rem; }
 #query {
@@ -60,6 +66,8 @@ main { overflow: auto; padding-bottom: .75rem; }
   border-radius: 8px;
 }
 #search-form button, #toggle { background: var(--accent); color: #171217; font-weight: 700; }
+#search-form button:active, #toggle:not(:disabled):active { background: #ff91a4; }
+#search-form button:focus-visible, #toggle:focus-visible { outline-color: #171217; }
 .status { margin: .5rem 0; color: var(--muted); font-size: .875rem; overflow-wrap: anywhere; }
 .status:empty { display: none; }
 .tracks, #lyrics-lines { margin: 0; padding: 0; list-style: none; }
@@ -75,13 +83,15 @@ main { overflow: auto; padding-bottom: .75rem; }
   text-overflow: ellipsis;
 }
 .track-meta small { margin-top: .15rem; font-size: .8125rem; color: var(--muted); }
-.track-action, #like, #previous, #next, #toggle, .panel-head button { font-size: 1.3rem; }
+.track-action, #open-queue { color: var(--muted); }
+#like[aria-pressed="true"] { color: #ff526d; background: #40242f; }
+#like[aria-pressed="true"] .icon, #toggle .icon { fill: currentColor; }
 #more { margin-top: .55rem; border-color: var(--line); }
 #player { background: var(--panel); border-top: 1px solid var(--line); }
 .player-inner { padding-top: .6rem; padding-bottom: max(.6rem, env(safe-area-inset-bottom)); }
 .now { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .35rem; }
-#open-player { display: flex; align-items: center; gap: .7rem; padding: 0; text-align: start; }
-#expand-player { margin-inline-start: auto; padding-inline: .4rem; color: var(--muted); }
+#open-player { display: flex; align-items: center; gap: .65rem; padding: 0 .35rem; text-align: start; }
+#expand-player { margin-inline-start: auto; color: var(--muted); }
 .cover { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 6px; overflow: hidden; background: var(--line); color: var(--muted); font-size: 1.25rem; }
 .cover { flex: none; }
 .cover > * { grid-area: 1 / 1; }
@@ -89,7 +99,9 @@ main { overflow: auto; padding-bottom: .75rem; }
 .track-thumbnail { width: 44px; height: 44px; }
 .timeline { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .5rem; align-items: center; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
 #seek { width: 100%; min-height: 32px; margin: 0; accent-color: var(--accent); }
-.transport { display: grid; grid-template-columns: repeat(4, 1fr); gap: .15rem; }
+.transport { display: grid; grid-template-columns: repeat(5, minmax(44px, 1fr)); align-items: center; justify-items: center; }
+.transport .icon-button { width: 44px; }
+#toggle { width: 52px; height: 44px; border-radius: 10px; }
 dialog {
   width: min(100%, 44rem);
   max-width: 100%;

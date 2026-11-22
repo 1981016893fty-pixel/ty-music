@@ -7,13 +7,27 @@
   <title>TY Music</title>
   <link rel="icon" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon-192.png">
-  <link rel="stylesheet" href="/mobile.css?v=3">
+  <link rel="stylesheet" href="/mobile.css?v=4">
   <script defer src="/gd-embeat-core.js?v=20261118-quality-v53"></script>
   <script defer src="/browser-provider.js?v=20261121-artwork-v65"></script>
   <script defer src="/search-session.js?v=20261122-exclusive-search-v80"></script>
-  <script defer src="/mobile.js?v=4"></script>
+  <script defer src="/mobile.js?v=5"></script>
 </head>
 <body>
+  <svg class="icon-defs" aria-hidden="true" width="0" height="0">
+    <!-- Lucide and Feather icons; see vendor/mobile-icons/LICENSE.txt. -->
+    <symbol id="icon-heart" viewBox="0 0 24 24"><path d="M2 9.5a5.5 5.5 0 0 1 9.591-3.676a.56.56 0 0 0 .818 0A5.49 5.49 0 0 1 22 9.5c0 2.29-1.5 4-3 5.5l-5.492 5.313a2 2 0 0 1-3 .019L5 15c-1.5-1.5-3-3.2-3-5.5"/></symbol>
+    <symbol id="icon-play" viewBox="0 0 24 24"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></symbol>
+    <symbol id="icon-pause" viewBox="0 0 24 24"><rect width="5" height="18" x="14" y="3" rx="1"/><rect width="5" height="18" x="5" y="3" rx="1"/></symbol>
+    <symbol id="icon-previous" viewBox="0 0 24 24"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432zM3 20V4"/></symbol>
+    <symbol id="icon-next" viewBox="0 0 24 24"><path d="M21 4v16M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></symbol>
+    <symbol id="icon-queue" viewBox="0 0 24 24"><path d="M16 5H3m8 7H3m8 7H3m18-3V5"/><circle cx="18" cy="16" r="3"/></symbol>
+    <symbol id="icon-expand" viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></symbol>
+    <symbol id="icon-collapse" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="icon-add" viewBox="0 0 24 24"><path d="M5 12h14m-7-7v14"/></symbol>
+    <symbol id="icon-remove" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  </svg>
   <header class="top">
     <h1>TY Music</h1>
     <nav aria-label="曲库">
@@ -43,9 +57,9 @@
         <button id="open-player" aria-label="展开全屏播放" aria-haspopup="dialog" aria-expanded="false" disabled>
           <span class="cover" aria-hidden="true"><span>♪</span><img id="cover" alt="" width="48" height="48" hidden></span>
           <span class="track-meta"><strong id="song-title">未在播放</strong><small id="song-artist"></small></span>
-          <span id="expand-player" aria-hidden="true">⌃</span>
+          <svg id="expand-player" class="icon" aria-hidden="true"><use href="#icon-expand"/></svg>
         </button>
-        <button id="like" aria-label="喜欢当前歌曲" aria-pressed="false" disabled>♡</button>
+        <button id="like" class="icon-button" aria-label="喜欢当前歌曲" aria-pressed="false" disabled><svg class="icon" aria-hidden="true"><use href="#icon-heart"/></svg></button>
       </div>
       <div class="timeline">
         <time id="elapsed">0:00</time>
@@ -53,10 +67,10 @@
         <time id="duration">0:00</time>
       </div>
       <div class="transport">
-        <button id="open-queue" aria-haspopup="dialog">队列</button>
-        <button id="previous" aria-label="上一首" disabled>⏮</button>
-        <button id="toggle" aria-label="播放" disabled>▶</button>
-        <button id="next" aria-label="下一首" disabled>⏭</button>
+        <button id="open-queue" class="icon-button" aria-haspopup="dialog" aria-label="队列" title="队列"><svg class="icon" aria-hidden="true"><use href="#icon-queue"/></svg></button>
+        <button id="previous" class="icon-button" aria-label="上一首" disabled><svg class="icon" aria-hidden="true"><use href="#icon-previous"/></svg></button>
+        <button id="toggle" class="icon-button" aria-label="播放" disabled><svg class="icon" aria-hidden="true"><use href="#icon-play"/></svg></button>
+        <button id="next" class="icon-button" aria-label="下一首" disabled><svg class="icon" aria-hidden="true"><use href="#icon-next"/></svg></button>
       </div>
       <p id="play-status" class="status" role="status" hidden></p>
     </div>
@@ -65,7 +79,7 @@
   <dialog id="full-player" aria-labelledby="full-player-title">
     <header class="panel-head">
       <h2 id="full-player-title">正在播放</h2>
-      <form method="dialog"><button aria-label="收起全屏播放" autofocus>⌄</button></form>
+      <form method="dialog"><button class="icon-button" aria-label="收起全屏播放" autofocus><svg class="icon" aria-hidden="true"><use href="#icon-collapse"/></svg></button></form>
     </header>
     <div class="full-stage">
       <div id="full-artwork" class="cover" aria-hidden="true"><span>♪</span><img id="full-cover" alt="" width="300" height="300" hidden></div>
@@ -78,7 +92,7 @@
   <dialog id="panel" aria-labelledby="panel-title">
     <header class="panel-head">
       <h2 id="panel-title">播放队列</h2>
-      <form method="dialog"><button aria-label="关闭" autofocus>×</button></form>
+      <form method="dialog"><button class="icon-button" aria-label="关闭队列" autofocus><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button></form>
     </header>
     <div class="panel-content">
       <p id="queue-status" class="status"></p>
