@@ -1,6 +1,6 @@
 # TY Music 部署与排障
 
-目标部署为 [Cloudflare Pages](https://ty-music.pages.dev)，前端静态文件与 `/api/*` Worker 同源。无需 InsForge、Render、账号数据库或独立常驻服务器；收藏与歌单仍保存在浏览器，本地音频在 IndexedDB。选型、免费额度与边界见 [hosting-choice](docs/hosting-choice.md)，实施状态见[维护指南](docs/maintenance.md#cloudflare-迁移2026-11-18)。
+生产站部署在 [Cloudflare Pages](https://ty-music.pages.dev)，前端静态文件与 `/api/*` Worker 同源。项目没有独立常驻服务器或账号数据库；收藏与歌单保存在浏览器，本地音频在 IndexedDB。选型与免费额度见 [hosting-choice](docs/hosting-choice.md)。
 
 ## 本地与发布
 
@@ -49,13 +49,13 @@ node scripts/verify-deployment.mjs https://ty-music.pages.dev --network
 
 网页优先请求同源 API 获取网易云结果和封面地址，失败时由访问者网络直连 GD 网易云。Embeat 由访问者网络直连；首批成功时独占显示（含空列表），首批失败或超过 6 秒时回退网易云。已选源的分页不会混用另一个目录。Workers 出口也可能被音源限流。遇到 `GD_CLOCK_ERROR` 或 `GD_TIMEOUT` 时，检查上游连接与请求耗时。
 
-Pages 首次新域名或预览证书可能需要等待；握手失败时先核对部署状态再重试，不能禁用 TLS。Workers 没有 Render Free 的闲置休眠唤醒流程，但初始化、网络与上游仍会带来延迟。免费额度属于账号共享，有请求及 CPU 上限；音频默认302让浏览器访问提供方，不作为无限媒体中转服务。详情见选型说明。
+Pages 首次新域名或预览证书可能需要等待；握手失败时先核对部署状态再重试，不能禁用 TLS。Workers 的初始化、网络与上游可能带来延迟。免费额度属于账号共享，有请求及 CPU 上限；音频默认以 302 跳转至提供方。详情见选型说明。
 
-## 曲库迁移与 Render 退出
+## 曲库备份与迁移
 
 新旧域名不共享 localStorage／IndexedDB。用原来收藏音乐的同一浏览器（用户主要为 Safari），在旧站 `/library-transfer.html` 下载完整备份，再到新站同名页面预览并合并导入，最后重载播放器检查。现有条目优先保留，音频只追加，文件与存储上限、部分失败见工具页面。备份包含个人曲库及完整音频，不能提交到 Git。
 
-`render.yaml` 从当前部署配置移除，桌面新构建改用 Pages API；已安装的旧桌面包仍需重建更新。旧 Render 服务仅在迁移验收前作为数据导出入口保留：先把带迁移工具的提交发布到旧服务，确认 Safari 备份已落盘且新站收藏、本地音频正常，再暂停/删除原服务。不删除浏览器资料、不清理旧站数据来完成迁移。不得把新站上线写成个人曲库已迁移或旧服务已停。
+桌面版 v1.0.5 及后续构建使用 Pages API；更早的安装包需要升级才能更新 API 地址。退役旧站前，先确认所需曲库已从原浏览器导出，并在新站导入后检查收藏及本地音频。网站部署无法迁移浏览器本地数据。
 
 ## 回退
 

@@ -16,8 +16,8 @@ const context = {
   encodeURIComponent,
   String,
   window: {
-    __TY_MUSIC_API_BASE__: 'https://ty-music.onrender.com',
-    location: { href: 'https://ty-music.onrender.com/' },
+    __TY_MUSIC_API_BASE__: 'https://api.example.test',
+    location: { href: 'https://app.example.test/' },
   },
   state: { trackCache: new Map() },
 };
@@ -36,7 +36,8 @@ vm.runInContext(`
 
 const cover = '/api/cover?size=1000&url=https%3A%2F%2Fp2.music.126.net%2Fcover.jpg';
 const normalized = context.coverUrlForTrack({ cover }, 300, 'netease');
-assert.match(normalized, /^https:\/\/ty-music\.onrender\.com\/api\/cover\?/);
+assert.equal(new URL(normalized).origin, 'https://api.example.test');
+assert.equal(new URL(normalized).pathname, '/api/cover');
 assert.match(normalized, /[?&]size=300(?:&|$)/);
 assert.doesNotMatch(normalized, /size=1000/);
 

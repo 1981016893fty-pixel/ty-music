@@ -169,9 +169,6 @@
 .specular-button.welcome-learn-more {
   min-width: 142px;
   min-height: 48px;
-  background: rgba(255,255,255,.045) !important;
-  color: #fff !important;
-  box-shadow: none;
 }
 
 .welcome-actions {
@@ -191,17 +188,6 @@
   line-height: 1.7 !important;
   text-align: center !important;
 }
-
-.welcome-learn-more {
-  cursor: pointer;
-}
-
-.welcome-learn-more:hover,
-.welcome-learn-more[aria-expanded="true"] {
-  background: rgba(255,255,255,.075) !important;
-}
-
-.welcome-learn-more:active { transform: scale(.97); }
 
 .welcome-features {
   display: grid;
@@ -858,10 +844,6 @@ html:has(.amp-fullscreen-player.show) .top-dock {
   height: 28px;
   margin-left: auto;
   padding: 0 13px;
-  border: 1px solid rgba(255,255,255,.72);
-  color: rgba(255,255,255,.82);
-  background: transparent;
-  box-shadow: none;
   overflow: hidden;
   font-size: 12px;
   font-weight: 650;
@@ -8302,11 +8284,27 @@ body.native-mini-mode #volumeBtn {
   #browseSplashCursorMount { display: none !important; }
 }
 
-/* Static surfaces keep the same controls in the browser and desktop shell. */
+/* Paint the highlight inside the single border without a canvas or shadow. */
+.specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry) {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(var(--pill-face, #191724), var(--pill-face, #191724)) padding-box,
+    linear-gradient(145deg, rgba(255,255,255,.68), rgba(255,255,255,.24) 46%, rgba(255,255,255,.12)) border-box;
+  color: #fff;
+  box-shadow: none;
+}
+.specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry):hover,
+.specular-button.welcome-learn-more[aria-expanded="true"] { --pill-face: #292638; }
+.specular-button:is(.welcome-start-button, .welcome-learn-more, .top-dock__client-entry):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+}
+
 .welcome-screen { background: linear-gradient(135deg, #111124, #211432 55%, #101925); }
-.welcome-actions .specular-button { border-radius: 999px; padding: 0 18px; }
+.welcome-actions .specular-button { padding: 0 18px; }
 #topDock { background: #151321; will-change: auto; }
-#topDockClientMount .top-dock__client-entry { border-radius: 999px; }
 .hero-card { border: 1px solid rgba(var(--hero-accent-rgb, 98, 241, 243), .38); }
 .browse-static-banner { display: grid; position: relative; overflow: hidden; border-radius: 14px; margin-bottom: 16px; }
 .browse-static-banner img { width: 100%; height: clamp(120px, 23vw, 250px); object-fit: cover; }
@@ -8330,11 +8328,31 @@ body.native-mini-mode #volumeBtn {
 .album-track-more:focus-visible { opacity: 1; }
 .track-options-menu { max-height: calc(100dvh - 16px); overflow: auto; }
 
-#playerLike.liked i,
-#ampLikeBtn.liked i,
-.track-row .like-btn.liked i,
-button.fav-remove-btn i { color: #ff526b !important; }
-#albumFavBtn.favorited i { color: #76e6d5 !important; }
+/* Match the actual pressed state; the shared button theme styles the full surface. */
+#playerLike[aria-pressed="true"],
+#ampLikeBtn[aria-pressed="true"],
+.track-row .row-action-btn.like-btn[aria-pressed="true"],
+#favoritesList .fav-remove-btn {
+  --favorite-accent: #ff6680;
+  --favorite-tint: rgba(255, 76, 107, .21);
+}
+#albumFavBtn[aria-pressed="true"] {
+  --favorite-accent: #76e6d5;
+  --favorite-tint: rgba(79, 220, 195, .22);
+}
+#playerLike[aria-pressed="true"],
+#ampLikeBtn[aria-pressed="true"],
+.track-row .row-action-btn.like-btn[aria-pressed="true"],
+#favoritesList .fav-remove-btn,
+#albumFavBtn[aria-pressed="true"] {
+  background: var(--favorite-tint) !important;
+  border-color: var(--favorite-accent) !important;
+}
+#playerLike[aria-pressed="true"] i,
+#ampLikeBtn[aria-pressed="true"] i,
+.track-row .row-action-btn.like-btn[aria-pressed="true"] i,
+#favoritesList .fav-remove-btn i,
+#albumFavBtn[aria-pressed="true"] i { color: var(--favorite-accent) !important; }
 
 @media (max-width: 900px) {
   .amp-fullscreen-player .amp-content {

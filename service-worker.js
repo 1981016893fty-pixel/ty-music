@@ -4,22 +4,22 @@
  * 策略：静态资源/图片缓存优先，目录缓存并刷新，搜索/播放仅网络
  */
 
-const CACHE_NAME = 'ty-music-v68-idle';
+const CACHE_NAME = 'ty-music-v69-controls';
 const RUNTIME_CACHE_NAME = 'ty-music-runtime-v1';
 const RUNTIME_CACHE_LIMIT = 128;
 // Pages redirects /index.html to /. A redirected cached response is invalid
 // for a browser navigation whose redirect mode is manual.
-const APP_SHELL = '/?v=20261122-idle-v68';
+const APP_SHELL = '/?v=20261122-controls-v69';
 const STATIC_ASSETS = [
   APP_SHELL,
-  '/style.css?v=20261122-idle-v68',
-  '/player.js?v=20261122-idle-v68',
+  '/style.css?v=20261122-controls-v69',
+  '/player.js?v=20261122-controls-v69',
   '/local-music-db.js?v=20261121-memory-v64',
   '/gd-embeat-core.js?v=20261118-quality-v53',
   '/browser-provider.js?v=20261121-artwork-v65',
   '/search-session.js?v=20261121-player-search-v63',
-  '/soft-aurora-react.js?v=20261122-idle-v68',
-  '/soft-aurora-react.css?v=20261122-idle-v68',
+  '/soft-aurora-react.js?v=20261122-controls-v69',
+  '/soft-aurora-react.css?v=20261122-controls-v69',
   '/assets/demo/cs1.webp',
   '/assets/demo/cs2.webp',
   '/assets/demo/cs3.webp',

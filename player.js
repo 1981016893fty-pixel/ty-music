@@ -1563,7 +1563,7 @@ audio.addEventListener('error', () => {
   }
 });
 
-// Timeout: if song doesn't start playing within 30s, skip (Render 免费版首次加载慢)
+// Skip tracks that cannot start within the playback deadline.
 audio.addEventListener('waiting', () => {
   if (playTimeout) clearTimeout(playTimeout);
   playTimeout = setTimeout(() => {
@@ -2157,8 +2157,7 @@ function applyHeroTrack(track) {
 }
 
 async function loadDiscover() {
-  // Render/API requests are expensive on a cold start. Keep the first
-  // rendered home state and its live result when navigating away and back.
+  // Reuse home results when the listener navigates away and back.
   if (state._discoverLoaded) return;
   state._discoverLoaded = true;
 
@@ -5224,7 +5223,7 @@ async function renderAlbumFavorites() {
   if (albumCount) albumCount.textContent = albumIds.length + ' 张专辑';
   
   if (!albumIds.length) {
-    container.innerHTML = '<div class="empty-state"><i class="fa-regular fa-bookmark"></i><p>还没有收藏专辑</p><span>在专辑详情页点击心形按钮即可收藏。</span></div>';
+    container.innerHTML = '<div class="empty-state"><i class="fa-regular fa-bookmark"></i><p>还没有收藏专辑</p><span>在专辑详情页点按书签收藏。</span></div>';
     return;
   }
   
