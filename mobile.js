@@ -4,6 +4,8 @@
   const byId = id => document.getElementById(id);
   const audio = byId('audio');
   const panel = byId('panel');
+  const fullPlayer = byId('full-player');
+  const playerControls = document.querySelector('.player-inner');
   const cover = byId('cover');
   const seek = byId('seek');
   const provider = createBrowserMusicProvider();
@@ -95,7 +97,7 @@
     return node;
   }
 
-  function trackRow(track, inQueue = false) {
+  function trackRow(track, inQueue = false, thumbnail = false) {
     const item = document.createElement('li');
     const select = button('', '', () => playTrack(track));
     select.className = 'track-meta';
@@ -105,7 +107,26 @@
     title.textContent = track.title;
     const artist = document.createElement('small');
     artist.textContent = track.artist;
-    select.append(title, artist);
+    if (thumbnail) {
+      select.className = 'track-pick';
+      const picture = document.createElement('span');
+      picture.className = 'cover track-thumbnail';
+      picture.setAttribute('aria-hidden', 'true');
+      const placeholder = document.createElement('span');
+      placeholder.textContent = '♪';
+      const image = new Image(44, 44);
+      image.alt = '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      const metadata = document.createElement('span');
+      metadata.className = 'track-meta';
+      metadata.append(title, artist);
+      picture.append(placeholder, image);
+      select.append(picture, metadata);
+      setCover(track, image, 120);
+    } else {
+      select.append(title, artist);
+    }
     const action = inQueue
       ? button('−', '从队列移除 ' + track.title, () => {
           const index = queue.findIndex(item => item.id === track.id);
@@ -159,11 +180,10 @@
   const search = createMusicSearchSession({
     searchPage: provider.search,
     onChange(page) {
-      const source = page.source === 'embeat' ? 'Embeat' : '网易云';
       byId('search-status').textContent = page.loading ? '正在搜索…' : page.error ||
-        (page.songs.length ? source : source + ' · 未找到歌曲');
+        (page.songs.length ? '' : '未找到歌曲');
       byId('more').hidden = page.loading || !page.hasMore;
-      byId('results').append(...page.added.map(asTrack).filter(Boolean).map(track => trackRow(track)));
+      byId('results').append(...page.added.map(asTrack).filter(Boolean).map(track => trackRow(track, false, true)));
     },
   });
   byId('search-form').addEventListener('submit', event => {
@@ -213,18 +233,59 @@
     if (next) playTrack(next);
   }
 
-  function setCover(track) {
-    cover.hidden = true;
-    cover.removeAttribute('src');
-    const url = track.coverSmall || track.cover;
-    if (typeof url !== 'string' || url === '/icon.svg') return;
+  const coverRequests = new WeakMap();
+  function setCover(track, image = cover, size = 300) {
+    const attempt = {};
+    coverRequests.set(image, attempt);
+    image.onerror = null;
+    image.hidden = false;
+    image.style.opacity = '0';
+    image.removeAttribute('src');
+    const picId = track.picId || track.pic_id;
+    let url;
     try {
-      const image = new URL(url, location.origin);
-      if (image.origin === location.origin || image.protocol === 'https:') cover.src = image.href;
+      const raw = track.coverSmall || track.cover;
+      if (raw && raw !== '/icon.svg') {
+        const candidate = new URL(raw, location.origin);
+        if (candidate.origin === location.origin && ['/api/cover', '/api/music/cover'].includes(candidate.pathname)) {
+          candidate.searchParams.set('size', size);
+          url = candidate.href;
+        } else if (candidate.protocol === 'https:' && !candidate.username && !candidate.password) {
+          url = candidate.href;
+        }
+      }
     } catch {}
+    if (!url && picId) {
+      url = '/api/music/cover?' + new URLSearchParams({ source: track.source, picId, size });
+    }
+    if (!url) return;
+    image.onload = () => { image.style.opacity = ''; };
+    image.referrerPolicy = 'no-referrer';
+    image.onerror = () => {
+      image.style.opacity = '0';
+      image.onerror = null;
+      if (!picId || track.source !== 'embeat') return;
+      provider.resource({ ...track, picId }, 'pic', { size }).then(direct => {
+        if (image.isConnected && coverRequests.get(image) === attempt) image.src = direct;
+      }).catch(() => {});
+    };
+    image.src = url;
   }
-  cover.addEventListener('load', () => { cover.hidden = false; });
-  cover.addEventListener('error', () => { cover.hidden = true; });
+
+  byId('open-player').addEventListener('click', () => {
+    if (!current || fullPlayer.open) return;
+    fullPlayer.append(playerControls);
+    byId('open-player').setAttribute('aria-expanded', 'true');
+    byId('open-player').tabIndex = -1;
+    setCover(current, byId('full-cover'), 300);
+    fullPlayer.showModal();
+  });
+  fullPlayer.addEventListener('close', () => {
+    byId('player').prepend(playerControls);
+    byId('open-player').setAttribute('aria-expanded', 'false');
+    byId('open-player').tabIndex = 0;
+    byId('open-player').focus();
+  });
 
   function requestPlay(request) {
     const attempt = ++request.attempt;
@@ -250,7 +311,9 @@
     byId('song-artist').textContent = track.artist;
     byId('toggle').disabled = false;
     byId('open-lyrics').disabled = false;
+    byId('open-player').disabled = false;
     setCover(track);
+    if (fullPlayer.open) setCover(track, byId('full-cover'), 300);
     updateLike();
     for (const node of document.querySelectorAll('main [data-track]')) {
       if (node.dataset.track === track.id) node.setAttribute('aria-current', 'true');

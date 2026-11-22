@@ -28,8 +28,7 @@ function relevantSearchSongs(session, songs) {
   });
 }
 
-// Choose one catalog for a query. A speculative NetEase request keeps
-// fallback latency independent of the Embeat deadline.
+// Choose one catalog per query. Only request NetEase after Embeat fails.
 function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, onChange, limit = 20 }) {
   let current = null;
   function cancel() {
@@ -44,7 +43,7 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
     const cancel = () => controller.abort();
     session.controller.signal.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(() => controller.abort({ name: 'TimeoutError' }),
-      source === 'embeat' && offset === 0 ? 6000 : 15000);
+      source === 'embeat' && offset === 0 ? 12000 : 15000);
     let onAbort;
     const aborted = new Promise((_, reject) => {
       onAbort = () => reject(signal.reason);
@@ -91,19 +90,13 @@ function createMusicSearchSession({ fetchImpl = globalThis.fetch, searchPage, on
       if (session.source) {
         page = await requestPage(session, session.source, new AbortController());
       } else {
-        const fallback = new AbortController();
-        const netease = requestPage(session, 'netease', fallback)
-          .then(result => ({ result }), error => ({ error }));
         try {
           page = await requestPage(session, 'embeat', new AbortController());
           session.source = 'embeat';
-          fallback.abort();
         } catch {
           if (current !== session) return;
           session.source = 'netease';
-          const { result, error } = await netease;
-          if (error) throw error;
-          page = result;
+          page = await requestPage(session, 'netease', new AbortController());
         }
       }
       if (current !== session) return;

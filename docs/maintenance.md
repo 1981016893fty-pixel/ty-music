@@ -2,7 +2,9 @@
 
 ## 移动版播放器
 
-`mobile.html`、`mobile.css`、`mobile.js` 负责移动版界面和播放。它只复用原有的 `browser-provider.js`、`gd-embeat-core.js` 和 `search-session.js`，不加载桌面播放器、特效、图标字体或首页图集。歌曲的封面仅在播放区加载，歌词只在打开时请求。队列随页面关闭清空；喜欢通过原有 `melodybox_fav` 和 `melodybox_tracks` 保存。同一站点的原曲库仍保存在浏览器，手机轻量版不会迁移或清除歌单、专辑或本地音频。
+`mobile.html`、`mobile.css`、`mobile.js` 负责移动版界面和播放。它只复用原有的 `browser-provider.js`、`gd-embeat-core.js` 和 `search-session.js`，不加载桌面播放器、特效、图标字体或首页图集。搜索列表使用懒加载缩略图，点底部歌曲区可展开大封面和原有控制，歌词只在打开时请求。队列随页面关闭清空；喜欢通过原有 `melodybox_fav` 和 `melodybox_tracks` 保存。同一站点的原曲库仍保存在浏览器。
+
+移动端隐藏音源标识。两端共用的 `search-session.js` 先请求 Embeat，成功（包括空结果）时不请求网易云；首请求失败或超时才启动网易云，分页沿用已选音源。浏览器根据音源是否响应选择结果，无法直接读取 VPN 开关。
 
 `mobile-route.cjs` 由本地 Node 和 Pages 首页共用：iPhone、iPad 和 Android 请求跳到 `/mobile`，窄屏桌面窗口仍打开桌面版。使用桌面标识的 iPad 可以直接访问 `/mobile`。旧 Service Worker 可能先显示缓存的旧首页；正常刷新以激活更新，或直接打开 `/mobile`，不用清除站点数据。
 
