@@ -1,6 +1,6 @@
 # TY Music 桌面客户端
 
-TY Music 用 Tauri 2 打包现有网页播放器。安装包内置界面和资源；在线搜索、封面和音频可访问 [Cloudflare Pages API](https://ty-music.pages.dev/api/health) 或外部音源。macOS 集成系统「正在播放」和媒体控制；两端可使用 `Command/Ctrl + Alt + Space` 切换播放状态。
+TY Music 用 Tauri 2 打包现有网页播放器。安装包内置界面和资源；在线搜索、封面和音频可访问 [Cloudflare Pages API](https://ty-music.pages.dev/api/health) 或外部音源。Mac 版是 Apple Silicon 原生 ARM64 应用，通过 DMG 分发，使用 macOS 自带的 WKWebView 显示播放器，集成系统窗口、「正在播放」和媒体控制。两端可使用 `Command/Ctrl + Alt + Space` 切换播放状态。
 
 ## 安装和更新
 

@@ -76,14 +76,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="$(node -p 'require("./package.json").version')"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$GITHUB_REF_NAME" == "v$version" ]]
-          [[ "$(node -p 'require("./src-tauri/tauri.conf.json").version')" == "$version" ]]
-          mkdir release-assets
+          tauri_version="$(node -p 'require("./src-tauri/tauri.conf.json").version')"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$GITHUB_REF_NAME" != "v$version" || "$tauri_version" != "$version" ]]; then
+            printf '%s\n' 'Git tag, npm and Tauri versions must match.' >&2
+            exit 1
+          fi
+          mkdir release-assets || exit 1
           for suffix in aarch64.dmg x64-setup.exe x64_en-US.msi; do
             filename="TY Music_${version}_${suffix}"
-            mapfile -t matches < <(find installers -type f -name "$filename")
-            [[ "${#matches[@]}" == 1 && -s "${matches[0]}" ]]
-            cp "${matches[0]}" "release-assets/TY.Music_${version}_${suffix}"
+            artifact="$(find installers -type f -name "$filename")" || exit 1
+            if [[ "$artifact" == *$'\n'* || ! -s "$artifact" ]]; then
+              printf 'Expected one nonempty installer: %s\n' "$filename" >&2
+              exit 1
+            fi
+            cp "$artifact" "release-assets/TY.Music_${version}_${suffix}" || exit 1
           done
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "TY Music $GITHUB_REF_NAME" \
             --notes-file "docs/releases/$GITHUB_REF_NAME.md" release-assets/*
