@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { browserBuild } from '../build.mjs';
 
-test('initial UI does not eagerly download every optional graphics engine', async () => {
+test('the shared web and desktop entry cannot load the retired graphics engines', async () => {
   const outputs = browserBuild.metafile.outputs;
+  for (const path of Object.keys(browserBuild.metafile.inputs)) {
+    assert.doesNotMatch(path, /(?:^|\/)node_modules\/(?:three|ogl|postprocessing|gsap|face-api\.js)\//);
+  }
   const initial = new Set();
   function visit(name) {
     if (initial.has(name)) return;

@@ -942,8 +942,6 @@ function navigateTo(page) {
   // 清理 Cover Flow 事件监听与动画
   if (state.currentPage === 'album-favorites' && page !== 'album-favorites') {
     cfStop();
-    if (driftWallRefreshTimer) clearTimeout(driftWallRefreshTimer);
-    driftWallRefreshTimer = null;
   }
   
   // 压入导航历史栈（同页不重复记录）
@@ -976,9 +974,6 @@ function navigateTo(page) {
   if (page === 'album-favorites') {
     renderAlbumFavorites();
     showAlbumGridView();
-    // The sidebar can open the album library directly, before any album detail
-    // has been visited. Prime the DriftWall with covers from the live sources.
-    loadDriftWallSourceCovers([]);
   }
 }
 
@@ -1004,7 +999,6 @@ function goBack() {
   if (prev === 'album-favorites') {
     renderAlbumFavorites();
     showAlbumGridView();
-    loadDriftWallSourceCovers([]);
   }
 }
 
@@ -1099,18 +1093,27 @@ function toggleFavorite(track) {
   }
   saveAll();
   updateLikeUI();
+  for (const row of document.querySelectorAll('.track-row[data-track-id]')) {
+    if (row.dataset.trackId === String(track.id)) {
+      paintSongLike(row.querySelector('.like-btn'), isFavorite(track.id));
+    }
+  }
   if (state.currentPage === 'favorites') renderFavorites();
 }
 
+function paintSongLike(button, liked) {
+  if (!button) return;
+  button.classList.toggle('liked', liked);
+  button.setAttribute('aria-pressed', String(liked));
+  button.title = liked ? '取消喜欢' : '喜欢歌曲';
+  const icon = button.querySelector('i');
+  if (icon) icon.className = `fa-${liked ? 'solid' : 'regular'} fa-heart`;
+}
+
 function updateLikeUI() {
-  const pl = $('#playerLike');
-  if (state.currentTrack && isFavorite(state.currentTrack.id)) {
-    pl.classList.add('active');
-    pl.querySelector('i').className = 'fa-solid fa-heart';
-  } else {
-    pl.classList.remove('active');
-    pl.querySelector('i').className = 'fa-regular fa-heart';
-  }
+  const liked = isFavorite(state.currentTrack?.id);
+  paintSongLike($('#playerLike'), liked);
+  paintSongLike($('#ampLikeBtn'), liked);
 }
 
 $('#playerLike').addEventListener('click', () => {
@@ -1388,7 +1391,7 @@ function playTrack(track, index, skipRecentUpdate) {
         showToast(e.name === 'NotAllowedError' ? '请点击播放按钮继续播放' : '播放失败，请换一首试试');
       });
     }
-    const direct = window.tyMusicProvider && !window.__TY_MUSIC_DESKTOP__;
+    const direct = window.tyMusicProvider && (!window.__TY_MUSIC_DESKTOP__ || track.source === 'embeat');
     pendingAudioResolution = direct ? playbackId : 0;
     // Start the existing path synchronously, preserving Safari and desktop
     // gesture behavior. Direct resolution can rescue a rejected server path.
@@ -1456,7 +1459,6 @@ function updateQueueHighlight() {
   if (state.currentTrack) {
     $$(`.track-row[data-track-id="${state.currentTrack.id}"]`).forEach(r => r.classList.add('playing'));
   }
-  if (window.mountGlassSurfaces) window.mountGlassSurfaces();
 }
 
 function togglePlay() {
@@ -2116,9 +2118,6 @@ function refreshRecentTracksUI() {
 
 // ========== Discover Page ==========
 let hotCache;
-let heroRotationTracks = [];
-let heroRotationIndex = 0;
-let heroRotationTimer = null;
 
 // First paint data is bundled with the static shell, so a sleeping API never
 // leaves the homepage blank. Live data replaces it in the background.
@@ -2143,7 +2142,6 @@ function renderFirstPaintDiscover() {
   const fallback = FIRST_PAINT_TRACKS.slice();
   addToQueue(fallback);
   renderScrollRow('#hotTracks', fallback);
-  scheduleHeroRotation(fallback);
   applyHeroTrack(fallback[0]);
 }
 
@@ -2156,17 +2154,6 @@ function applyHeroTrack(track) {
   setHeroCover(track.cover || track.coverSmall || '', track.id);
   updateDynamicGradient(track);
   addToQueue([track]);
-}
-
-function scheduleHeroRotation(tracks) {
-  heroRotationTracks = Array.isArray(tracks) ? tracks.filter(Boolean) : [];
-  heroRotationIndex = 0;
-  if (heroRotationTimer) clearInterval(heroRotationTimer);
-  if (heroRotationTracks.length < 2) return;
-  heroRotationTimer = setInterval(function() {
-    heroRotationIndex = (heroRotationIndex + 1) % heroRotationTracks.length;
-    applyHeroTrack(heroRotationTracks[heroRotationIndex]);
-  }, 10 * 60 * 1000);
 }
 
 async function loadDiscover() {
@@ -2256,7 +2243,6 @@ async function loadDiscoverData(retryCount) {
   try {
     var heroRes = await fetchFeaturedClassics(6);
     if (!heroRes || !heroRes.length) throw new Error('No curated hero track');
-    scheduleHeroRotation(heroRes);
     applyHeroTrack(heroRes[0]);
     addToQueue(heroRes);
   } catch (e) {
@@ -2266,8 +2252,8 @@ async function loadDiscoverData(retryCount) {
 
 function setHeroCover(coverUrl, trackId) {
   if (!coverUrl) return;
-  window.heroMeshCover = coverUrl;
-  window.dispatchEvent(new CustomEvent('ty:herochange', { detail: { cover: coverUrl } }));
+  const image = document.querySelector('.hero-art-fallback');
+  if (image) image.src = resolveMusicResource(coverUrl);
   extractAlbumColors(coverUrl, function(colors) {
     if (trackId && String(state.heroTrack?.id) !== String(trackId)) return;
     applyHeroColors(colors);
@@ -2287,18 +2273,11 @@ function applyHeroColors(colors) {
     card.style.setProperty('--hero-accent-rgb', rgb);
     card.style.setProperty('--hero-accent-soft-rgb', `${primary.r}, ${primary.g}, ${primary.b}`);
   }
-  window.heroAccentHex = `rgb(${rgb})`;
-  window.dispatchEvent(new CustomEvent('ty:herocolors', { detail: { accent: window.heroAccentHex } }));
 }
 
 function setShinyText(id, text) {
   var target = document.getElementById(id);
-  if (!target) return;
-  if (target.dataset && Object.prototype.hasOwnProperty.call(target.dataset, 'shinyText')) {
-    target.dataset.shinyText = text || '';
-  } else {
-    target.textContent = text || '';
-  }
+  if (target) target.textContent = text || '';
 }
 
 // Genre detail
@@ -2314,8 +2293,8 @@ async function loadGenreDetail(genreId) {
   const genreNames = { pop: '流行乐', rock: '摇滚', electronic: '电子', hiphop: '嘻哈', jazz: '爵士', classical: '古典', rnb: 'R&B', country: '乡村', kpop: 'K-Pop', chinese: '华语', latin: '拉丁', anime: '动漫' };
   const genreTitle = genreNames[genreId] || genreId;
   const genrePixelNames = { pop: 'POP', rock: 'ROCK', electronic: 'ELECTRONIC', hiphop: 'HIP HOP', jazz: 'JAZZ', classical: 'CLASSICAL', rnb: 'R&B', country: 'COUNTRY', kpop: 'K-POP', chinese: 'CHINESE', latin: 'LATIN', anime: 'ANIME' };
-  window.genreShuffleTitle = genrePixelNames[genreId] || genreTitle.toUpperCase();
-  window.setGenreShuffleTitle?.(window.genreShuffleTitle);
+  const title = $('#genreTitleMount');
+  if (title) title.textContent = genrePixelNames[genreId] || genreTitle.toUpperCase();
   genreScrollTimer = setTimeout(() => genreSection.scrollIntoView({ behavior: 'smooth' }), 100);
 
   if (genreDetailCache.has(genreId)) { renderScrollRow('#genreTracks', genreDetailCache.get(genreId)); return; }
@@ -2728,6 +2707,7 @@ function renderTrackList(containerId, tracks, { from = 0, search = false } = {})
   const isBrowseResults = container.classList.contains('browse-results-list');
   const rows = tracks.slice(from).map((t, offset) => {
     const i = from + offset;
+    const liked = isFavorite(t.id);
     return `
     <div class="track-row${isBrowseResults ? ' browse-result-row' : ''}" data-track-id="${t.id}" data-idx="${i}">
       ${isBrowseResults ? '<span class="browse-result-index">' + (i + 1) + '</span>' : ''}
@@ -2739,8 +2719,8 @@ function renderTrackList(containerId, tracks, { from = 0, search = false } = {})
       ${isBrowseResults ? '<span class="browse-result-album">' + esc(t.album || '单曲') + '</span>' : ''}
       ${isMobile ? '' : '<span class="row-duration">' + formatTime(t.duration) + '</span>'}
       <div class="row-actions ${isMobile ? 'mobile' : ''}">
-        <button class="row-action-btn like-btn ${isFavorite(t.id) ? 'liked' : ''}" data-track-action="like" aria-label="收藏">
-          <i class="fa-${isFavorite(t.id) ? 'solid' : 'regular'} fa-heart"></i>
+        <button class="row-action-btn like-btn ${liked ? 'liked' : ''}" data-track-action="like" aria-label="喜欢歌曲" aria-pressed="${liked}" title="${liked ? '取消喜欢' : '喜欢歌曲'}">
+          <i class="fa-${liked ? 'solid' : 'regular'} fa-heart"></i>
         </button>
         <button class="row-action-btn" data-track-action="playlist" aria-label="添加到歌单">
           <i class="fa-solid fa-plus"></i>
@@ -3149,7 +3129,6 @@ let ampArtworkRequestId = 0;
 function setAmpArtwork(artwork, cover) {
   artwork.style.backgroundImage = `url(${JSON.stringify(cover || LOCAL_TRACK_COVER)})`;
   window.ampCoverSrc = cover;
-  window.dispatchEvent(new CustomEvent('ty:ampcoverchange', { detail: { cover } }));
 }
 
 function updateAmpArtwork(track) {
@@ -3181,8 +3160,7 @@ function updateAmpArtwork(track) {
     setAmpArtwork(artwork, cover);
     if (track.source !== 'local') rememberRecentCover(track.id, cover);
     const applyPalette = colors => { if (isCurrent() && colors) applyAlbumColors(colors); };
-    // The grid always owns the background; a blocked CDN read can use the
-    // same track's smaller proxy image for color sampling.
+    // A blocked CDN read can use the same track's proxy image for color sampling.
     extractAlbumColors(colorSource, colors => {
       if (!isCurrent()) return;
       if (colors) { applyPalette(colors); return; }
@@ -3334,19 +3312,12 @@ function extractAlbumColors(imageSrc, callback, { allowDefault = true } = {}) {
 function applyAlbumColors(colors) {
   const player = $('#ampFullscreenPlayer');
   if (!player) return;
-  const title = $('#ampTitle');
-  const artist = $('#ampArtist');
-  const ctrlBtns = player.querySelectorAll('.amp-ctrl-btn, .amp-action-btn');
   window.ampGridColors = colors;
-  window.dispatchEvent(new CustomEvent('ty:ampgridcolors', { detail: colors || DEFAULT_ALBUM_COLORS }));
   if (!colors) {
     for (const property of ['--amp-accent', '--amp-accent-light', '--amp-accent-dark']) {
       player.style.removeProperty(property);
       player.style.removeProperty(property + '-rgb');
     }
-    if (title) title.style.color = '';
-    if (artist) artist.style.color = '';
-    ctrlBtns.forEach(btn => { btn.style.color = ''; });
     return;
   }
   const { primary, secondary, tertiary } = colors;
@@ -3356,10 +3327,6 @@ function applyAlbumColors(colors) {
   const sRgb = `${secondary.r}, ${secondary.g}, ${secondary.b}`;
   const tRgb = `${tertiary.r}, ${tertiary.g}, ${tertiary.b}`;
   
-  // HSB 亮度判断：浅色专辑用深色文字
-  const primaryLum = (primary.r * 299 + primary.g * 587 + primary.b * 114) / 1000;
-  const isLightAlbum = primaryLum > 150;
-  
   // 设置 CSS 变量供 UI 使用
   player.style.setProperty('--amp-accent', `rgb(${pRgb})`);
   player.style.setProperty('--amp-accent-rgb', pRgb);
@@ -3368,22 +3335,6 @@ function applyAlbumColors(colors) {
   player.style.setProperty('--amp-accent-dark', `rgb(${tRgb})`);
   player.style.setProperty('--amp-accent-dark-rgb', tRgb);
   
-  // 标题/艺术家颜色：浅色封面用深色，深色封面用白色
-  const textColor = isLightAlbum ? `rgb(${Math.max(0, primary.r - 60)}, ${Math.max(0, primary.g - 60)}, ${Math.max(0, primary.b - 60)})` : 'white';
-  const textSecondary = isLightAlbum ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.6)';
-  
-  if (title) title.style.color = textColor;
-  if (artist) artist.style.color = textSecondary;
-  
-  // 进度条使用 CSS 变量自动适配主题色（无需 JS 内联覆盖）
-  
-  // 控制按钮文本颜色
-  ctrlBtns.forEach(btn => {
-    btn.style.color = isLightAlbum ? `rgba(${pRgb}, 0.7)` : '';
-  });
-
-  // 同步更新音波动效颜色
-
 }
 
 function applyAlbumDetailColors(colors) {
@@ -3516,16 +3467,7 @@ function updateAmpFullscreenPlayer(trackOverride) {
   }
   
   // 更新喜欢按钮
-  const likeBtn = $('#ampLikeBtn');
-  if (likeBtn) {
-    if (isFavorite(track.id)) {
-      likeBtn.classList.add('liked');
-      likeBtn.innerHTML = '<i class="fa-solid fa-heart"></i>';
-    } else {
-      likeBtn.classList.remove('liked');
-      likeBtn.innerHTML = '<i class="fa-regular fa-heart"></i>';
-    }
-  }
+  paintSongLike($('#ampLikeBtn'), isFavorite(track.id));
   
   // 更新播放按钮
   updateAmpPlayBtn();
@@ -3857,17 +3799,7 @@ function initAmpFullscreenPlayer() {
   if (likeBtn) {
     likeBtn.addEventListener('click', () => {
       const track = getActiveTrack();
-      if (track) {
-        toggleFavById(track.id);
-        // 更新按钮状态
-        if (isFavorite(track.id)) {
-          likeBtn.classList.add('liked');
-          likeBtn.innerHTML = '<i class="fa-solid fa-heart"></i>';
-        } else {
-          likeBtn.classList.remove('liked');
-          likeBtn.innerHTML = '<i class="fa-regular fa-heart"></i>';
-        }
-      }
+      if (track) toggleFavorite(track);
     });
   }
   
@@ -4468,94 +4400,6 @@ async function updateStorageInfo() {
 
 let currentAlbumTracks = [];
 let albumDetailGeneration = 0;
-let driftSourceTracksPromise = null;
-let driftWallSourceTracks = [];
-let driftWallRefreshTimer = null;
-let driftWallRefreshIndex = 0;
-const driftWallSearches = ['新歌 2026', '华语 新歌', '欧美 新歌', '日韩 新歌', '独立音乐', '电子音乐'];
-
-function driftWallAlbumKey(track) {
-  if (!track) return '';
-  const albumId = track.albumId || track.album_id || track.album?.id;
-  if (albumId) return 'id:' + String(albumId);
-  const albumName = typeof track.album === 'string' ? track.album : (track.title || '');
-  const artist = track.artist || '';
-  return 'name:' + String(albumName).trim().toLowerCase() + '|artist:' + String(artist).trim().toLowerCase();
-}
-
-function updateAlbumDriftWallCovers(extraTracks) {
-  var pool = [];
-  var seenAlbums = new Set();
-  var seenCovers = new Set();
-  var sources = [].concat(extraTracks || [], currentAlbumTracks || [], state.queue || [], Array.from(state.trackCache.values()), hotCache || [], driftWallSourceTracks || []);
-  sources.forEach(function(track) {
-    const raw = track && (track.coverSmall || track.cover);
-    const albumKey = driftWallAlbumKey(track);
-    if (!raw || !albumKey || seenAlbums.has(albumKey)) return;
-    const { src: cover, proxy } = compactCover(raw);
-    if (cover === '/icon.svg' || seenCovers.has(cover) || /^(?:data:|blob:)|^\/api\/(?:artist-photo|artist-avatar|album-cover)/.test(cover)) return;
-    seenAlbums.add(albumKey);
-    seenCovers.add(cover);
-    pool.push({ image: cover, proxy, embeat: track.source === 'embeat' && Boolean(track.picId), title: ((track.album || track.title || '专辑封面') + ' · ' + (track.artist || '')) });
-  });
-  for (var i = pool.length - 1; i > 0; i -= 1) {
-    var j = Math.floor(Math.random() * (i + 1));
-    var swap = pool[i]; pool[i] = pool[j]; pool[j] = swap;
-  }
-  var items = pool.slice(0, 30);
-  if (!items.length && Array.isArray(window.albumDriftWallItems)) items = window.albumDriftWallItems;
-  if (!items.length) return;
-  window.albumDriftWallItems = items;
-  window.dispatchEvent(new CustomEvent('ty:albumdriftcovers', { detail: { items: items } }));
-}
-
-function scheduleDriftWallRefresh() {
-  if (driftWallRefreshTimer) clearTimeout(driftWallRefreshTimer);
-  driftWallRefreshTimer = null;
-  if (state.currentPage !== 'album-favorites') return;
-  driftWallRefreshTimer = setTimeout(function() {
-    driftWallRefreshTimer = null;
-    refreshDriftWallSourceCovers();
-  }, 45000);
-}
-
-function refreshDriftWallSourceCovers() {
-  if (state.currentPage !== 'album-favorites') return;
-  var offset = driftWallRefreshIndex * 80;
-  var search = driftWallSearches[driftWallRefreshIndex % driftWallSearches.length];
-  driftWallRefreshIndex += 1;
-  Promise.all([
-    fetch('/api/music/hot?source=netease&limit=80&offset=' + offset).then(function(res) { return res.ok ? res.json() : { songs: [] }; }).catch(function() { return { songs: [] }; }),
-    fetch('/api/album/new?limit=40&offset=' + offset).then(function(res) { return res.ok ? res.json() : { songs: [] }; }).catch(function() { return { songs: [] }; }),
-    fetch('/api/music/search?keywords=' + encodeURIComponent(search) + '&limit=30').then(function(res) { return res.ok ? res.json() : { songs: [] }; }).catch(function() { return { songs: [] }; })
-  ]).then(function(results) {
-    var songs = results[0].songs || [];
-    var newSongs = (results[1].songs || []).concat(results[2].songs || []).map(function(song) { return normalizeNeteaseTrack(song); });
-    driftWallSourceTracks = driftWallSourceTracks.concat(songs.map(normalizeNeteaseTrack), newSongs).slice(-240);
-    updateAlbumDriftWallCovers([]);
-  }).finally(scheduleDriftWallRefresh);
-}
-
-function loadDriftWallSourceCovers(extraTracks) {
-  updateAlbumDriftWallCovers(extraTracks);
-  if (!driftSourceTracksPromise) {
-    const sources = ['/api/music/hot?source=netease&limit=80', '/api/album/new?limit=40'];
-    driftSourceTracksPromise = Promise.all(sources.map(async url => {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) return;
-        const { songs } = await response.json();
-        const items = Array.isArray(songs) ? songs.map(normalizeNeteaseTrack) : [];
-        driftWallSourceTracks = driftWallSourceTracks.concat(items).slice(-240);
-        if (items.length && state.currentPage === 'album-favorites') updateAlbumDriftWallCovers([]);
-      } catch (_) { /* Keep the wall supplied by other available sources. */ }
-    })).finally(() => {
-      if (!driftWallSourceTracks.length) driftSourceTracksPromise = null;
-      scheduleDriftWallRefresh();
-    });
-  } else scheduleDriftWallRefresh();
-}
-
 async function openAlbumDetail(albumId) {
   albumDetailGeneration++;
   currentAlbumTracks = [];
@@ -4677,7 +4521,6 @@ function renderAlbumTracks(tracks) {
       }
     });
   });
-  if (window.mountGlassSurfaces) window.mountGlassSurfaces();
 }
 
 // Embeat exposes a track and album metadata, not a verified album track list.
@@ -4765,7 +4608,6 @@ async function openAlbumByPicId(picId, songId, albumName, artistName, source, al
     }
     
     currentAlbumTracks = tracks;
-    updateAlbumDriftWallCovers(tracks);
     
     const albumCoverEl = document.getElementById('albumDetailCover');
     albumCoverEl.onload = function() { syncAlbumDetailColorsFromCover(this); };
@@ -4856,7 +4698,6 @@ async function openAlbumByName(albumName, artistName, source, picId) {
     }
 
     currentAlbumTracks = tracks;
-    updateAlbumDriftWallCovers(tracks);
 
     const albumCoverEl = document.getElementById('albumDetailCover');
     albumCoverEl.onload = function() { syncAlbumDetailColorsFromCover(this); };
@@ -5263,14 +5104,16 @@ function showTrackOptions(trackIndex, trigger) {
   
   // 添加到页面
   document.body.appendChild(menu);
-  if (window.mountGlassSurfaces) window.mountGlassSurfaces();
   
   // 定位菜单
   var btn = trigger || (typeof event !== 'undefined' && event.target?.closest('.album-track-more'));
   if (btn) {
     var rect = btn.getBoundingClientRect();
     menu.style.position = 'fixed';
-    menu.style.top = rect.bottom + 8 + 'px';
+    const height = menu.offsetHeight;
+    const below = rect.bottom + 8;
+    const top = below + height <= window.innerHeight - 8 ? below : rect.top - height - 8;
+    menu.style.top = Math.max(8, top) + 'px';
     menu.style.right = '20px';
   }
   
@@ -5362,15 +5205,12 @@ function updateAlbumFavButton(albumId) {
   const btn = document.getElementById('albumFavBtn');
   if (!btn) return;
   
-  if (isAlbumFavorited(albumId)) {
-    btn.classList.add('favorited');
-    btn.innerHTML = '<i class="fa-solid fa-heart"></i>';
-    btn.title = '取消收藏';
-  } else {
-    btn.classList.remove('favorited');
-    btn.innerHTML = '<i class="fa-regular fa-heart"></i>';
-    btn.title = '收藏专辑';
-  }
+  const saved = isAlbumFavorited(albumId);
+  btn.classList.toggle('favorited', saved);
+  btn.setAttribute('aria-pressed', String(saved));
+  btn.title = saved ? '取消收藏专辑' : '收藏专辑';
+  const icon = btn.querySelector('i');
+  if (icon) icon.className = `fa-${saved ? 'solid' : 'regular'} fa-bookmark`;
 }
 
 // 渲染专辑收藏页面（网格视图）
@@ -6055,54 +5895,3 @@ function updateMobileTitle(page) {
   var el = document.getElementById('mobilePageTitle');
   if (el) el.textContent = titles[page] || 'TY Music';
 }
-
-/* ============================================
-   液态玻璃动态高光（跟随鼠标）
-   ============================================ */
-(function initLiquidGlass() {
-  // 给播放栏加一个动态高光层
-  var playerBar = document.querySelector('.player-bar');
-  if (!playerBar) return;
-
-  // 创建高光元素
-  var highlight = document.createElement('div');
-  highlight.className = 'liquid-glass-highlight';
-  highlight.style.cssText = `
-    position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    pointer-events: none;
-    z-index: 0;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    background: radial-gradient(
-      ellipse 120px 60px at 50% 50%,
-      rgba(255, 255, 255, 0.12) 0%,
-      rgba(255, 255, 255, 0.04) 40%,
-      transparent 70%
-    );
-  `;
-  playerBar.appendChild(highlight);
-
-  // 鼠标移动时更新高光位置
-  document.addEventListener('mousemove', function(e) {
-    var rect = playerBar.getBoundingClientRect();
-    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-      var x = e.clientX - rect.left;
-      var y = e.clientY - rect.top;
-      highlight.style.opacity = '1';
-      highlight.style.background = `radial-gradient(
-        ellipse 150px 80px at ${x}px ${y}px,
-        rgba(255, 255, 255, 0.15) 0%,
-        rgba(255, 255, 255, 0.05) 30%,
-        transparent 70%
-      )`;
-    } else {
-      highlight.style.opacity = '0';
-    }
-  });
-
-  // 鼠标离开窗口时隐藏高光
-  document.addEventListener('mouseleave', function() {
-    highlight.style.opacity = '0';
-  });
-})();

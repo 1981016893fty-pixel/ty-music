@@ -139,6 +139,29 @@ test('selecting local music invalidates pending remote resolution and keeps audi
   assert.equal(resources[0].signal.aborted, true);
 });
 
+test('desktop Embeat can recover from a failed stream while NetEase retains proxy playback', async () => {
+  const { context, audio, resources } = playbackPlayer();
+  context.window.__TY_MUSIC_DESKTOP__ = true;
+  audio.play = function () {
+    if (this.src.startsWith('/api/') && this.src.includes('id=embeat:')) {
+      return Promise.reject(new Error('stream failed'));
+    }
+    this.paused = false;
+    return Promise.resolve();
+  };
+  context.playTrack({ ...track('embeat:1'), source: 'embeat' }, 0, true);
+  assert.equal(audio.src, '/api/music/proxy?id=embeat:1&stream=1');
+  assert.equal(resources[0]?.item.id, 'embeat:1');
+  resources[0].resolve('https://audio.test/embeat.mp4');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(audio.src, 'https://audio.test/embeat.mp4');
+  assert.equal(context.state.isPlaying, true);
+
+  context.playTrack({ ...track('123'), source: 'netease' }, 0, true);
+  assert.equal(resources.length, 1);
+  assert.equal(audio.src, '/api/music/proxy?id=123&stream=1');
+});
+
 test('metadata probing releases its temporary audio URL on success and failure', async () => {
   for (const event of ['loadedmetadata', 'error']) {
     const revoked = [], probes = [];
@@ -291,6 +314,8 @@ function fullscreenArtworkPlayer() {
   });
   for (const selector of ['#ampLikeBtn', '#ampShuffleBtn', '#ampRepeatBtn']) nodes.set(selector, null);
   vm.runInContext(section('const LOCAL_TRACK_COVER =', 'function releaseLocalAudio()') +
+    section('function paintSongLike(', 'function updateLikeUI()') +
+    'function isFavorite() { return false; }' +
     section('let ampIsShowing = false;', '// 辅助：在圆角矩形路径上') +
     section('function applyAlbumColors(', 'function applyAlbumDetailColors(') +
     section('function getActiveTrack()', 'function updateAmpPlayBtn()'), context);

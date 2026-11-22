@@ -16,10 +16,10 @@
     .welcome-screen.is-dismissed { opacity: 0; visibility: hidden; pointer-events: none; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/icon.svg?v=20260814">
-  <link rel="preload" href="style.css?v=20261121-button-v66" as="style">
-  <link rel="preload" href="player.js?v=20261121-artwork-v65" as="script">
+  <link rel="preload" href="style.css?v=20261122-idle-v68" as="style">
+  <link rel="preload" href="player.js?v=20261122-idle-v68" as="script">
   <link rel="preload" href="/vendor/font-awesome/css/all.min.css" as="style">
-  <link rel="stylesheet" href="style.css?v=20261121-button-v66">
+  <link rel="stylesheet" href="style.css?v=20261122-idle-v68">
   <link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css">
   <!-- PWA / iOS 主屏幕图标 -->
   <link rel="manifest" href="/manifest.json?v=20260619">
@@ -44,15 +44,14 @@
 <body>
   <!-- 首次进入欢迎页；点击开始使用后进入播放器主页 -->
   <section class="welcome-screen" id="welcomeScreen" aria-labelledby="welcomeTitle">
-    <div class="welcome-liquid-ether-mount" id="welcomeLiquidEtherMount" aria-hidden="true"></div>
     <div class="welcome-vignette" aria-hidden="true"></div>
     <div class="welcome-content">
       <div class="welcome-kicker">欢迎来到 TY MUSIC</div>
       <h1 id="welcomeTitle">聆听，<span>正在发生。</span></h1>
       <p>让喜欢的声音回到当下。每一次播放，都自然抵达你。</p>
       <div class="welcome-actions">
-        <span id="welcomeStartMount"></span>
-        <span id="welcomeLearnMoreMount"></span>
+        <span id="welcomeStartMount"><button type="button" class="specular-button welcome-start-button" onclick="enterMusicApp()">开始使用</button></span>
+        <span id="welcomeLearnMoreMount"><button type="button" class="specular-button welcome-learn-more" aria-controls="welcomeFeatures" aria-expanded="false" onclick="toggleWelcomeFeatures()">了解更多</button></span>
       </div>
       <p class="welcome-disclaimer" role="note">
         免责声明：TY Music 仅供个人学习与非商业使用。请遵守当地法律法规与版权要求，本站不提供任何商业授权。
@@ -98,19 +97,13 @@
     </defs>
   </svg>
 
-  <!-- 首页动态渐变底色；全屏播放时由 GridDistortion 独占背景 -->
+  <!-- 播放器根据当前封面更新底色。 -->
   <div class="bg-gradient" id="bgGradient"></div>
-  <div id="homeFloatingLinesMount" aria-hidden="true"></div>
   <div id="libraryGradientWavesMount" aria-hidden="true"></div>
 
-  <!-- React Bits SoftAurora 背景 -->
-  <div id="softAuroraHost" aria-hidden="true"></div>
-  <div id="browseSplashCursorMount" aria-hidden="true"></div>
-  <div id="browsePrismMount" aria-hidden="true"></div>
-
   <header class="top-dock" id="topDock" aria-label="TY Music 顶部栏">
-    <div class="top-dock__brand" id="topDockBrandMount"></div>
-    <span id="topDockClientMount" aria-label="打开 TY Music 桌面客户端页面"></span>
+    <div class="top-dock__brand top-dock__glitch">TY MUSIC</div>
+    <span id="topDockClientMount"><a class="specular-button top-dock__client-entry" href="desktop.html"><i class="fa-solid fa-desktop" aria-hidden="true"></i>桌面客户端</a></span>
   </header>
 
   <!-- 移动端顶部栏 -->
@@ -197,17 +190,15 @@
     <section class="page active" id="page-discover">
       <div class="hero-section">
         <div class="hero-card" id="heroCard" onclick="playHeroTrack()">
-          <div id="heroElectricBorderMount" aria-hidden="true"></div>
           <div class="hero-info">
             <div class="hero-badge">精选推荐</div>
-            <h1 class="hero-title" id="heroTitle" data-shiny-text="Blinding Lights">Blinding Lights</h1>
+            <h1 class="hero-title" id="heroTitle">Blinding Lights</h1>
             <p class="hero-artist" id="heroArtist">The Weeknd</p>
             <p class="hero-album" id="heroAlbum">After Hours</p>
-            <span id="heroPlaySpecularMount" onclick="event.stopPropagation()"></span>
+            <span id="heroPlaySpecularMount" onclick="event.stopPropagation()"><button type="button" class="specular-button specular-button--md hero-play-cyan" onclick="playHeroTrack()">立即播放</button></span>
           </div>
           <div class="hero-art">
             <img class="hero-art-fallback" src="/assets/demo/cs1.webp" alt="">
-            <div id="heroElasticMeshMount" aria-hidden="true"></div>
           </div>
         </div>
       </div>
@@ -215,7 +206,7 @@
 
       <div class="section">
         <div class="section-header">
-          <h2 class="section-title"><span id="hotShuffleTitleMount" aria-label="热门排行榜"></span></h2>
+          <h2 class="section-title">TOP CHARTS</h2>
           <span class="section-link" onclick="showHotList()">显示全部 <i class="fa-solid fa-chevron-right"></i></span>
         </div>
         <div class="scroll-row" id="hotTracks">
@@ -228,14 +219,14 @@
 
       <div class="section recent-section" id="recentSection" style="display:none">
         <div class="section-header">
-          <h2 class="section-title"><span id="recentShuffleTitleMount" aria-label="RECENTLY PLAYED"></span></h2>
+          <h2 class="section-title">RECENTLY PLAYED</h2>
         </div>
         <div class="scroll-row" id="recentTracks"></div>
       </div>
 
       <div class="section">
         <div class="section-header">
-          <h2 class="section-title"><span id="genreShuffleTitleMount" aria-label="按流派浏览"></span></h2>
+          <h2 class="section-title">BROWSE BY GENRE</h2>
         </div>
         <div class="scroll-row" id="genreCards">
           <div class="scroll-loading" aria-label="内容加载中"></div>
@@ -246,7 +237,7 @@
 
       <div class="section" id="genreSection" style="display:none">
         <div class="section-header">
-          <h2 class="section-title"><span id="genreTitleMount" aria-label="流派详情"></span></h2>
+          <h2 class="section-title" id="genreTitleMount"></h2>
           <span class="section-link" id="genreBack" onclick="hideGenreDetail()">
             <i class="fa-solid fa-chevron-left"></i> 返回
           </span>
@@ -263,7 +254,7 @@
         <header class="browse-header">
           <div class="browse-heading">
             <span class="browse-eyebrow">探索音乐</span>
-            <h1 data-shiny-text="浏览"></h1>
+            <h1>浏览</h1>
             <p>从热门榜单、新歌和流派开始，找到下一首想听的歌。</p>
           </div>
           <div class="search-box browse-search-box">
@@ -276,10 +267,13 @@
 
         <section class="browse-section browse-quick-section" aria-labelledby="browseQuickTitle">
           <div class="browse-section-head">
-            <div><span class="browse-kicker">快速开始</span><h2 id="browseQuickTitle" data-shiny-text="今天想听什么"></h2></div>
+            <div><span class="browse-kicker">快速开始</span><h2 id="browseQuickTitle">今天想听什么</h2></div>
             <span class="browse-section-meta">精选入口</span>
           </div>
-          <div id="browseScrollExpandMount" aria-label="音乐探索视觉区"></div>
+          <figure class="browse-static-banner">
+            <img src="/assets/browse-listener-hero-960.jpg" alt="" loading="lazy" decoding="async">
+            <figcaption>发现下一首喜欢的歌</figcaption>
+          </figure>
           <div class="browse-quick-grid" id="browseQuickGrid" aria-label="快速音乐入口"></div>
         </section>
 
@@ -298,7 +292,7 @@
       <header class="library-header">
         <div class="library-heading">
           <div class="library-icon library-icon--pink" aria-hidden="true"><span id="libraryFavoritesIconMount"></span></div>
-          <div><h1 data-shiny-text="喜爱"></h1><p>你收藏的所有歌曲</p></div>
+          <div><h1>喜爱</h1><p>你收藏的所有歌曲</p></div>
         </div>
         <div class="library-header-actions">
           <span class="library-count" id="favoritesCount">0 首歌曲</span>
@@ -318,7 +312,7 @@
       <header class="library-header">
         <div class="library-heading">
           <div class="library-icon library-icon--cyan" aria-hidden="true"><span id="libraryLocalIconMount"></span></div>
-          <div><h1 data-shiny-text="本地音乐"></h1><p>只保存在这台设备上的音乐</p></div>
+          <div><h1>本地音乐</h1><p>只保存在这台设备上的音乐</p></div>
         </div>
         <div class="library-header-actions"><span class="library-count" id="localTracksCount">0 首歌曲</span></div>
       </header>
@@ -358,7 +352,7 @@
       <header class="library-header">
         <div class="library-heading">
           <div class="library-icon library-icon--violet" aria-hidden="true"><span id="libraryPlaylistsIconMount"></span></div>
-          <div><h1 data-shiny-text="播放列表"></h1><p>创建和管理你的专属歌单</p></div>
+          <div><h1>播放列表</h1><p>创建和管理你的专属歌单</p></div>
         </div>
         <button class="library-primary-btn" id="createPlaylistBtn" type="button"><i class="fa-solid fa-plus"></i> 新建歌单</button>
       </header>
@@ -378,7 +372,7 @@
           <div class="playlist-detail-icon" aria-hidden="true"><span id="playlistDetailIconMount"></span></div>
           <div class="playlist-detail-copy">
             <span class="playlist-detail-eyebrow">PLAYLIST</span>
-            <h1 id="playlistDetailTitle" data-shiny-text="歌单名称"></h1>
+            <h1 id="playlistDetailTitle">歌单名称</h1>
             <p id="playlistDetailMeta">0 首歌曲 · 你的个人歌单</p>
           </div>
           <div class="playlist-detail-actions">
@@ -400,13 +394,13 @@
           <img class="album-detail-cover" id="albumDetailCover" src="" alt="">
           <div class="album-detail-meta">
             <span class="album-detail-type">专辑</span>
-            <h1 id="albumDetailTitle" data-shiny-text="专辑名称"></h1>
+            <h1 id="albumDetailTitle">专辑名称</h1>
             <p id="albumDetailArtist">歌手</p>
             <p id="albumDetailMeta">发行时间 · 歌曲数</p>
             <div class="album-detail-actions">
-              <span class="album-play-all-mount" id="albumPlayAllBtn" aria-label="播放全部"></span>
-              <button class="album-fav-btn" id="albumFavBtn" title="收藏专辑">
-                <i class="fa-regular fa-heart"></i>
+              <span class="album-play-all-mount" id="albumPlayAllBtn"><button type="button" class="specular-button album-play-specular">播放全部</button></span>
+              <button class="album-fav-btn" id="albumFavBtn" title="收藏专辑" aria-label="收藏专辑" aria-pressed="false">
+                <i class="fa-regular fa-bookmark" aria-hidden="true"></i>
               </button>
             </div>
           </div>
@@ -417,11 +411,10 @@
 
     <!-- 专辑收藏页 -->
     <section class="page library-page" id="page-album-favorites">
-      <div id="albumDriftWallMount" aria-hidden="true"></div>
       <header class="library-header">
         <div class="library-heading">
           <div class="library-icon library-icon--orange" aria-hidden="true"><span id="libraryAlbumsIconMount"></span></div>
-          <div><h1 data-shiny-text="专辑"></h1><p>你收藏的所有专辑</p></div>
+          <div><h1>专辑</h1><p>你收藏的所有专辑</p></div>
         </div>
         <div class="view-toggle">
           <button class="view-btn active" id="gridViewBtn" title="网格视图">
@@ -461,7 +454,7 @@
             </div>
           </div>
           <div class="am-artist-copy">
-            <h1 class="am-artist-name" id="artistDetailName" data-shiny-text="歌手名称"></h1>
+            <h1 class="am-artist-name" id="artistDetailName">歌手名称</h1>
             <p class="am-artist-meta" id="artistDetailMeta"></p>
           </div>
           <div class="am-artist-actions">
@@ -539,7 +532,7 @@
         <span class="player-preview-badge" id="playerPreviewBadge" style="display:none">试听片段</span>
         <div class="player-artist" id="playerArtist"></div>
       </div>
-      <button class="player-like" id="playerLike" title="喜爱">
+      <button class="player-like" id="playerLike" title="喜欢歌曲" aria-label="喜欢歌曲" aria-pressed="false">
         <i class="fa-regular fa-heart"></i>
       </button>
       <button class="player-like" id="playerDownload" title="下载歌曲">
@@ -593,7 +586,6 @@
 
   <!-- Apple Music 风格全屏播放器 -->
   <div class="amp-fullscreen-player" id="ampFullscreenPlayer">
-    <div id="ampGridDistortionMount" aria-hidden="true"></div>
     
     <div class="amp-header">
       <button class="amp-header-btn" id="ampCloseBtn">
@@ -610,14 +602,14 @@
     <div class="amp-content" id="ampContent">
       <section class="amp-player-column" aria-label="歌曲信息">
         <div class="amp-artwork-wrapper" id="ampArtworkWrapper">
-          <div class="amp-artwork" id="ampArtwork"><div id="ampTiltedCardMount" aria-hidden="true"></div></div>
+          <div class="amp-artwork" id="ampArtwork" role="img" aria-label="当前专辑封面"></div>
         </div>
 
         <div class="amp-info-section">
           <div class="amp-song-info">
             <div class="amp-title-row">
               <h2 class="amp-title" id="ampTitle"></h2>
-              <button class="amp-like-btn" id="ampLikeBtn">
+              <button class="amp-like-btn" id="ampLikeBtn" title="喜欢歌曲" aria-label="喜欢歌曲" aria-pressed="false">
                 <i class="fa-regular fa-heart"></i>
               </button>
             </div>
@@ -752,13 +744,13 @@
       }
     }, 32000);
   </script>
-  <link rel="stylesheet" href="soft-aurora-react.css?v=20261118-quality-v53">
-  <script type="module" src="soft-aurora-react.js?v=20261121-button-v66" fetchpriority="low"></script>
+  <link rel="stylesheet" href="soft-aurora-react.css?v=20261122-idle-v68">
+  <script type="module" src="soft-aurora-react.js?v=20261122-idle-v68" fetchpriority="low"></script>
   <script src="gd-embeat-core.js?v=20261118-quality-v53" defer></script>
   <script src="browser-provider.js?v=20261121-artwork-v65" defer></script>
   <script src="search-session.js?v=20261121-player-search-v63" defer></script>
   <script src="local-music-db.js?v=20261121-memory-v64" defer></script>
-  <script src="player.js?v=20261121-artwork-v65" defer></script>
+  <script src="player.js?v=20261122-idle-v68" defer></script>
   <noscript><link rel="stylesheet" href="/vendor/font-awesome/css/all.min.css"></noscript>
 
 </body>

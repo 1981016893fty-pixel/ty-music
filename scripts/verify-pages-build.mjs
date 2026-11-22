@@ -12,7 +12,7 @@ test('Pages publishes only public assets, a complete module graph and the API wo
   const release = '17843d6b1a8f97f9d72e34aabb5ebe7c633cf673';
   execFileSync(process.execPath, ['scripts/build-pages.mjs'], { cwd: root, stdio: 'pipe', env: { ...process.env, TY_MUSIC_COMMIT: release } });
   const publicFiles = [
-    'index.html', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
+    'index.html', 'desktop.html', 'library-transfer.html', 'library-transfer.js', 'local-music-db.js', 'player.js', 'gd-embeat-core.js', 'browser-provider.js', 'search-session.js',
     'soft-aurora-react.js', 'soft-aurora-react.css', 'style.css', 'liquid-glass.js',
     'manifest.json', 'service-worker.js', 'icon-192.png', 'icon-512.png', 'icon.svg',
   ];
@@ -39,5 +39,9 @@ test('Pages publishes only public assets, a complete module graph and the API wo
   assert.match(headers, /\/service-worker\.js\n  Cache-Control: no-cache/);
   assert.match(headers, /\/index\.html\n  Cache-Control: no-cache/);
   assert.match(headers, /\/assets\/aurora\/manifest\.json\n  Cache-Control: no-cache/);
-  assert.match(headers, /\/assets\/aurora\/[\w-]+-[A-Z0-9]{8}\.js\n  Cache-Control: public, max-age=31536000, immutable/);
+  for (const file of await readdir(path.join(out, 'assets/aurora'))) {
+    if (/^[\w-]+-[A-Z0-9]{8}\.js$/.test(file)) {
+      assert.ok(headers.includes(`/assets/aurora/${file}\n  Cache-Control: public, max-age=31536000, immutable\n`));
+    }
+  }
 });

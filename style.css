@@ -4082,10 +4082,12 @@ button.top-dock__client-entry {
   z-index: 200;
   display: flex;
   flex-direction: column;
-  /* Keep the old page out of sight while the WebGL texture is loading. */
   isolation: isolate;
   overflow: hidden;
-  background: rgb(var(--amp-accent-dark-rgb, 12, 10, 28));
+  background:
+    radial-gradient(ellipse at 18% 18%, rgba(var(--amp-accent-rgb, 97, 61, 161), .3), transparent 60%),
+    radial-gradient(ellipse at 84% 70%, rgba(var(--amp-accent-light-rgb, 62, 82, 165), .24), transparent 60%),
+    #100d1e;
   opacity: 0;
   pointer-events: none;
   transform: scale(0.96);
@@ -6645,10 +6647,7 @@ body.native-mini-mode #volumeBar {
   box-shadow: none;
 }
 
-/* 正在播放页只保留歌曲信息与可拖动进度，不再显示播放、暂停或切歌控制。 */
-.amp-fullscreen-player .amp-controls {
-  display: none !important;
-}
+.amp-fullscreen-player .amp-controls { display: flex; }
 
 .amp-fullscreen-player .amp-progress {
   width: min(320px, calc(100vw - 132px));
@@ -8301,6 +8300,52 @@ body.native-mini-mode #volumeBtn {
   #browsePrismMount canvas,
   #softAuroraHost canvas { image-rendering: auto; }
   #browseSplashCursorMount { display: none !important; }
+}
+
+/* Static surfaces keep the same controls in the browser and desktop shell. */
+.welcome-screen { background: linear-gradient(135deg, #111124, #211432 55%, #101925); }
+.welcome-actions .specular-button { border-radius: 999px; padding: 0 18px; }
+#topDock { background: #151321; will-change: auto; }
+#topDockClientMount .top-dock__client-entry { border-radius: 999px; }
+.hero-card { border: 1px solid rgba(var(--hero-accent-rgb, 98, 241, 243), .38); }
+.browse-static-banner { display: grid; position: relative; overflow: hidden; border-radius: 14px; margin-bottom: 16px; }
+.browse-static-banner img { width: 100%; height: clamp(120px, 23vw, 250px); object-fit: cover; }
+.browse-static-banner figcaption { position: absolute; inset: auto 0 0; padding: 20px 16px 14px; font-weight: 650; background: linear-gradient(transparent, #100d1e); }
+.chroma-grid .chroma-card { border-radius: 14px !important; background: var(--card-gradient) !important; text-align: left; }
+.chroma-grid .chroma-card::after { display: none; }
+.chroma-img-wrapper img { filter: none; }
+#ampFullscreenPlayer { will-change: auto; }
+#ampTitle { color: #fff; }
+#ampArtist { color: rgba(255, 255, 255, .75); }
+.amp-fullscreen-player .amp-title-row { justify-content: center; }
+.amp-fullscreen-player .amp-like-btn,
+.amp-fullscreen-player #ampQueueBtn,
+.amp-fullscreen-player .amp-bottom-actions { display: flex; }
+.amp-fullscreen-player .amp-controls { gap: 12px; margin: 10px 0 6px; }
+.amp-fullscreen-player .amp-header-btn,
+.amp-fullscreen-player .amp-ctrl-btn,
+.amp-fullscreen-player .amp-like-btn,
+.amp-fullscreen-player .amp-action-btn { min-width: 40px; min-height: 40px; }
+.amp-fullscreen-player .amp-artist { margin-bottom: 6px; }
+.album-track-more:focus-visible { opacity: 1; }
+.track-options-menu { max-height: calc(100dvh - 16px); overflow: auto; }
+
+#playerLike.liked i,
+#ampLikeBtn.liked i,
+.track-row .like-btn.liked i,
+button.fav-remove-btn i { color: #ff526b !important; }
+#albumFavBtn.favorited i { color: #76e6d5 !important; }
+
+@media (max-width: 900px) {
+  .amp-fullscreen-player .amp-content {
+    grid-template-columns: minmax(0, 1fr) !important;
+    align-items: start !important;
+    overflow-y: auto !important;
+  }
+  .amp-fullscreen-player .amp-player-column { justify-self: center !important; }
+}
+@media (hover: none), (pointer: coarse) {
+  .album-track-more { opacity: 1; min-width: 40px; min-height: 40px; }
 }
 
 @media (max-width: 374px) {
